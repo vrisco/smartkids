@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 type LocaleText = Record<string, string>;
 
@@ -8,6 +8,8 @@ export const parentAccounts = sqliteTable("parent_accounts", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
+  role: text("role").notNull().default("tutor"), // 'admin' | 'tutor'
   localeFormat: text("locale_format").notNull().default("es-ES"),
   createdAt: text("created_at").notNull(),
 });
@@ -22,9 +24,10 @@ export const childProfiles = sqliteTable("child_profiles", {
   birthYear: integer("birth_year"),
   gradeBand: text("grade_band").notNull(),
   loginPinHash: text("login_pin_hash"),
+  username: text("username"), // login propio del niño (único)
   preferredLocale: text("preferred_locale").notNull().default("es"),
   region: text("region"),
-});
+}, (t) => [uniqueIndex("child_username_uq").on(t.username)]);
 
 /* ---------- Contenido (inmutable, versionado) ---------- */
 
@@ -170,3 +173,56 @@ export const redemptions = sqliteTable("redemptions", {
   status: text("status").notNull().default("pending"),
   ts: text("ts").notNull(),
 });
+
+/* ---------- Seguridad ---------- */
+
+export const authTokens = sqliteTable("auth_tokens", {
+  id: text("id").primaryKey(), // sha256(token)
+  parentId: text("parent_id")
+    .notNull()
+    .references(() => parentAccounts.id),
+  type: text("type").notNull(), // 'verify' | 'reset'
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
+export const loginAttempts = sqliteTable("login_attempts", {
+  id: text("id").primaryKey(),
+  ident: text("ident").notNull(),
+  ts: text("ts").notNull(),
+});
+
+/* ---------- Sesiones de niño + cursos ---------- */
+
+export const childSessions = sqliteTable("child_sessions", {
+  id: text("id").primaryKey(), // sha256(token)
+  childId: text("child_id")
+    .notNull()
+    .references(() => childProfiles.id),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
+/** Un curso = asignatura + nivel (p.ej. Matemáticas · ESO-5). */
+export const courses = sqliteTable("courses", {
+  id: text("id").primaryKey(),
+  subjectId: text("subject_id")
+    .notNull()
+    .references(() => subjects.id),
+  gradeBand: text("grade_band").notNull(),
+  nameI18n: text("name_i18n", { mode: "json" }).$type<LocaleText>().notNull(),
+});
+
+/** Acceso de un niño a un curso (lo concede el tutor). */
+export const childCourses = sqliteTable(
+  "child_courses",
+  {
+    childId: text("child_id")
+      .notNull()
+      .references(() => childProfiles.id),
+    courseId: text("course_id")
+      .notNull()
+      .references(() => courses.id),
+  },
+  (t) => [primaryKey({ columns: [t.childId, t.courseId] })],
+);

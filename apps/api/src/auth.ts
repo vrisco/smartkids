@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { getDb, schema } from "./db";
 
 type DB = ReturnType<typeof getDb>;
@@ -105,4 +105,110 @@ export async function ownsProfile(db: DB, parentId: string, profileId: string): 
     .where(and(eq(schema.childProfiles.id, profileId), eq(schema.childProfiles.parentId, parentId)))
     .limit(1);
   return Boolean(row);
+}
+
+/* ---------- Tokens de verificación / recuperación (un solo uso) ---------- */
+
+export async function createAuthToken(
+  db: DB,
+  parentId: string,
+  type: "verify" | "reset",
+  ttlMs: number,
+): Promise<string> {
+  const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
+  const now = Date.now();
+  await db.insert(schema.authTokens).values({
+    id: await sha256Hex(token),
+    parentId,
+    type,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + ttlMs).toISOString(),
+  });
+  return token;
+}
+
+export async function consumeAuthToken(
+  db: DB,
+  token: string,
+  type: "verify" | "reset",
+): Promise<string | null> {
+  const id = await sha256Hex(token);
+  const [row] = await db
+    .select()
+    .from(schema.authTokens)
+    .where(and(eq(schema.authTokens.id, id), eq(schema.authTokens.type, type)))
+    .limit(1);
+  if (!row) return null;
+  await db.delete(schema.authTokens).where(eq(schema.authTokens.id, id)); // un solo uso
+  return new Date(row.expiresAt).getTime() < Date.now() ? null : row.parentId;
+}
+
+/* ---------- Rate limiting (registro de intentos en D1) ---------- */
+
+const RL_WINDOW_MS = 15 * 60 * 1000;
+const RL_MAX = 6;
+
+export async function rateLimited(db: DB, ident: string): Promise<boolean> {
+  const since = new Date(Date.now() - RL_WINDOW_MS).toISOString();
+  await db.delete(schema.loginAttempts).where(lt(schema.loginAttempts.ts, since)); // poda
+  const rows = await db
+    .select({ id: schema.loginAttempts.id })
+    .from(schema.loginAttempts)
+    .where(eq(schema.loginAttempts.ident, ident));
+  return rows.length >= RL_MAX;
+}
+
+export async function recordAttempt(db: DB, ident: string): Promise<void> {
+  await db
+    .insert(schema.loginAttempts)
+    .values({ id: crypto.randomUUID(), ident, ts: new Date().toISOString() });
+}
+
+export async function clearAttempts(db: DB, ident: string): Promise<void> {
+  await db.delete(schema.loginAttempts).where(eq(schema.loginAttempts.ident, ident));
+}
+
+/* ---------- Sesiones de NIÑO (login propio usuario + PIN) ---------- */
+
+const CHILD_COOKIE = "sk_child";
+
+export async function createChildSession(db: DB, childId: string): Promise<string> {
+  const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
+  const now = Date.now();
+  await db.insert(schema.childSessions).values({
+    id: await sha256Hex(token),
+    childId,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + SESSION_DAYS * 86_400_000).toISOString(),
+  });
+  return token;
+}
+
+export function setChildCookie(c: Context, token: string): void {
+  setCookie(c, CHILD_COOKIE, token, {
+    httpOnly: true,
+    secure: new URL(c.req.url).protocol === "https:",
+    sameSite: "Lax",
+    path: "/",
+    maxAge: SESSION_DAYS * 86_400,
+  });
+}
+
+export async function currentChildId(c: Context, db: DB): Promise<string | null> {
+  const token = getCookie(c, CHILD_COOKIE);
+  if (!token) return null;
+  const id = await sha256Hex(token);
+  const [row] = await db.select().from(schema.childSessions).where(eq(schema.childSessions.id, id)).limit(1);
+  if (!row) return null;
+  if (new Date(row.expiresAt).getTime() < Date.now()) {
+    await db.delete(schema.childSessions).where(eq(schema.childSessions.id, id));
+    return null;
+  }
+  return row.childId;
+}
+
+export async function destroyChildSession(c: Context, db: DB): Promise<void> {
+  const token = getCookie(c, CHILD_COOKIE);
+  if (token) await db.delete(schema.childSessions).where(eq(schema.childSessions.id, await sha256Hex(token)));
+  deleteCookie(c, CHILD_COOKIE, { path: "/" });
 }

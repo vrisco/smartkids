@@ -1,4 +1,7 @@
 -- Seed de desarrollo (idempotente): matemáticas ESO-5, fracciones.
+DELETE FROM child_courses;
+DELETE FROM child_sessions;
+DELETE FROM courses;
 DELETE FROM redemptions;
 DELETE FROM rewards;
 DELETE FROM wallet_ledger;
@@ -11,10 +14,16 @@ DELETE FROM skill_prerequisites;
 DELETE FROM skills;
 DELETE FROM subjects;
 DELETE FROM child_profiles;
+DELETE FROM auth_tokens;
+DELETE FROM login_attempts;
+DELETE FROM sessions;
 DELETE FROM parent_accounts;
 
 INSERT INTO subjects (id, name_i18n) VALUES
   ('math', '{"es":"Matemáticas","en":"Maths","ca":"Matemàtiques"}');
+
+INSERT INTO courses (id, subject_id, grade_band, name_i18n) VALUES
+  ('course_math_eso5', 'math', 'ESO-5', '{"es":"Matemáticas · 5º ESO"}');
 
 INSERT INTO skills (id, subject_id, grade_band, name_i18n, difficulty_base, position) VALUES
   ('MATH.ESO5.FRAC.EQUIV', 'math', 'ESO-5', '{"es":"Fracciones equivalentes"}', 0.3, 1),
@@ -44,12 +53,16 @@ INSERT INTO exercise_templates (id, package_id, skill_id, type, language, conten
    '{"options":[{"id":"a","text":"2/4","isCorrect":true},{"id":"b","text":"1/3","isCorrect":false},{"id":"c","text":"2/3","isCorrect":false},{"id":"d","text":"3/4","isCorrect":false}],"feedback":{"correct":"Multiplicaste arriba y abajo por 2.","incorrect":"Multiplica numerador y denominador por el mismo numero."}}',
    0.25, 'easy');
 
--- Familia demo: email demo@smartkids.dev / contraseña demo1234 ; hijo Lucía con PIN 1234.
-INSERT INTO parent_accounts (id, email, password_hash, locale_format, created_at) VALUES
-  ('par_demo', 'demo@smartkids.dev', '521be1f5a3a1240e43727cd5a4f33a9a:ccbe41ddc77a1febbb5fc8cd1d5f890f175da511f4f5a18aa721c44926858fbd', 'es-ES', '2026-07-11T00:00:00Z');
+-- Demo: admin (admin@smartkids.dev / admin1234), tutor (demo@smartkids.dev / demo1234),
+-- niña Lucía (usuario 'lucia' / PIN 1234) con acceso al curso de matemáticas.
+INSERT INTO parent_accounts (id, email, password_hash, email_verified, role, locale_format, created_at) VALUES
+  ('par_admin', 'admin@smartkids.dev', 'ed429425ff8b4032424fb4cc2e54a201:8bdfc43e416ee99d9ffb1744447064f12d6268866d83a5cc4eaf7323de7a53c7', 1, 'admin', 'es-ES', '2026-07-11T00:00:00Z'),
+  ('par_demo', 'demo@smartkids.dev', '521be1f5a3a1240e43727cd5a4f33a9a:ccbe41ddc77a1febbb5fc8cd1d5f890f175da511f4f5a18aa721c44926858fbd', 1, 'tutor', 'es-ES', '2026-07-11T00:00:00Z');
 
-INSERT INTO child_profiles (id, parent_id, display_name, avatar, birth_year, grade_band, login_pin_hash, preferred_locale, region) VALUES
-  ('kid_demo', 'par_demo', 'Lucia', 'orbi', 2015, 'ESO-5', '2388e20d990b7ef5e7020884e6b6d2f0:8171c55b260c909b138ccf920c1ca9b62fc106961f7994584611f81da151e913', 'es', 'ES');
+INSERT INTO child_profiles (id, parent_id, display_name, avatar, birth_year, grade_band, login_pin_hash, username, preferred_locale, region) VALUES
+  ('kid_demo', 'par_demo', 'Lucia', 'orbi', 2015, 'ESO-5', '2388e20d990b7ef5e7020884e6b6d2f0:8171c55b260c909b138ccf920c1ca9b62fc106961f7994584611f81da151e913', 'lucia', 'es', 'ES');
+
+INSERT INTO child_courses (child_id, course_id) VALUES ('kid_demo', 'course_math_eso5');
 
 INSERT INTO skill_progress (profile_id, skill_id, mastery_score, consecutive_correct, total_attempts, status, fsrs) VALUES
   ('kid_demo', 'MATH.ESO5.FRAC.EQUIV', 0.9,  5, 12, 'mastered',   NULL),

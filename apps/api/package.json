@@ -11,7 +11,8 @@
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply smartkids --local",
-    "db:seed": "wrangler d1 execute smartkids --local --file=./seed.sql"
+    "db:seed": "wrangler d1 execute smartkids --local --file=./seed.sql",
+    "admin": "node scripts/admin.mjs"
   },
   "dependencies": {
     "@smartkids/shared": "workspace:*",

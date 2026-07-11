@@ -1,52 +1,80 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Child, type Me } from "./api";
+import { api, type ChildMe, type Me } from "./api";
 import { Starfield } from "./components/Starfield";
-import { Hud } from "./components/Hud";
 import { Auth } from "./components/Auth";
-import { FamilyHome } from "./screens/FamilyHome";
-import { GalaxyMap } from "./screens/GalaxyMap";
-import { Session } from "./screens/Session";
-import { RewardShop } from "./screens/RewardShop";
-import { ParentPanel } from "./screens/ParentPanel";
-
-type View = "map" | "session" | "reward" | "parent";
+import { AdminPanel } from "./screens/AdminPanel";
+import { TutorPanel } from "./screens/TutorPanel";
+import { KidApp } from "./screens/KidApp";
+import { VerifyPage, ResetPage } from "./screens/VerifyReset";
 
 export function App() {
-  const [me, setMe] = useState<Me | null | "loading">("loading");
-  const [child, setChild] = useState<Child | null>(null);
-  const [balance, setBalance] = useState(0);
-  const [view, setView] = useState<View>("map");
-  const [skillId, setSkillId] = useState<string | null>(null);
+  const path = window.location.pathname;
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
-  const loadMe = useCallback(() => api.me().then(setMe).catch(() => setMe(null)), []);
-  useEffect(() => {
-    void loadMe();
-  }, [loadMe]);
+  const [me, setMe] = useState<Me | null>(null);
+  const [kid, setKid] = useState<ChildMe | null>(null);
+  const [ready, setReady] = useState(false);
 
-  const loadBalance = useCallback((id: string) => {
-    api
-      .profile(id)
-      .then((p) => setBalance(p.balance))
-      .catch(() => {});
+  const load = useCallback(async () => {
+    setReady(false);
+    try {
+      const k = await api.childMe();
+      setKid(k);
+      setMe(null);
+      setReady(true);
+      return;
+    } catch {
+      /* no hay sesión de niño */
+    }
+    try {
+      const m = await api.me();
+      setMe(m);
+      setKid(null);
+    } catch {
+      setMe(null);
+      setKid(null);
+    }
+    setReady(true);
   }, []);
 
-  function enterChild(c: Child) {
-    setChild(c);
-    setView("map");
-    loadBalance(c.id);
-  }
+  useEffect(() => {
+    if (path === "/verify" || path === "/reset") return;
+    void load();
+  }, [load, path]);
 
-  async function logout() {
+  if (path === "/verify")
+    return (
+      <>
+        <Starfield />
+        <VerifyPage token={token} />
+      </>
+    );
+  if (path === "/reset")
+    return (
+      <>
+        <Starfield />
+        <ResetPage token={token} />
+      </>
+    );
+
+  async function logoutParent() {
     try {
       await api.logout();
     } catch {
       /* da igual */
     }
-    setChild(null);
     setMe(null);
   }
+  async function logoutChild() {
+    try {
+      await api.childLogout();
+    } catch {
+      /* da igual */
+    }
+    setKid(null);
+  }
 
-  if (me === "loading") {
+  if (!ready)
     return (
       <>
         <Starfield />
@@ -56,88 +84,33 @@ export function App() {
         </main>
       </>
     );
-  }
 
-  if (me === null) {
+  if (kid)
     return (
       <>
         <Starfield />
-        <Auth onDone={loadMe} />
+        <KidApp data={kid} onLogout={logoutChild} />
       </>
     );
-  }
-
-  if (!child) {
+  if (me?.parent.role === "admin")
     return (
       <>
         <Starfield />
-        <div className="app-shell">
-          <FamilyHome
-            me={me}
-            onPlay={enterChild}
-            onParent={(c) => {
-              setChild(c);
-              setView("parent");
-              loadBalance(c.id);
-            }}
-            onLogout={logout}
-            onRefresh={loadMe}
-          />
-        </div>
+        <AdminPanel parent={me.parent} onLogout={logoutParent} />
       </>
     );
-  }
+  if (me?.parent.role === "tutor")
+    return (
+      <>
+        <Starfield />
+        <TutorPanel me={me} onLogout={logoutParent} onRefresh={load} />
+      </>
+    );
 
   return (
     <>
       <Starfield />
-      <div className="app-shell">
-        {view !== "session" && (
-          <Hud profile={child} balance={balance} onExit={() => setChild(null)} />
-        )}
-        <div className="app-body">
-          {view === "map" && (
-            <GalaxyMap
-              profileId={child.id}
-              onPlay={(s) => {
-                setSkillId(s);
-                setView("session");
-              }}
-            />
-          )}
-          {view === "session" && skillId && (
-            <Session
-              profileId={child.id}
-              skillId={skillId}
-              onBalance={setBalance}
-              onExit={() => {
-                setView("map");
-                loadBalance(child.id);
-              }}
-            />
-          )}
-          {view === "reward" && (
-            <RewardShop profileId={child.id} balance={balance} onBalance={setBalance} />
-          )}
-          {view === "parent" && <ParentPanel profileId={child.id} />}
-        </div>
-        {view !== "session" && (
-          <nav className="bottom-nav">
-            <button className={view === "map" ? "on" : ""} onClick={() => setView("map")}>
-              <span className="ic">🪐</span>
-              <span>Galaxia</span>
-            </button>
-            <button className={view === "reward" ? "on" : ""} onClick={() => setView("reward")}>
-              <span className="ic">✦</span>
-              <span>Tienda</span>
-            </button>
-            <button className={view === "parent" ? "on" : ""} onClick={() => setView("parent")}>
-              <span className="ic">👪</span>
-              <span>Familia</span>
-            </button>
-          </nav>
-        )}
-      </div>
+      <Auth onTutor={load} onChild={load} />
     </>
   );
 }

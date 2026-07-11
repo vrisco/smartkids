@@ -236,3 +236,204 @@
   cursor: pointer;
   font: inherit;
 }
+
+/* ---------- Tabs de login + info ---------- */
+.auth-tabs {
+  display: flex;
+  gap: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.25rem;
+  width: 100%;
+}
+.auth-tabs button {
+  flex: 1;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  padding: 0.5rem;
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.auth-tabs button.on {
+  background: var(--surface-2);
+  color: var(--cyan);
+}
+.auth-info {
+  color: var(--green);
+  font-size: 0.85rem;
+}
+.auth-devlink {
+  color: var(--cyan);
+  font-family: var(--hud);
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+/* ---------- Paneles admin / tutor ---------- */
+.panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.2rem;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: color-mix(in srgb, var(--space-900) 82%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.panel-kicker {
+  font-family: var(--hud);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--violet);
+}
+.panel-top b {
+  font-size: 0.85rem;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1.2rem 0.4rem;
+}
+.panel-head .screen-title {
+  padding: 0;
+}
+.panel-msg {
+  margin: 0 1.2rem 0.4rem;
+}
+.panel-pw {
+  margin: 1.2rem;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.2rem 1.2rem;
+}
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 0.7rem 0.85rem;
+}
+.list-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.list-main b {
+  font-size: 0.9rem;
+}
+.list-main span {
+  font-family: var(--hud);
+  font-size: 0.62rem;
+  color: var(--text-faint);
+}
+.kid-avatar.sm {
+  font-size: 1.5rem;
+}
+.verify-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0.6rem 1.2rem 0.2rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--gold);
+  background: var(--gold-wash);
+  border-radius: 11px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+/* ---------- Botones extra ---------- */
+.btn-primary.sm,
+.btn-ghost.sm {
+  padding: 0.42rem 0.75rem;
+  font-size: 0.8rem;
+  border-radius: 10px;
+}
+.btn-danger {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: var(--coral);
+  background: transparent;
+  border: 1.5px solid var(--coral);
+  border-radius: 12px;
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  margin-right: auto;
+}
+
+/* ---------- Cursos ---------- */
+.course-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.7rem;
+  padding: 0.4rem 1.2rem;
+}
+.course-card {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 1rem;
+}
+.course-emoji {
+  font-size: 1.8rem;
+}
+.galaxy-head {
+  padding-bottom: 0.2rem;
+}
+.galaxy-head .link-back {
+  padding: 0.8rem 1.2rem 0;
+}
+.course-label {
+  font-family: var(--hud);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-top: 0.3rem;
+}
+.course-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.course-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.course-check.on {
+  border-color: var(--cyan);
+}
+.screen-pad {
+  padding: 1.6rem 1.2rem;
+}

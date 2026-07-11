@@ -28,7 +28,7 @@ pnpm run db:seed:remote
 
 # 5) Build de la web + deploy del Worker (sirve SPA + API)
 pnpm run deploy
-#   -> imprime la URL:  https://smartkids-api.<tu-subdominio>.workers.dev
+#   -> imprime la URL:  https://app.<tu-subdominio>.workers.dev
 ```
 
 Abre esa URL: verás la app «Órbita» hablando con su API, en producción.
@@ -43,7 +43,12 @@ pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote \
 
 ## Notas
 
-- **Dominio propio:** en el dashboard de Cloudflare (Workers → smartkids-api → Settings →
+- **Admin (bootstrap):** crea/resetea el usuario admin con la CLI:
+  `pnpm --filter @smartkids/api run admin -- create admin@tudominio.com <password> --remote`.
+  El admin da de alta tutores; no hay registro público.
+- **Email real (recuperación/verificación):** configura Resend como secretos:
+  `wrangler secret put RESEND_API_KEY` y `wrangler secret put EMAIL_FROM`.
+- **Dominio propio:** en el dashboard de Cloudflare (Workers → app → Settings →
   Domains & Routes) puedes añadir un dominio o subdominio custom.
 - **Desarrollo local** sigue igual: `pnpm dev` (web en 5173 + API en 8787). El binding de
   assets apunta a `apps/web/dist`; si haces un clon nuevo, ejecuta una vez

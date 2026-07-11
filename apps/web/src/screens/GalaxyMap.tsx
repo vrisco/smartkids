@@ -11,27 +11,41 @@ function planetClass(status: string | null, isCurrent: boolean): string {
 
 export function GalaxyMap({
   profileId,
+  courseId,
+  courseName,
   onPlay,
+  onBack,
 }: {
   profileId: string;
+  courseId: string;
+  courseName?: string;
   onPlay: (skillId: string) => void;
+  onBack?: () => void;
 }) {
   const [skills, setSkills] = useState<SkillNode[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    api.skills(profileId).then(setSkills).catch(() => setError(true));
-  }, [profileId]);
+    setSkills(null);
+    api.skills(profileId, courseId).then(setSkills).catch(() => setError(true));
+  }, [profileId, courseId]);
 
-  if (error) return <p className="screen-pad muted">No se pudo cargar la galaxia.</p>;
+  if (error) return <p className="screen-pad muted">No se pudo cargar el curso.</p>;
   if (!skills) return <p className="screen-pad muted">Cargando galaxia…</p>;
 
   const playableIdx = skills.findIndex((s) => s.status !== "mastered" && s.status !== "locked");
 
   return (
     <div className="galaxy-screen">
-      <div className="screen-kicker">Galaxia</div>
-      <h2 className="screen-title">Matemáticas · Fracciones</h2>
+      <div className="galaxy-head">
+        {onBack && (
+          <button className="link-back" type="button" onClick={onBack}>
+            ‹ Cursos
+          </button>
+        )}
+        <div className="screen-kicker">Galaxia</div>
+        <h2 className="screen-title">{courseName ?? "Curso"}</h2>
+      </div>
 
       <div className="nodes">
         {skills.map((s, i) => {
@@ -43,19 +57,12 @@ export function GalaxyMap({
             <div className="node-item" key={s.id}>
               {i > 0 && <div className="connector" />}
               <div className="planet-holder">
-                <button
-                  className={cls}
-                  disabled={!playable}
-                  onClick={() => playable && onPlay(s.id)}
-                  aria-label={tx(s.nameI18n)}
-                >
+                <button className={cls} disabled={!playable} onClick={() => playable && onPlay(s.id)} aria-label={tx(s.nameI18n)}>
                   {icon}
                 </button>
                 <div className="node-label">
                   <b>{tx(s.nameI18n)}</b>
-                  {s.masteryScore != null && s.status !== "locked" && (
-                    <span>{Math.round((s.masteryScore ?? 0) * 100)}%</span>
-                  )}
+                  {s.masteryScore != null && s.status !== "locked" && <span>{Math.round((s.masteryScore ?? 0) * 100)}%</span>}
                 </div>
                 {isCurrent && <Orbi className="node-orbi float" />}
               </div>
