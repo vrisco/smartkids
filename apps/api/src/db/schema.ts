@@ -150,6 +150,15 @@ export const rewards = sqliteTable("rewards", {
   nameI18n: text("name_i18n", { mode: "json" }).$type<LocaleText>().notNull(),
 });
 
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(), // sha256(token de cookie)
+  parentId: text("parent_id")
+    .notNull()
+    .references(() => parentAccounts.id),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
 export const redemptions = sqliteTable("redemptions", {
   id: text("id").primaryKey(),
   profileId: text("profile_id")

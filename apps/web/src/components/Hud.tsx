@@ -1,10 +1,18 @@
-import type { Profile } from "../api";
-
-export function Hud({ profile, balance }: { profile: Profile; balance: number }) {
+export function Hud({
+  profile,
+  balance,
+  onExit,
+}: {
+  profile: { displayName: string; gradeBand: string };
+  balance: number;
+  onExit?: () => void;
+}) {
   const initial = profile.displayName.charAt(0).toUpperCase();
   return (
     <header className="hud">
-      <div className="avatar">{initial}</div>
+      <button className="avatar avatar-btn" onClick={onExit} title="Cambiar de perfil" type="button">
+        {initial}
+      </button>
       <div className="who">
         <b>{profile.displayName}</b>
         <span>{profile.gradeBand}</span>

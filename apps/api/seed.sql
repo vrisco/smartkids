@@ -44,11 +44,12 @@ INSERT INTO exercise_templates (id, package_id, skill_id, type, language, conten
    '{"options":[{"id":"a","text":"2/4","isCorrect":true},{"id":"b","text":"1/3","isCorrect":false},{"id":"c","text":"2/3","isCorrect":false},{"id":"d","text":"3/4","isCorrect":false}],"feedback":{"correct":"Multiplicaste arriba y abajo por 2.","incorrect":"Multiplica numerador y denominador por el mismo numero."}}',
    0.25, 'easy');
 
+-- Familia demo: email demo@smartkids.dev / contraseña demo1234 ; hijo Lucía con PIN 1234.
 INSERT INTO parent_accounts (id, email, password_hash, locale_format, created_at) VALUES
-  ('par_demo', 'demo@smartkids.dev', 'dev-placeholder', 'es-ES', '2026-07-11T00:00:00Z');
+  ('par_demo', 'demo@smartkids.dev', '521be1f5a3a1240e43727cd5a4f33a9a:ccbe41ddc77a1febbb5fc8cd1d5f890f175da511f4f5a18aa721c44926858fbd', 'es-ES', '2026-07-11T00:00:00Z');
 
-INSERT INTO child_profiles (id, parent_id, display_name, avatar, birth_year, grade_band, preferred_locale, region) VALUES
-  ('kid_demo', 'par_demo', 'Lucia', 'orbi', 2015, 'ESO-5', 'es', 'ES');
+INSERT INTO child_profiles (id, parent_id, display_name, avatar, birth_year, grade_band, login_pin_hash, preferred_locale, region) VALUES
+  ('kid_demo', 'par_demo', 'Lucia', 'orbi', 2015, 'ESO-5', '2388e20d990b7ef5e7020884e6b6d2f0:8171c55b260c909b138ccf920c1ca9b62fc106961f7994584611f81da151e913', 'es', 'ES');
 
 INSERT INTO skill_progress (profile_id, skill_id, mastery_score, consecutive_correct, total_attempts, status, fsrs) VALUES
   ('kid_demo', 'MATH.ESO5.FRAC.EQUIV', 0.9,  5, 12, 'mastered',   NULL),

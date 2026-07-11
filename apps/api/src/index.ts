@@ -1,7 +1,16 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
+import type { Context } from "hono";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
+import {
+  createSession,
+  currentParentId,
+  destroySession,
+  hashSecret,
+  ownsProfile,
+  setSessionCookie,
+  verifySecret,
+} from "./auth";
 
 export interface Env {
   DB: D1Database;
@@ -12,6 +21,7 @@ const {
   skills,
   skillProgress,
   exerciseTemplates,
+  parentAccounts,
   childProfiles,
   wallets,
   walletLedger,
@@ -23,31 +33,148 @@ const COINS_PER_CORRECT = 10;
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use("/api/*", cors());
-
 app.get("/api/health", (c) =>
   c.json({ ok: true, service: "smartkids-api", ts: new Date().toISOString() }),
 );
 
-/** Perfil de hijo + saldo de la wallet (para el HUD). */
+/* ================= Auth ================= */
+
+app.post("/api/auth/signup", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ email?: string; password?: string }>();
+  const email = body.email?.trim().toLowerCase();
+  const password = body.password ?? "";
+  if (!email || !email.includes("@") || password.length < 6)
+    return c.json({ error: "invalid", message: "Email válido y contraseña de 6+ caracteres." }, 400);
+
+  const [existing] = await db
+    .select({ id: parentAccounts.id })
+    .from(parentAccounts)
+    .where(eq(parentAccounts.email, email))
+    .limit(1);
+  if (existing) return c.json({ error: "email_taken", message: "Ese email ya está registrado." }, 409);
+
+  const id = `par_${crypto.randomUUID()}`;
+  await db.insert(parentAccounts).values({
+    id,
+    email,
+    passwordHash: await hashSecret(password),
+    localeFormat: "es-ES",
+    createdAt: new Date().toISOString(),
+  });
+  setSessionCookie(c, await createSession(db, id));
+  return c.json({ parent: { id, email } });
+});
+
+app.post("/api/auth/login", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ email?: string; password?: string }>();
+  const email = body.email?.trim().toLowerCase() ?? "";
+  const [p] = await db.select().from(parentAccounts).where(eq(parentAccounts.email, email)).limit(1);
+  if (!p || !(await verifySecret(body.password ?? "", p.passwordHash)))
+    return c.json({ error: "invalid_credentials", message: "Email o contraseña incorrectos." }, 401);
+  setSessionCookie(c, await createSession(db, p.id));
+  return c.json({ parent: { id: p.id, email: p.email } });
+});
+
+app.post("/api/auth/logout", async (c) => {
+  await destroySession(c, getDb(c.env.DB));
+  return c.json({ ok: true });
+});
+
+app.get("/api/auth/me", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await currentParentId(c, db);
+  if (!parentId) return c.json({ error: "unauthorized" }, 401);
+  const [p] = await db.select().from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  if (!p) return c.json({ error: "unauthorized" }, 401);
+  const children = await db
+    .select({
+      id: childProfiles.id,
+      displayName: childProfiles.displayName,
+      avatar: childProfiles.avatar,
+      gradeBand: childProfiles.gradeBand,
+    })
+    .from(childProfiles)
+    .where(eq(childProfiles.parentId, parentId));
+  return c.json({ parent: { id: p.id, email: p.email }, children });
+});
+
+/* ================= Perfiles de hijo ================= */
+
+app.post("/api/profiles", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await currentParentId(c, db);
+  if (!parentId) return c.json({ error: "unauthorized" }, 401);
+  const body = await c.req.json<{ displayName?: string; avatar?: string; gradeBand?: string; pin?: string }>();
+  const displayName = body.displayName?.trim();
+  const pin = String(body.pin ?? "");
+  if (!displayName || pin.length < 4)
+    return c.json({ error: "invalid", message: "Nombre y PIN de 4+ dígitos." }, 400);
+  const id = `kid_${crypto.randomUUID()}`;
+  await db.insert(childProfiles).values({
+    id,
+    parentId,
+    displayName,
+    avatar: body.avatar ?? "orbi",
+    gradeBand: body.gradeBand ?? "ESO-5",
+    loginPinHash: await hashSecret(pin),
+    preferredLocale: "es",
+    region: "ES",
+  });
+  await db.insert(wallets).values({ profileId: id, balance: 0 });
+  return c.json({ profile: { id, displayName, avatar: body.avatar ?? "orbi", gradeBand: body.gradeBand ?? "ESO-5" } });
+});
+
+app.post("/api/profiles/:id/unlock", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await currentParentId(c, db);
+  if (!parentId) return c.json({ error: "unauthorized" }, 401);
+  const id = c.req.param("id");
+  const [p] = await db
+    .select()
+    .from(childProfiles)
+    .where(and(eq(childProfiles.id, id), eq(childProfiles.parentId, parentId)))
+    .limit(1);
+  if (!p) return c.json({ error: "not_found" }, 404);
+  const { pin } = await c.req.json<{ pin?: string }>();
+  if (!p.loginPinHash || !(await verifySecret(String(pin ?? ""), p.loginPinHash)))
+    return c.json({ error: "bad_pin", message: "PIN incorrecto." }, 401);
+  return c.json({ profile: { id: p.id, displayName: p.displayName, avatar: p.avatar, gradeBand: p.gradeBand } });
+});
+
+/** Guard: exige sesión de padre y, opcionalmente, que el perfil sea suyo. */
+async function guard(
+  c: Context<{ Bindings: Env }>,
+  db: ReturnType<typeof getDb>,
+  profileId?: string,
+): Promise<string | Response> {
+  const parentId = await currentParentId(c, db);
+  if (!parentId) return c.json({ error: "unauthorized" }, 401);
+  if (profileId && !(await ownsProfile(db, parentId, profileId)))
+    return c.json({ error: "forbidden" }, 403);
+  return parentId;
+}
+
 app.get("/api/profiles/:id", async (c) => {
   const db = getDb(c.env.DB);
   const id = c.req.param("id");
-  const [profile] = await db
-    .select()
-    .from(childProfiles)
-    .where(eq(childProfiles.id, id))
-    .limit(1);
+  const g = await guard(c, db, id);
+  if (typeof g !== "string") return g;
+  const [profile] = await db.select().from(childProfiles).where(eq(childProfiles.id, id)).limit(1);
   if (!profile) return c.json({ error: "profile not found" }, 404);
   const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, id)).limit(1);
   return c.json({ profile, balance: wallet?.balance ?? 0 });
 });
 
-/** Skills de una asignatura, ordenadas por posición, con el progreso del perfil (nodos de la galaxia). */
+/* ================= Datos de juego ================= */
+
 app.get("/api/skills", async (c) => {
   const db = getDb(c.env.DB);
   const subjectId = c.req.query("subject") ?? "math";
   const profileId = c.req.query("profile");
+  const g = await guard(c, db, profileId);
+  if (typeof g !== "string") return g;
 
   if (!profileId) {
     const rows = await db
@@ -79,9 +206,11 @@ app.get("/api/skills", async (c) => {
   return c.json(rows);
 });
 
-/** Siguiente ejercicio de una skill (stub del selector; el motor FSRS llega después). */
 app.get("/api/session/next", async (c) => {
   const db = getDb(c.env.DB);
+  const profileId = c.req.query("profile");
+  const g = await guard(c, db, profileId);
+  if (typeof g !== "string") return g;
   const skillId = c.req.query("skill") ?? "MATH.ESO5.FRAC.ADD";
   const rows = await db
     .select()
@@ -89,12 +218,10 @@ app.get("/api/session/next", async (c) => {
     .where(eq(exerciseTemplates.skillId, skillId))
     .limit(10);
   if (rows.length === 0) return c.json({ error: "no exercise found" }, 404);
-  // Elige uno pseudo-aleatorio del conjunto (variedad simple).
   const exercise = rows[Math.floor(Math.random() * rows.length)]!;
   return c.json(exercise);
 });
 
-/** Registra un intento: guarda el attempt, actualiza mastery y otorga monedas. */
 app.post("/api/session/attempt", async (c) => {
   const db = getDb(c.env.DB);
   const body = await c.req.json<{
@@ -106,14 +233,12 @@ app.post("/api/session/attempt", async (c) => {
     responseTimeMs?: number;
     difficultyServed?: number;
   }>();
-
-  if (!body?.profileId || !body?.skillId || !body?.exerciseTemplateId || typeof body?.correct !== "boolean") {
+  if (!body?.profileId || !body?.skillId || !body?.exerciseTemplateId || typeof body?.correct !== "boolean")
     return c.json({ error: "invalid body" }, 400);
-  }
+  const g = await guard(c, db, body.profileId);
+  if (typeof g !== "string") return g;
 
   const now = new Date().toISOString();
-
-  // 1) Log del intento (append-only).
   await db.insert(attempts).values({
     id: crypto.randomUUID(),
     profileId: body.profileId,
@@ -126,7 +251,6 @@ app.post("/api/session/attempt", async (c) => {
     ts: now,
   });
 
-  // 2) Recalcular mastery del (perfil, skill).
   const [prev] = await db
     .select()
     .from(skillProgress)
@@ -153,15 +277,9 @@ app.post("/api/session/attempt", async (c) => {
     })
     .onConflictDoUpdate({
       target: [skillProgress.profileId, skillProgress.skillId],
-      set: {
-        masteryScore: newMastery,
-        consecutiveCorrect: consecutive,
-        totalAttempts: total,
-        status,
-      },
+      set: { masteryScore: newMastery, consecutiveCorrect: consecutive, totalAttempts: total, status },
     });
 
-  // 3) Otorgar monedas si es correcto (wallet + ledger).
   const coins = body.correct ? COINS_PER_CORRECT : 0;
   if (coins > 0) {
     await db
@@ -180,12 +298,7 @@ app.post("/api/session/attempt", async (c) => {
     });
   }
 
-  const [wallet] = await db
-    .select()
-    .from(wallets)
-    .where(eq(wallets.profileId, body.profileId))
-    .limit(1);
-
+  const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, body.profileId)).limit(1);
   return c.json({
     correct: body.correct,
     coinsAwarded: coins,
@@ -196,18 +309,19 @@ app.post("/api/session/attempt", async (c) => {
   });
 });
 
-/** Catálogo de recompensas (tienda estelar). */
 app.get("/api/rewards", async (c) => {
   const db = getDb(c.env.DB);
+  const g = await guard(c, db);
+  if (typeof g !== "string") return g;
   return c.json(await db.select().from(rewards));
 });
 
-/** Canjear una recompensa: descuenta del saldo y registra la redención. */
 app.post("/api/rewards/:id/redeem", async (c) => {
   const db = getDb(c.env.DB);
   const rewardId = c.req.param("id");
   const { profileId } = await c.req.json<{ profileId: string }>();
-  if (!profileId) return c.json({ error: "invalid body" }, 400);
+  const g = await guard(c, db, profileId);
+  if (typeof g !== "string") return g;
 
   const [reward] = await db.select().from(rewards).where(eq(rewards.id, rewardId)).limit(1);
   if (!reward) return c.json({ error: "reward not found" }, 404);
@@ -226,7 +340,6 @@ app.post("/api/rewards/:id/redeem", async (c) => {
     reason: `redeem:${rewardId}`,
     ts: now,
   });
-  // Los vales de pantalla quedan "pending" (el adulto los aplica a mano); el resto se aplica al momento.
   const status = reward.type === "screen_time_voucher" ? "pending" : "applied";
   await db.insert(schema.redemptions).values({
     id: crypto.randomUUID(),
@@ -235,15 +348,12 @@ app.post("/api/rewards/:id/redeem", async (c) => {
     status,
     ts: now,
   });
-
   return c.json({ ok: true, balance: newBalance, status, reward });
 });
 
-// Rutas /api desconocidas -> 404 JSON (antes del fallback de la SPA).
-app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
+/* ================= SPA ================= */
 
-// Cualquier otra ruta -> servir la SPA (Cloudflare Static Assets).
-// not_found_handling = "single-page-application" devuelve index.html para el routing de cliente.
+app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default app;

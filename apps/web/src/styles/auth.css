@@ -1,0 +1,238 @@
+/* ---------- Auth (login / registro) ---------- */
+.auth-screen {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 2rem 1.4rem;
+  text-align: center;
+}
+.auth-orbi {
+  width: 120px;
+  filter: drop-shadow(0 14px 26px rgba(55, 225, 232, 0.25));
+}
+.auth-title {
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0.2rem 0 0;
+  background: linear-gradient(92deg, var(--cyan), var(--violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.auth-sub {
+  color: var(--text-dim);
+  margin: 0 0 0.6rem;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: 100%;
+}
+.auth-form .btn-primary {
+  width: 100%;
+  margin-top: 0.2rem;
+}
+.field {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 1rem;
+}
+.field::placeholder {
+  color: var(--text-faint);
+}
+.field:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(55, 225, 232, 0.15);
+}
+.auth-error {
+  color: var(--coral);
+  font-size: 0.85rem;
+}
+.auth-toggle {
+  background: none;
+  border: 0;
+  color: var(--cyan);
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-top: 0.4rem;
+}
+.auth-demo {
+  font-family: var(--hud);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  margin-top: 1.1rem;
+}
+.auth-demo b {
+  color: var(--text-dim);
+}
+
+/* ---------- Family home / selector de hijo ---------- */
+.family-screen {
+  padding-bottom: 1.5rem;
+}
+.family-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.2rem;
+}
+.family-kicker {
+  font-family: var(--hud);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--violet);
+}
+.family-top b {
+  font-size: 0.85rem;
+}
+.family-heading {
+  font-weight: 750;
+  font-size: 1.2rem;
+  margin: 0.2rem 0 0.6rem;
+  padding: 0 1.2rem;
+}
+.kids-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+  padding: 0 1.2rem;
+}
+.kid-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem 0.6rem;
+  cursor: pointer;
+  color: var(--text);
+}
+.kid-card.add {
+  justify-content: center;
+  color: var(--text-dim);
+  border-style: dashed;
+}
+.kid-card.add b {
+  font-size: 0.8rem;
+}
+.kid-avatar {
+  font-size: 2rem;
+  line-height: 1;
+}
+.kid-avatar.big {
+  font-size: 3rem;
+}
+.kid-grade {
+  font-family: var(--hud);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+.family-parent {
+  margin: 1.1rem 1.2rem 0;
+}
+.pin-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.4rem 1.2rem;
+  text-align: center;
+}
+.link-back {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  color: var(--cyan);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.pin-name {
+  font-size: 1.1rem;
+}
+.pin-field {
+  max-width: 190px;
+  text-align: center;
+  letter-spacing: 0.5em;
+  font-size: 1.3rem;
+  font-family: var(--hud);
+}
+.pin-panel .btn-primary {
+  min-width: 170px;
+  margin-top: 0.3rem;
+}
+
+/* ---------- Modal (añadir hijo) ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(6, 7, 15, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem;
+}
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1.2rem;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+}
+.modal h3 {
+  margin: 0;
+}
+.avatar-pick {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.ava {
+  font-size: 1.4rem;
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+}
+.ava.on {
+  border-color: var(--cyan);
+  box-shadow: var(--glow-cyan);
+}
+.modal-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  margin-top: 0.3rem;
+}
+
+/* ---------- HUD avatar como botón ---------- */
+.avatar-btn {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}

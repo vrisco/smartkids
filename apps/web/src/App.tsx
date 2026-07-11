@@ -1,61 +1,89 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Profile } from "./api";
+import { api, type Child, type Me } from "./api";
 import { Starfield } from "./components/Starfield";
 import { Hud } from "./components/Hud";
+import { Auth } from "./components/Auth";
+import { FamilyHome } from "./screens/FamilyHome";
 import { GalaxyMap } from "./screens/GalaxyMap";
 import { Session } from "./screens/Session";
 import { RewardShop } from "./screens/RewardShop";
 import { ParentPanel } from "./screens/ParentPanel";
 
-const PROFILE_ID = "kid_demo";
 type View = "map" | "session" | "reward" | "parent";
 
 export function App() {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [me, setMe] = useState<Me | null | "loading">("loading");
+  const [child, setChild] = useState<Child | null>(null);
   const [balance, setBalance] = useState(0);
   const [view, setView] = useState<View>("map");
   const [skillId, setSkillId] = useState<string | null>(null);
-  const [offline, setOffline] = useState(false);
 
-  const refreshProfile = useCallback(() => {
+  const loadMe = useCallback(() => api.me().then(setMe).catch(() => setMe(null)), []);
+  useEffect(() => {
+    void loadMe();
+  }, [loadMe]);
+
+  const loadBalance = useCallback((id: string) => {
     api
-      .profile(PROFILE_ID)
-      .then((p) => {
-        setProfile(p.profile);
-        setBalance(p.balance);
-        setOffline(false);
-      })
-      .catch(() => setOffline(true));
+      .profile(id)
+      .then((p) => setBalance(p.balance))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    refreshProfile();
-  }, [refreshProfile]);
-
-  function play(id: string) {
-    setSkillId(id);
-    setView("session");
-  }
-
-  function exitSession() {
+  function enterChild(c: Child) {
+    setChild(c);
     setView("map");
-    refreshProfile();
+    loadBalance(c.id);
   }
 
-  if (offline || !profile) {
+  async function logout() {
+    try {
+      await api.logout();
+    } catch {
+      /* da igual */
+    }
+    setChild(null);
+    setMe(null);
+  }
+
+  if (me === "loading") {
     return (
       <>
         <Starfield />
         <main className="hero">
-          <p className="eyebrow">smartkids</p>
           <h1 className="title">Órbita</h1>
-          <p className="tagline">{offline ? "Conectando con la nave nodriza…" : "Cargando…"}</p>
-          {offline && (
-            <p className="muted small">
-              Arranca el backend con <code>pnpm dev</code>.
-            </p>
-          )}
+          <p className="tagline">Cargando…</p>
         </main>
+      </>
+    );
+  }
+
+  if (me === null) {
+    return (
+      <>
+        <Starfield />
+        <Auth onDone={loadMe} />
+      </>
+    );
+  }
+
+  if (!child) {
+    return (
+      <>
+        <Starfield />
+        <div className="app-shell">
+          <FamilyHome
+            me={me}
+            onPlay={enterChild}
+            onParent={(c) => {
+              setChild(c);
+              setView("parent");
+              loadBalance(c.id);
+            }}
+            onLogout={logout}
+            onRefresh={loadMe}
+          />
+        </div>
       </>
     );
   }
@@ -64,21 +92,34 @@ export function App() {
     <>
       <Starfield />
       <div className="app-shell">
-        {view !== "session" && <Hud profile={profile} balance={balance} />}
+        {view !== "session" && (
+          <Hud profile={child} balance={balance} onExit={() => setChild(null)} />
+        )}
         <div className="app-body">
-          {view === "map" && <GalaxyMap profileId={PROFILE_ID} onPlay={play} />}
+          {view === "map" && (
+            <GalaxyMap
+              profileId={child.id}
+              onPlay={(s) => {
+                setSkillId(s);
+                setView("session");
+              }}
+            />
+          )}
           {view === "session" && skillId && (
             <Session
-              profileId={PROFILE_ID}
+              profileId={child.id}
               skillId={skillId}
               onBalance={setBalance}
-              onExit={exitSession}
+              onExit={() => {
+                setView("map");
+                loadBalance(child.id);
+              }}
             />
           )}
           {view === "reward" && (
-            <RewardShop profileId={PROFILE_ID} balance={balance} onBalance={setBalance} />
+            <RewardShop profileId={child.id} balance={balance} onBalance={setBalance} />
           )}
-          {view === "parent" && <ParentPanel profileId={PROFILE_ID} />}
+          {view === "parent" && <ParentPanel profileId={child.id} />}
         </div>
         {view !== "session" && (
           <nav className="bottom-nav">

@@ -60,9 +60,35 @@ export interface Reward {
   nameI18n: LocaleText;
 }
 
+export interface Parent {
+  id: string;
+  email: string;
+}
+
+export interface Child {
+  id: string;
+  displayName: string;
+  avatar: string;
+  gradeBand: string;
+}
+
+export interface Me {
+  parent: Parent;
+  children: Child[];
+}
+
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, opts);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try {
+      const body = (await res.json()) as { message?: string; error?: string };
+      msg = body.message ?? body.error ?? msg;
+    } catch {
+      /* respuesta sin cuerpo JSON */
+    }
+    throw new Error(msg);
+  }
   return (await res.json()) as T;
 }
 
@@ -73,6 +99,19 @@ const jsonPost = (body: unknown): RequestInit => ({
 });
 
 export const api = {
+  // Auth
+  me: () => j<Me>(`/api/auth/me`),
+  signup: (email: string, password: string) =>
+    j<{ parent: Parent }>(`/api/auth/signup`, jsonPost({ email, password })),
+  login: (email: string, password: string) =>
+    j<{ parent: Parent }>(`/api/auth/login`, jsonPost({ email, password })),
+  logout: () => j<{ ok: boolean }>(`/api/auth/logout`, { method: "POST" }),
+  createChild: (data: { displayName: string; avatar: string; gradeBand: string; pin: string }) =>
+    j<{ profile: Child }>(`/api/profiles`, jsonPost(data)),
+  unlock: (id: string, pin: string) =>
+    j<{ profile: Child }>(`/api/profiles/${id}/unlock`, jsonPost({ pin })),
+
+  // Datos de juego
   profile: (id: string) => j<ProfileState>(`/api/profiles/${id}`),
   skills: (profileId: string, subject = "math") =>
     j<SkillNode[]>(`/api/skills?subject=${subject}&profile=${profileId}`),
