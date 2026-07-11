@@ -16,5 +16,5 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "smartkids"
-database_id = "REEMPLAZAR_TRAS_wrangler_d1_create"
+database_id = "a032dbc4-2172-4312-ac1f-01fe79da7b74"
 migrations_dir = "migrations"
