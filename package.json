@@ -12,7 +12,10 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "deploy": "pnpm --filter @smartkids/web run build && pnpm --filter @smartkids/api exec wrangler deploy",
+    "db:migrate:remote": "pnpm --filter @smartkids/api exec wrangler d1 migrations apply smartkids --remote",
+    "db:seed:remote": "pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote --file=seed.sql"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -5,6 +5,7 @@ import { getDb, schema } from "./db";
 
 export interface Env {
   DB: D1Database;
+  ASSETS: Fetcher;
 }
 
 const {
@@ -237,5 +238,12 @@ app.post("/api/rewards/:id/redeem", async (c) => {
 
   return c.json({ ok: true, balance: newBalance, status, reward });
 });
+
+// Rutas /api desconocidas -> 404 JSON (antes del fallback de la SPA).
+app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
+
+// Cualquier otra ruta -> servir la SPA (Cloudflare Static Assets).
+// not_found_handling = "single-page-application" devuelve index.html para el routing de cliente.
+app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default app;

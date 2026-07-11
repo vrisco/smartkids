@@ -2,6 +2,13 @@ name = "smartkids-api"
 main = "src/index.ts"
 compatibility_date = "2026-07-01"
 
+# La SPA (build de apps/web) se sirve como Static Assets desde el mismo Worker:
+# mismo origen que la API, un solo deploy, sin CORS. Requiere `pnpm --filter @smartkids/web build`.
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
 # Base de datos D1 (SQLite serverless).
 # Para DESARROLLO LOCAL no hace falta el id real: wrangler usa una D1 local en .wrangler/.
 # Para producción: `pnpm --filter @smartkids/api exec wrangler d1 create smartkids`
