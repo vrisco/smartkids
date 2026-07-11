@@ -1,0 +1,12 @@
+name = "smartkids-api"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# Base de datos D1 (SQLite serverless).
+# Para DESARROLLO LOCAL no hace falta el id real: wrangler usa una D1 local en .wrangler/.
+# Para producción: `pnpm --filter @smartkids/api exec wrangler d1 create smartkids`
+# y pega el database_id aquí.
+[[d1_databases]]
+binding = "DB"
+database_name = "smartkids"
+database_id = "REEMPLAZAR_TRAS_wrangler_d1_create"

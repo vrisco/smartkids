@@ -1,0 +1,14 @@
+{
+  "name": "@smartkids/content-gen",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node --experimental-strip-types src/generate.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": ">=0.30.0",
+    "@smartkids/shared": "workspace:*",
+    "zod": "^3.24.1"
+  }
+}
