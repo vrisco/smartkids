@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { asc, eq } from "drizzle-orm";
+import { getDb, schema } from "./db";
 
 export interface Env {
   DB: D1Database;
@@ -13,20 +15,30 @@ app.get("/api/health", (c) =>
   c.json({ ok: true, service: "smartkids-api", ts: new Date().toISOString() }),
 );
 
-// Stub: el motor real (heurístico + FSRS, lectura de D1) llega en un hito posterior.
-app.get("/api/session/next", (c) =>
-  c.json({
-    exerciseId: "demo-1",
-    type: "multiple_choice",
-    skillId: "MATH.ESO5.FRAC.ADD",
-    stem: "1/2 + 1/3 = ?",
-    options: [
-      { id: "a", text: "5/6", isCorrect: true },
-      { id: "b", text: "2/5", isCorrect: false },
-      { id: "c", text: "1/6", isCorrect: false },
-      { id: "d", text: "3/6", isCorrect: false },
-    ],
-  }),
-);
+/** Skills de una asignatura, ordenadas por posición (nodos de la galaxia). */
+app.get("/api/skills", async (c) => {
+  const db = getDb(c.env.DB);
+  const subjectId = c.req.query("subject") ?? "math";
+  const rows = await db
+    .select()
+    .from(schema.skills)
+    .where(eq(schema.skills.subjectId, subjectId))
+    .orderBy(asc(schema.skills.position));
+  return c.json(rows);
+});
+
+/** Siguiente ejercicio de una skill (stub del selector; el motor FSRS llega después). */
+app.get("/api/session/next", async (c) => {
+  const db = getDb(c.env.DB);
+  const skillId = c.req.query("skill") ?? "MATH.ESO5.FRAC.ADD";
+  const rows = await db
+    .select()
+    .from(schema.exerciseTemplates)
+    .where(eq(schema.exerciseTemplates.skillId, skillId))
+    .limit(1);
+  const exercise = rows[0];
+  if (!exercise) return c.json({ error: "no exercise found" }, 404);
+  return c.json(exercise);
+});
 
 export default app;
