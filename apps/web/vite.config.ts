@@ -8,8 +8,8 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "smartkids · Órbita",
-        short_name: "smartkids",
+        name: "Smartkids · Órbita",
+        short_name: "Smartkids",
         description: "Aprende explorando la galaxia",
         lang: "es",
         theme_color: "#0A0D1F",
