@@ -15,9 +15,16 @@ export default defineConfig({
         theme_color: "#0A0D1F",
         background_color: "#0A0D1F",
         display: "standalone",
-        // TODO: añadir iconos (192/512 + maskable) en public/ y referenciarlos aquí.
-        icons: [],
+        start_url: "/",
+        scope: "/",
+        icons: [
+          { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
       },
+      includeAssets: ["icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png"],
     }),
   ],
   server: {
