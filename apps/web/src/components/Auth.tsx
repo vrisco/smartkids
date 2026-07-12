@@ -127,8 +127,6 @@ export function Auth({ onTutor, onChild }: { onTutor: () => void; onChild: () =>
         </button>
       )}
 
-      {mode === "child" && <p className="auth-demo">{t("auth.demoKidLabel")} <b>lucia</b> / PIN <b>1234</b></p>}
-
       <div className="app-version">v{__APP_VERSION__}</div>
     </div>
   );

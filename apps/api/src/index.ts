@@ -1092,7 +1092,9 @@ app.post("/api/auth/passkey/register/options", async (c) => {
     userID: new TextEncoder().encode(a) as Uint8Array<ArrayBuffer>,
     attestationType: "none",
     excludeCredentials: existing.map((e) => ({ id: e.id })),
-    authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+    // authenticatorAttachment "platform" = SOLO el biométrico integrado (Face ID / Touch ID /
+    // Windows Hello / huella Android). Sin esto, el navegador ofrece también QR y llave de seguridad.
+    authenticatorSelection: { residentKey: "required", userVerification: "required", authenticatorAttachment: "platform" },
   });
   const flowId = await saveFlow(db, "reg", a, options.challenge);
   return c.json({ options, flowId });
@@ -1127,7 +1129,7 @@ app.post("/api/auth/passkey/register/verify", async (c) => {
 app.post("/api/auth/passkey/login/options", async (c) => {
   const db = getDb(c.env.DB);
   const { rpID } = rpFromReq(c);
-  const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });
+  const options = await generateAuthenticationOptions({ rpID, userVerification: "required" });
   const flowId = await saveFlow(db, "auth", null, options.challenge);
   return c.json({ options, flowId });
 });
