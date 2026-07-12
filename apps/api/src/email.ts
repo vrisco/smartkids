@@ -33,7 +33,12 @@ export async function sendEmail(
       html,
     }),
   });
-  if (!res.ok) console.log(`[email] Resend error ${res.status}`);
+  if (!res.ok) {
+    // No tragues el motivo: Resend devuelve JSON con el detalle (p.ej. dominio no verificado
+    // o "solo puedes enviar a tu propia dirección"). Visible con `wrangler tail`.
+    const detail = await res.text().catch(() => "");
+    console.log(`[email] Resend error ${res.status} · to=${to} · ${detail}`);
+  }
   return res.ok;
 }
 
