@@ -164,6 +164,10 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   await db.delete(wallets).where(eq(wallets.profileId, childId));
   await db.delete(attempts).where(eq(attempts.profileId, childId));
   await db.delete(skillProgress).where(eq(skillProgress.profileId, childId));
+  // Estas también referencian al niño (FK sin ON DELETE): sin vaciarlas, el borrado del niño falla.
+  await db.delete(coinAwards).where(eq(coinAwards.profileId, childId));
+  await db.delete(childSkills).where(eq(childSkills.childId, childId));
+  await db.update(contentRequests).set({ childId: null }).where(eq(contentRequests.childId, childId));
   await db.delete(childProfiles).where(eq(childProfiles.id, childId));
 }
 
@@ -1277,10 +1281,15 @@ app.delete("/api/tutor/skills/:skillId", async (c) => {
   const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
   if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
   const pkgRows = await db.selectDistinct({ pkg: exerciseTemplates.packageId }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const tplRows = await db.select({ id: exerciseTemplates.id }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const tplIds = tplRows.map((r) => r.id);
   // Sin ON DELETE cascade: borramos respetando el orden de las FKs.
+  // coin_awards referencia exercise_templates: hay que vaciarlo ANTES de borrar las plantillas
+  // (si no, un ejercicio con monedas ya concedidas rompe el borrado por FK y el curso no se elimina).
   await db.delete(attempts).where(eq(attempts.skillId, skillId));
   await db.delete(skillProgress).where(eq(skillProgress.skillId, skillId));
   await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
+  if (tplIds.length) await db.delete(coinAwards).where(inArray(coinAwards.exerciseTemplateId, tplIds));
   await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
   await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
   for (const { pkg } of pkgRows) {
