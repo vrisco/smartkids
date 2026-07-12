@@ -62,6 +62,7 @@ const {
   childSkills,
   contentRequests,
   contentRequestAssets,
+  coinAwards,
 } = schema;
 
 const COINS_PER_CORRECT = 10;
@@ -609,13 +610,17 @@ app.delete("/api/tutor/spouse", async (c) => {
   await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, parentId));
   // Solo desvincula el otro lado si de verdad apunta a mí (no corrompas el vínculo de un tercero).
   if (o?.spouseId === parentId) await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, other));
-  // Barre asignaciones de recompensas cruzadas entre los dos hogares que ahora se separan.
+  // Barre asignaciones cruzadas (recompensas Y contenido privado) entre los dos hogares que se separan.
   const aKids = (await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.parentId, parentId))).map((k) => k.id);
   const bKids = (await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.parentId, other))).map((k) => k.id);
   const aRewards = (await db.select({ id: rewards.id }).from(rewards).where(eq(rewards.ownerId, parentId))).map((r) => r.id);
   const bRewards = (await db.select({ id: rewards.id }).from(rewards).where(eq(rewards.ownerId, other))).map((r) => r.id);
   if (aKids.length && bRewards.length) await db.delete(childRewards).where(and(inArray(childRewards.childId, aKids), inArray(childRewards.rewardId, bRewards)));
   if (bKids.length && aRewards.length) await db.delete(childRewards).where(and(inArray(childRewards.childId, bKids), inArray(childRewards.rewardId, aRewards)));
+  const aSkills = (await db.select({ id: skills.id }).from(skills).where(eq(skills.ownerId, parentId))).map((s) => s.id);
+  const bSkills = (await db.select({ id: skills.id }).from(skills).where(eq(skills.ownerId, other))).map((s) => s.id);
+  if (aKids.length && bSkills.length) await db.delete(childSkills).where(and(inArray(childSkills.childId, aKids), inArray(childSkills.skillId, bSkills)));
+  if (bKids.length && aSkills.length) await db.delete(childSkills).where(and(inArray(childSkills.childId, bKids), inArray(childSkills.skillId, aSkills)));
   return c.json({ ok: true });
 });
 
@@ -759,11 +764,13 @@ app.get("/api/child/me", async (c) => {
   const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, kid)).limit(1);
   const crs = await childCoursesOf(db, kid);
   // Contenido a medida (skills PRIVADOS asignados): se ofrecen como "cursos" independientes jugables directamente.
+  // El dueño del skill privado debe seguir en el hogar del niño (defensa aunque quede un grant huérfano).
+  const household = await householdIds(db, child.parentId);
   const privRows = await db
     .select({ id: skills.id, nameI18n: skills.nameI18n, pathId: skills.pathId, pathName: skills.pathName, moduleIndex: skills.moduleIndex })
     .from(childSkills)
     .innerJoin(skills, eq(skills.id, childSkills.skillId))
-    .where(and(eq(childSkills.childId, kid), isNotNull(skills.ownerId)))
+    .where(and(eq(childSkills.childId, kid), isNotNull(skills.ownerId), inArray(skills.ownerId, household)))
     .orderBy(asc(skills.moduleIndex));
   const customContent: Array<{ skillId: string; nameI18n: unknown; exercises: number; pathId: string | null; pathName: unknown; moduleIndex: number }> = [];
   for (const s of privRows) {
@@ -803,13 +810,27 @@ app.get("/api/skills", async (c) => {
     .where(and(eq(skills.subjectId, course.subjectId), eq(skills.gradeBand, course.gradeBand), isNull(skills.ownerId)))
     .orderBy(asc(skills.position));
   // Skills PRIVADOS del hogar asignados a este niño, en la misma asignatura+nivel.
-  const privateRows = await db
-    .select(proj)
-    .from(childSkills)
-    .innerJoin(skills, eq(skills.id, childSkills.skillId))
-    .leftJoin(skillProgress, and(eq(skillProgress.skillId, skills.id), eq(skillProgress.profileId, profileId)))
-    .where(and(eq(childSkills.childId, profileId), eq(skills.subjectId, course.subjectId), eq(skills.gradeBand, course.gradeBand)))
-    .orderBy(asc(skills.position));
+  // Solo skills PRIVADOS (isNotNull) cuyo dueño siga en el hogar del niño (no basta el grant).
+  const [skChild] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, profileId)).limit(1);
+  const household = skChild ? await householdIds(db, skChild.parentId) : [];
+  const privateRows =
+    household.length === 0
+      ? []
+      : await db
+          .select(proj)
+          .from(childSkills)
+          .innerJoin(skills, eq(skills.id, childSkills.skillId))
+          .leftJoin(skillProgress, and(eq(skillProgress.skillId, skills.id), eq(skillProgress.profileId, profileId)))
+          .where(
+            and(
+              eq(childSkills.childId, profileId),
+              isNotNull(skills.ownerId),
+              inArray(skills.ownerId, household),
+              eq(skills.subjectId, course.subjectId),
+              eq(skills.gradeBand, course.gradeBand),
+            ),
+          )
+          .orderBy(asc(skills.position));
   return c.json([...globalRows, ...privateRows]);
 });
 
@@ -871,6 +892,8 @@ app.post("/api/admin/content/import", async (c) => {
     await db.insert(subjects).values({ id: body.subject.id, nameI18n: body.subject.nameI18n }).onConflictDoNothing();
   }
   if (body.skill) {
+    // Acota los puntos por acierto a un entero razonable (el import es privilegiado pero no de fiar ciegamente).
+    const skillCoins = body.skill.coinsPerCorrect == null ? null : Math.max(1, Math.min(1000, Math.round(body.skill.coinsPerCorrect)));
     await db
       .insert(skills)
       .values({
@@ -881,7 +904,7 @@ app.post("/api/admin/content/import", async (c) => {
         difficultyBase: body.skill.difficultyBase ?? 0.4,
         position: body.skill.position ?? 0,
         ownerId: body.skill.ownerId ?? null,
-        coinsPerCorrect: body.skill.coinsPerCorrect ?? null,
+        coinsPerCorrect: skillCoins,
         pathId: body.skill.pathId ?? null,
         pathName: body.skill.pathName ?? null,
         moduleIndex: body.skill.moduleIndex ?? 0,
@@ -890,7 +913,7 @@ app.post("/api/admin/content/import", async (c) => {
         target: skills.id,
         set: {
           nameI18n: body.skill.nameI18n,
-          coinsPerCorrect: body.skill.coinsPerCorrect ?? null,
+          coinsPerCorrect: skillCoins,
           pathId: body.skill.pathId ?? null,
           pathName: body.skill.pathName ?? null,
           moduleIndex: body.skill.moduleIndex ?? 0,
@@ -1283,15 +1306,17 @@ app.post("/api/session/attempt", async (c) => {
   const correct = result.correct;
 
   const now = new Date().toISOString();
-  // Anti-farm: las monedas solo se conceden la PRIMERA vez que se acierta un ejercicio concreto.
-  let alreadyEarned = false;
+  // Anti-farm ATÓMICO: la PK compuesta de coin_awards concede monedas una sola vez por
+  // (niño, ejercicio). Sustituye al read-check anterior, que tenía una carrera (dos aciertos
+  // simultáneos leían "no ganado" y duplicaban monedas).
+  let firstCorrect = false;
   if (correct) {
-    const [prior] = await db
-      .select({ id: attempts.id })
-      .from(attempts)
-      .where(and(eq(attempts.profileId, body.profileId), eq(attempts.exerciseTemplateId, body.exerciseTemplateId), eq(attempts.correct, true)))
-      .limit(1);
-    alreadyEarned = Boolean(prior);
+    const inserted = await db
+      .insert(coinAwards)
+      .values({ profileId: body.profileId, exerciseTemplateId: body.exerciseTemplateId, ts: now })
+      .onConflictDoNothing()
+      .returning({ p: coinAwards.profileId });
+    firstCorrect = inserted.length > 0;
   }
 
   await db.insert(attempts).values({
@@ -1326,7 +1351,7 @@ app.post("/api/session/attempt", async (c) => {
     });
 
   const [skRow] = await db.select({ coins: skills.coinsPerCorrect }).from(skills).where(eq(skills.id, skillId)).limit(1);
-  const coins = correct && !alreadyEarned ? (skRow?.coins ?? COINS_PER_CORRECT) : 0;
+  const coins = firstCorrect ? (skRow?.coins ?? COINS_PER_CORRECT) : 0;
   if (coins > 0) {
     await db
       .insert(wallets)

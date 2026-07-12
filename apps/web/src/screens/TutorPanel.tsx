@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, tx, type Child, type ContentRequest, type Course, type Me, type PrivateSkill, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
@@ -674,23 +674,34 @@ function ContentSection({ me }: { me: Me }) {
   const [reqs, setReqs] = useState<ContentRequest[] | null>(null);
   const [content, setContent] = useState<PrivateSkill[] | null>(null);
   const [uploading, setUploading] = useState(false);
+  const contentRef = useRef<PrivateSkill[]>([]);
 
   function load() {
     api.contentRequests().then(setReqs).catch(() => setReqs([]));
-    api.tutorContent().then(setContent).catch(() => setContent([]));
+    api
+      .tutorContent()
+      .then((c) => {
+        contentRef.current = c;
+        setContent(c);
+      })
+      .catch(() => {
+        contentRef.current = [];
+        setContent([]);
+      });
   }
   useEffect(() => {
     load();
   }, []);
 
-  async function assign(skillId: string, childId: string, on: boolean, current: string[]) {
-    const next = on ? [...current, childId] : current.filter((x) => x !== childId);
-    try {
-      await api.assignSkill(skillId, next);
-      load();
-    } catch {
-      /* noop */
-    }
+  // Estado optimista con ref: evita la carrera de toggles rápidos (assignSkill REEMPLAZA todo el conjunto,
+  // así que cada toque debe partir del conjunto MÁS RECIENTE, no del snapshot del render).
+  function assign(skillId: string, childId: string, on: boolean) {
+    const cur = contentRef.current.find((s) => s.id === skillId)?.childIds ?? [];
+    const ids = on ? [...new Set([...cur, childId])] : cur.filter((x) => x !== childId);
+    const next = contentRef.current.map((s) => (s.id === skillId ? { ...s, childIds: ids } : s));
+    contentRef.current = next;
+    setContent(next);
+    api.assignSkill(skillId, ids).catch(() => load());
   }
 
   async function delRequest(id: string) {
@@ -767,7 +778,7 @@ function ContentSection({ me }: { me: Me }) {
                   <div className="course-checks">
                     {me.children.map((ch) => (
                       <label className={"course-check" + (s.childIds.includes(ch.id) ? " on" : "")} key={ch.id}>
-                        <input type="checkbox" checked={s.childIds.includes(ch.id)} onChange={(e) => assign(s.id, ch.id, e.target.checked, s.childIds)} />
+                        <input type="checkbox" checked={s.childIds.includes(ch.id)} onChange={(e) => assign(s.id, ch.id, e.target.checked)} />
                         {ch.displayName}
                       </label>
                     ))}

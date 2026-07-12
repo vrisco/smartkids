@@ -38,6 +38,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   const [view, setView] = useState<View>("map");
   const [skillId, setSkillId] = useState<string | null>(null);
   const [balance, setBalance] = useState(data.balance);
+  const [homeShop, setHomeShop] = useState(false);
 
   // Ficha o módulo: se juega directamente, sin galaxia intermedia.
   if (customSkill) {
@@ -68,7 +69,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                 </span>
                 <span className="course-text">
                   <b>
-                    {t("kid.module")} {i + 1}
+                    {t("kid.module")} {(m.moduleIndex ?? i) + 1}
                   </b>
                   <span className="course-sub">
                     {m.exercises} {t("content.exercises")}
@@ -102,68 +103,88 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
       <div className="app-shell">
         <Hud profile={data.child} balance={balance} onExit={onLogout} />
         <div className="app-body">
-          {data.courses.length > 0 && (
+          {homeShop ? (
+            <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />
+          ) : (
             <>
-              <div className="screen-kicker" style={{ paddingTop: "1.2rem" }}>
-                {t("kid.yourCourses")}
-              </div>
-              <h2 className="screen-title">{t("kid.whatStudy")}</h2>
-              <div className="course-grid">
-                {data.courses.map((cr) => (
-                  <button
-                    className="course-card"
-                    key={cr.id}
-                    type="button"
-                    onClick={() => {
-                      setCourse(cr);
-                      setView("map");
-                    }}
-                  >
-                    <span className="course-emoji">
-                      <Icon name="book" size={22} />
-                    </span>
-                    <b>{tx(cr.nameI18n)}</b>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {hasCustom && (
-            <>
-              <div className="screen-kicker" style={{ paddingTop: "1.4rem" }}>
-                {t("kid.worksheets")}
-              </div>
-              <div className="course-grid">
-                {singles.map((cc) => (
-                  <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
-                    <span className="course-emoji">
-                      <Icon name="star" size={22} />
-                    </span>
-                    <span className="course-text">
-                      <b>{tx(cc.nameI18n)}</b>
-                      <span className="course-sub">
-                        {cc.exercises} {t("content.exercises")}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-                {paths.map((p) => (
-                  <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
-                    <span className="course-emoji">
-                      <Icon name="satellite" size={22} />
-                    </span>
-                    <span className="course-text">
-                      <b>{tx(p.pathName)}</b>
-                      <span className="course-sub">
-                        {p.modules.length} {t("kid.modules")}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
+              {data.courses.length > 0 && (
+                <>
+                  <div className="screen-kicker" style={{ paddingTop: "1.2rem" }}>
+                    {t("kid.yourCourses")}
+                  </div>
+                  <h2 className="screen-title">{t("kid.whatStudy")}</h2>
+                  <div className="course-grid">
+                    {data.courses.map((cr) => (
+                      <button
+                        className="course-card"
+                        key={cr.id}
+                        type="button"
+                        onClick={() => {
+                          setCourse(cr);
+                          setView("map");
+                        }}
+                      >
+                        <span className="course-emoji">
+                          <Icon name="book" size={22} />
+                        </span>
+                        <b>{tx(cr.nameI18n)}</b>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {hasCustom && (
+                <>
+                  <div className="screen-kicker" style={{ paddingTop: "1.4rem" }}>
+                    {t("kid.worksheets")}
+                  </div>
+                  <div className="course-grid">
+                    {singles.map((cc) => (
+                      <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
+                        <span className="course-emoji">
+                          <Icon name="star" size={22} />
+                        </span>
+                        <span className="course-text">
+                          <b>{tx(cc.nameI18n)}</b>
+                          <span className="course-sub">
+                            {cc.exercises} {t("content.exercises")}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                    {paths.map((p) => (
+                      <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
+                        <span className="course-emoji">
+                          <Icon name="satellite" size={22} />
+                        </span>
+                        <span className="course-text">
+                          <b>{tx(p.pathName)}</b>
+                          <span className="course-sub">
+                            {p.modules.length} {t("kid.modules")}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
+        <nav className="bottom-nav">
+          <button className={!homeShop ? "on" : ""} onClick={() => setHomeShop(false)}>
+            <span className="ic">
+              <Icon name="planet" size={22} />
+            </span>
+            <span>{t("kid.home")}</span>
+          </button>
+          <button className={homeShop ? "on" : ""} onClick={() => setHomeShop(true)}>
+            <span className="ic">
+              <Icon name="coin" size={22} />
+            </span>
+            <span>{t("kid.shop")}</span>
+          </button>
+        </nav>
       </div>
     );
   }

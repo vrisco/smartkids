@@ -295,6 +295,22 @@ export const contentRequests = sqliteTable("content_requests", {
   notifiedAt: text("notified_at"),
 });
 
+/** Registro atómico de la PRIMERA vez que se acierta cada ejercicio (anti-farm sin carrera).
+ *  La PK compuesta garantiza que las monedas se concedan una única vez por (niño, ejercicio). */
+export const coinAwards = sqliteTable(
+  "coin_awards",
+  {
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => childProfiles.id),
+    exerciseTemplateId: text("exercise_template_id")
+      .notNull()
+      .references(() => exerciseTemplates.id),
+    ts: text("ts").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.profileId, t.exerciseTemplateId] })],
+);
+
 /** Fichero subido para una solicitud (imagen o documento). El binario vive en R2. */
 export const contentRequestAssets = sqliteTable("content_request_assets", {
   id: text("id").primaryKey(),

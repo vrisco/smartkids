@@ -71,6 +71,13 @@
       "when": 1783859537981,
       "tag": "0009_demonic_ezekiel_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1783861679808,
+      "tag": "0010_light_tombstone",
+      "breakpoints": true
     }
   ]
 }
