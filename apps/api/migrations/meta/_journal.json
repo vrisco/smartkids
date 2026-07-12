@@ -78,6 +78,13 @@
       "when": 1783861679808,
       "tag": "0010_light_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1783866529345,
+      "tag": "0011_gifted_sway",
+      "breakpoints": true
     }
   ]
 }

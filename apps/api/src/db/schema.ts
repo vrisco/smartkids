@@ -94,6 +94,7 @@ export const exerciseTemplates = sqliteTable("exercise_templates", {
   payload: text("payload", { mode: "json" }).notNull(),
   difficultyNumeric: real("difficulty_numeric").notNull().default(0.5),
   difficultyLevel: text("difficulty_level").notNull().default("medium"),
+  hidden: integer("hidden", { mode: "boolean" }).notNull().default(false), // el tutor puede ocultar un ejercicio: el niño no lo recibe
 });
 
 /* ---------- Progreso (mutable, por perfil) ---------- */

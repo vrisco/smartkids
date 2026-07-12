@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
+import { ContentPreview } from "../components/ContentPreview";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
 
@@ -705,6 +706,8 @@ function ContentSection({ me }: { me: Me }) {
   const [content, setContent] = useState<PrivateSkill[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState<ContentRequest | null>(null);
+  const [preview, setPreview] = useState<PrivateSkill | null>(null);
+  const [showOld, setShowOld] = useState(false);
   const contentRef = useRef<PrivateSkill[]>([]);
 
   function load() {
@@ -770,32 +773,69 @@ function ContentSection({ me }: { me: Me }) {
       ) : (
         <>
           <p className="muted screen-pad" style={{ textAlign: "center" }}>{t("content.hint")}</p>
-          {(reqs ?? []).length > 0 && (
-            <div className="list">
-              {(reqs ?? []).map((r) => (
-                <div className="list-row" key={r.id}>
-                  <div className="shop-ic sm">
-                    <Icon name="book" size={20} />
+          {(() => {
+            const active = (reqs ?? []).filter((r) => r.status !== "published");
+            const old = (reqs ?? []).filter((r) => r.status === "published");
+            return (
+              <>
+                {active.length > 0 && (
+                  <div className="list">
+                    {active.map((r) => (
+                      <div className="list-row" key={r.id}>
+                        <div className="shop-ic sm">
+                          <Icon name="book" size={20} />
+                        </div>
+                        <div className="list-main">
+                          <b>{r.title || t("content.untitled")}</b>
+                          <span>
+                            {t(`content.status_${r.status}`)}
+                            {r.exerciseCount ? ` · ${r.exerciseCount}` : r.assets && r.assets.length ? ` · ${r.assets.length}` : ""}
+                          </span>
+                        </div>
+                        {r.status === "uploaded" && (
+                          <button className="btn-ghost sm" type="button" onClick={() => setEditing(r)}>
+                            {t("common.edit")}
+                          </button>
+                        )}
+                        <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
+                          {t("common.delete")}
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <div className="list-main">
-                    <b>{r.title || t("content.untitled")}</b>
-                    <span>
-                      {t(`content.status_${r.status}`)}
-                      {r.exerciseCount ? ` · ${r.exerciseCount}` : r.assets && r.assets.length ? ` · ${r.assets.length}` : ""}
-                    </span>
-                  </div>
-                  {r.status === "uploaded" && (
-                    <button className="btn-ghost sm" type="button" onClick={() => setEditing(r)}>
-                      {t("common.edit")}
+                )}
+                {old.length > 0 && (
+                  <div className="archived">
+                    <button className="archived-toggle" type="button" onClick={() => setShowOld((v) => !v)}>
+                      <Icon name={showOld ? "chevronDown" : "chevronRight"} size={16} />
+                      {t("content.archived", { count: old.length })}
                     </button>
-                  )}
-                  <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
-                    {t("common.delete")}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+                    {showOld && (
+                      <div className="list">
+                        {old.map((r) => (
+                          <div className="list-row" key={r.id}>
+                            <div className="shop-ic sm">
+                              <Icon name="book" size={20} />
+                            </div>
+                            <div className="list-main">
+                              <b>{r.title || t("content.untitled")}</b>
+                              <span>
+                                {t(`content.status_${r.status}`)}
+                                {r.exerciseCount ? ` · ${r.exerciseCount}` : ""}
+                              </span>
+                            </div>
+                            <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
+                              {t("common.delete")}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
           {(content ?? []).length > 0 && (
             <div className="list">
               {(content ?? []).map((s) => (
@@ -807,6 +847,9 @@ function ContentSection({ me }: { me: Me }) {
                         {s.exercises} {t("content.exercises")}
                       </span>
                     </div>
+                    <button className="btn-ghost sm" type="button" onClick={() => setPreview(s)}>
+                      {t("content.preview")}
+                    </button>
                     <button className="btn-ghost sm danger" type="button" onClick={() => delContent(s.id)}>
                       {t("common.delete")}
                     </button>
@@ -840,6 +883,7 @@ function ContentSection({ me }: { me: Me }) {
           }}
         />
       )}
+      {preview && <ContentPreview skillId={preview.id} title={tx(preview.nameI18n)} onClose={() => setPreview(null)} />}
     </div>
   );
 }

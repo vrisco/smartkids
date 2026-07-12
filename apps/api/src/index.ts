@@ -1037,6 +1037,55 @@ app.post("/api/tutor/skills/:skillId/assign", async (c) => {
   return c.json({ ok: true, childIds: valid });
 });
 
+// Preview del tutor: TODOS los ejercicios (incluidos los ocultos) de un skill privado del hogar, CON solución.
+app.get("/api/tutor/skills/:skillId/exercises", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const skillId = c.req.param("skillId");
+  const household = await householdIds(db, a);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
+  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const rows = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const out: Array<{ templateId: string; hidden: boolean; exercise: Exercise }> = [];
+  for (const ex of rows) {
+    try {
+      const exercise = exerciseFromRow({
+        id: ex.id,
+        packageId: ex.packageId,
+        skillId: ex.skillId,
+        type: ex.type,
+        language: ex.language,
+        contentVersion: ex.contentVersion,
+        stem: ex.stem,
+        payload: ex.payload,
+        difficultyNumeric: ex.difficultyNumeric,
+        difficultyLevel: ex.difficultyLevel,
+      });
+      out.push({ templateId: ex.id, hidden: ex.hidden, exercise });
+    } catch {
+      /* plantilla no conforme al modelo: la omitimos del preview */
+    }
+  }
+  return c.json(out);
+});
+
+// El tutor oculta/muestra un ejercicio de un skill privado del hogar (el niño solo recibe los visibles).
+app.post("/api/tutor/exercises/:templateId/hidden", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const templateId = c.req.param("templateId");
+  const { hidden } = await c.req.json<{ hidden: boolean }>();
+  const [tpl] = await db.select({ skillId: exerciseTemplates.skillId }).from(exerciseTemplates).where(eq(exerciseTemplates.id, templateId)).limit(1);
+  if (!tpl) return c.json({ error: "not_found" }, 404);
+  const household = await householdIds(db, a);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, tpl.skillId)).limit(1);
+  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  await db.update(exerciseTemplates).set({ hidden: Boolean(hidden) }).where(eq(exerciseTemplates.id, templateId));
+  return c.json({ ok: true, hidden: Boolean(hidden) });
+});
+
 // Borra un skill PRIVADO del hogar y todo su contenido (plantillas, paquete vacío, progreso, asignaciones).
 app.delete("/api/tutor/skills/:skillId", async (c) => {
   const db = getDb(c.env.DB);
@@ -1288,7 +1337,12 @@ app.get("/api/session/next", async (c) => {
   if (!(await childCanAttemptSkill(db, profileId, skillId))) return c.json({ error: "no_course_access" }, 403);
 
   // Banco de plantillas del skill (con un tope de seguridad); ya no solo las 10 primeras.
-  const rows = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId)).limit(200);
+  // Excluye las ocultas por el tutor: el niño no las recibe.
+  const rows = await db
+    .select()
+    .from(exerciseTemplates)
+    .where(and(eq(exerciseTemplates.skillId, skillId), eq(exerciseTemplates.hidden, false)))
+    .limit(200);
   if (rows.length === 0) return c.json({ error: "no exercise found" }, 404);
 
   // Evitar repetición: excluye lo que pida el cliente (repaso / sesión en curso) y lo visto hace poco.
@@ -1337,6 +1391,7 @@ app.get("/api/session/next", async (c) => {
       skillId: ex.skillId,
       type: exercise.type,
       stem: exercise.stem,
+      figure: exercise.figure ?? null,
       contentVersion: ex.contentVersion,
       render,
     });

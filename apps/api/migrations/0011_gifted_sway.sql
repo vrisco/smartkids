@@ -1,0 +1,1 @@
+ALTER TABLE `exercise_templates` ADD `hidden` integer DEFAULT false NOT NULL;

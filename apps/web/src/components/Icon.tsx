@@ -27,7 +27,11 @@ export type IconName =
   | "gift"
   | "target"
   | "chevronUp"
-  | "chevronDown";
+  | "chevronDown"
+  | "chevronLeft"
+  | "chevronRight"
+  | "eye"
+  | "eyeOff";
 
 const STROKE: Partial<Record<IconName, ReactElement>> = {
   lock: (
@@ -40,6 +44,22 @@ const STROKE: Partial<Record<IconName, ReactElement>> = {
   close: <path d="M6 6l12 12M18 6L6 18" />,
   chevronUp: <path d="M6 15l6-6 6 6" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
+  chevronLeft: <path d="M15 6l-6 6 6 6" />,
+  chevronRight: <path d="M9 6l6 6-6 6" />,
+  eye: (
+    <>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  eyeOff: (
+    <>
+      <path d="M4 4l16 16" />
+      <path d="M9.5 5.9A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a15.6 15.6 0 0 1-3 3.6" />
+      <path d="M6.3 7.8A15.7 15.7 0 0 0 2.5 12S6 18.5 12 18.5a9.3 9.3 0 0 0 3.6-.7" />
+      <path d="M9.9 9.9A3 3 0 0 0 14.1 14.1" />
+    </>
+  ),
   play: <path d="M8 5l11 7-11 7z" />,
   back: <path d="M15 5l-7 7 7 7" />,
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />,

@@ -1,8 +1,8 @@
 import i18n from "./i18n";
-import type { Answer, RenderPayload } from "@smartkids/shared";
+import type { Answer, Exercise as FullExercise, RenderPayload } from "@smartkids/shared";
 
 // Re-export de los tipos del modelo unificado para el resto de la web.
-export type { Answer, RenderPayload };
+export type { Answer, FullExercise, RenderPayload };
 
 export type LocaleText = Record<string, string>;
 
@@ -80,8 +80,16 @@ export interface Exercise {
   skillId: string;
   type: string;
   stem: string;
+  figure?: string | null; // SVG en línea opcional (ilustración)
   contentVersion: string;
   render: RenderPayload;
+}
+
+// Preview del tutor: ejercicio COMPLETO (con solución) + estado de visibilidad.
+export interface PreviewExercise {
+  templateId: string;
+  hidden: boolean;
+  exercise: FullExercise;
 }
 export interface AttemptResult {
   correct: boolean;
@@ -294,6 +302,9 @@ export const api = {
   deleteRequestAsset: (reqId: string, assetId: string) =>
     j<{ ok: boolean }>(`/api/tutor/content-requests/${reqId}/assets/${assetId}`, { method: "DELETE" }),
   tutorContent: () => j<PrivateSkill[]>(`/api/tutor/content`),
+  skillExercises: (skillId: string) => j<PreviewExercise[]>(`/api/tutor/skills/${encodeURIComponent(skillId)}/exercises`),
+  setExerciseHidden: (templateId: string, hidden: boolean) =>
+    j<{ ok: boolean; hidden: boolean }>(`/api/tutor/exercises/${encodeURIComponent(templateId)}/hidden`, post({ hidden })),
   assignSkill: (skillId: string, childIds: string[]) =>
     j<{ ok: boolean; childIds: string[] }>(`/api/tutor/skills/${skillId}/assign`, post({ childIds })),
   deleteContentSkill: (skillId: string) => j<{ ok: boolean }>(`/api/tutor/skills/${skillId}`, { method: "DELETE" }),

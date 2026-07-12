@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type Answer, type AttemptResult, type Exercise } from "../api";
 import { ExerciseInput, FillBlanks, correctAnswerString } from "../components/ExerciseInput";
+import { ExerciseFigure } from "../components/ExerciseFigure";
 import { Icon } from "../components/Icon";
 import { MathText } from "../components/MathText";
 import { Orbi } from "../components/Orbi";
@@ -142,6 +143,7 @@ export function Session({
 
       <div className="q-card">
         <div className="qk">{qk}</div>
+        <ExerciseFigure svg={exercise.figure} />
         <div className="q-eq">
           {render.type === "fill_in_blank" ? (
             <FillBlanks key={exercise.id} stem={exercise.stem} render={render} onChange={setAnswer} result={result} />

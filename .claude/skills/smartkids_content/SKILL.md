@@ -1,58 +1,124 @@
 ---
 name: smartkids_content
-description: "Genera contenido educativo (ejercicios de los 7 tipos) para smartkids, en dos vías: (A) desde una descripción en lenguaje natural del usuario, y (B) desde material que un tutor sube por la app (fotos, PDF, texto). Úsala cuando el usuario pida 'generar contenido', 'crear ejercicios de <asignatura/nivel>', o 'procesar las solicitudes de contenido de los tutores'."
+description: "Genera contenido educativo (ejercicios de los 7 tipos) para smartkids y lo publica en PRODUCCIÓN de forma autónoma, en dos vías: (A) desde una descripción en lenguaje natural del usuario, y (B) procesando el material que los tutores suben por la app (fotos, PDF, texto). Úsala cuando el usuario pida 'generar contenido', 'crear ejercicios de <asignatura/nivel>', o 'procesar las solicitudes de contenido de los tutores'."
 ---
 
 # /smartkids_content
 
-Generador de contenido de smartkids. Convierte una petición (o el material subido por un tutor) en ejercicios validados y los publica en la D1, listos para jugar.
+Generador de contenido de smartkids. Convierte una petición (o el material subido por un tutor) en ejercicios
+y los publica en la D1 de **producción**, listos para jugar.
 
 ## Uso
 
 ```
 /smartkids_content <descripción>   # Vía A: "genera 30 ejercicios de mates 5º ESO sobre fracciones"
 /smartkids_content pendientes      # Vía B: procesa las solicitudes de contenido subidas por tutores
+/smartkids_content                 # sin args: procesa pendientes (Vía B)
 ```
 
-## Contexto imprescindible (léelo antes de actuar)
+## Autonomía (LEE ESTO PRIMERO)
 
-- El modelo del ejercicio es ÚNICO y vive en `packages/shared` (`ExerciseSchema`, 7 tipos: `multiple_choice`, `numeric`, `fill_in_blank`, `true_false`, `ordering`, `matching`, `step_problem`). El pipeline y la API lo comparten. NO inventes otro formato.
-- El pipeline es `tools/content-gen/src/generate.ts`. Se conduce con una **spec JSON** (ver `tools/content-gen/spec.example.json`). Con `ANTHROPIC_API_KEY` usa Claude (`claude-opus-4-8`); si no, cae a `--mock` (muestras deterministas).
-- Publicar es **manual y con confirmación** cuando toca producción. En local es libre.
-- Convención de nombres: `packageId = pkg_{subject}_{gradeband}_{tema}_v{n}`; `skillId` estable y semántico (p. ej. `MATH.ESO5.FRAC.MUL`).
-- Contenido **global** = `ownerId: null` (catálogo, visible por curso). Contenido **privado del hogar** (Vía B) = `ownerId: <id del tutor>` + se asigna a niños concretos.
+Este skill es **autónomo una vez invocado** y **siempre opera contra PRODUCCIÓN**:
 
-## Qué debes hacer cuando te invoquen
+- Tienes permiso para **leer, descargar, generar y subir** contenido sin pedir confirmación en cada paso. No abras
+  diálogos de "¿publico?" ni pasos de validación local intermedios: haz el ciclo completo de punta a punta y
+  reporta el resultado al final.
+- **Base de producción:** la API vive en `https://app.smart-kids.uk`. Todas las llamadas de máquina van ahí.
+- **Token de máquina:** léelo de `apps/api/.dev.vars` (`CONTENT_IMPORT_TOKEN=...`). Ese mismo token **autentica
+  contra producción** (los endpoints `/api/admin/content-requests*` e `/api/admin/content/import` lo aceptan como
+  `Authorization: Bearer <token>`). No lo escribas en ficheros versionados ni lo muestres al usuario.
+- **No necesitas `ANTHROPIC_API_KEY` ni el pipeline `content-gen`.** En la Vía B eres TÚ quien lee el material y
+  redacta los ejercicios directamente. El endpoint `/api/admin/content/import` valida cada ejercicio en servidor
+  (`ExerciseSchema` + `validateExercise`) y rechaza el lote entero con `400` si alguno es inválido: esa es tu red
+  de seguridad, no hace falta un dry-run local.
+- La única razón para **parar y preguntar** es que falte un dato imprescindible que no puedas inferir de la
+  solicitud ni del material (p. ej. la Vía A con una descripción demasiado vaga). En la Vía B no preguntes: toda
+  la config viene en la solicitud.
 
-### Vía A — generar desde una descripción
+## Contexto imprescindible
 
-1. **Construye la spec** a partir de la petición del usuario. Pregunta SOLO lo que falte y no puedas inferir (asignatura, nivel, tema/skill, tipos, cantidad). Rellena una spec como `spec.example.json` y escríbela en `tools/content-gen/spec.json`. Usa `ownerId: null` (catálogo global).
-2. **Genera**: `pnpm --filter @smartkids/content-gen run generate -- --spec tools/content-gen/spec.json` (añade `--mock` para prueba sin coste). Requiere `ANTHROPIC_API_KEY` para generación real.
-3. **Revisa la calidad** de `tools/content-gen/out/<packageId>.json`: enunciados claros, respuestas CORRECTAS (comprueba tú la aritmética/los datos — el self-check valida coherencia, no la verdad del mundo), distractores plausibles basados en errores típicos, feedback con solución trabajada. Si algo falla, ajusta la spec/instrucciones y regenera.
-4. **Publica en local**: `pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --local --file="tools/content-gen/out/<packageId>.sql"`.
-5. **Publica en producción SOLO con confirmación explícita del usuario**: la misma orden con `--remote`. Recuerda que el `skillId` debe existir en un curso que los niños tengan asignado (asignatura+nivel) para que lo vean.
+- El modelo del ejercicio es ÚNICO y vive en `packages/shared` (`ExerciseSchema`, 7 tipos: `multiple_choice`,
+  `numeric`, `fill_in_blank`, `true_false`, `ordering`, `matching`, `step_problem`). NO inventes otro formato.
+  Reglas de forma (mín. opciones, ids únicos, `correctOrder` permutación, `correctPairs` bijección, huecos
+  `{{1}}`, etc.) y el self-check están en `packages/shared/src/grading.ts` (`validateExercise`).
+- **Convención de nombres:** `packageId = pkg_{subject}_{gradeband}_{tema}_v{n}`; `skillId` estable y semántico.
+  Contenido **global** (Vía A) = `ownerId: null` (catálogo, visible por curso), `skillId` tipo `MATH.ESO5.FRAC.MUL`.
+  Contenido **privado del hogar** (Vía B) = `ownerId: <id del tutor>` + asignado a niños concretos, `skillId` tipo
+  `PRIV.<TEMA>.<idCortoDeLaSolicitud>` (y `.M1`, `.M2`... si es un path).
+- **Ejercicios AUTO-CONTENIDOS siempre.** El niño NO ve el material original (PDF/fotos). Cada enunciado debe
+  incluir en su propio texto todos los datos numéricos y la descripción necesaria. Nunca escribas "la figura A" ni
+  "según la imagen": si el material se apoyaba en una figura, reescribe el ejercicio con los datos dentro del
+  `stem`. Los items no auto-corregibles del material ("dibuja en tu cuaderno", "colorea") conviértelos en
+  preguntas equivalentes que SÍ se puedan evaluar con uno de los 7 tipos, o descártalos.
+- **Puedes GENERAR FIGURAS, no solo texto.** El modelo tiene un campo opcional `figure` en cada ejercicio: un
+  documento **SVG en línea** que se muestra sobre el enunciado. Úsalo cuando una imagen aclare la pregunta
+  (geometría: polígonos, triángulos, círculos con radio/diámetro marcados, ejes; diagramas; rectas numéricas;
+  fracciones como porciones). Reglas del SVG:
+  - Autocontenido: empieza por `<svg ... xmlns="http://www.w3.org/2000/svg" viewBox="0 0 W H">`, **sin** `<script>`,
+    sin `<image>` ni URLs externas, sin fuentes externas. Se renderiza como imagen (data URI), así que cualquier
+    script se ignora; mantenlo simple.
+  - Legibilidad: se pinta sobre fondo claro. Usa trazos/textos **oscuros** (p. ej. `stroke="#1f2937"`,
+    `fill="#1f2937"` para etiquetas) y rellenos suaves; grosor de línea visible (`stroke-width="2"`). Tamaño
+    contenido (viewBox ~ 200–360 de ancho; se limita a 240px de alto en la UI).
+  - La figura ILUSTRA; la respuesta sigue saliendo del `stem` + los campos del tipo. No metas la solución en la
+    figura de forma que se pueda "copiar" trivialmente si no quieres regalarla.
+  - Sigue siendo auto-contenido: si pones medidas en la figura, que el enunciado no dependa de ver el PDF original.
+- **Alineación con el curso del niño.** `skill.subjectId`/`gradeBand` deben coincidir con un curso que el niño
+  tenga asignado, o no lo verá en su galaxia. Consulta el curso del niño destino y usa esos valores exactos
+  (en el MVP: `subjectId="math"`, `gradeBand="ESO-5"`).
+- El `payload` de D1 lo genera `toStoredPayload()` dentro del endpoint; tú envías el `Exercise` completo (con
+  `feedback`) y el servidor lo trocea. No montes el `payload` a mano.
 
-### Vía B — generar desde material subido por un tutor
+## Vía A — generar desde una descripción (publica GLOBAL en prod)
 
-1. **Lista las solicitudes pendientes**: `GET /api/admin/content-requests?status=uploaded` con cabecera `Authorization: Bearer $CONTENT_IMPORT_TOKEN` (o consulta la tabla `content_requests`). Cada solicitud trae `ownerId` (tutor), `childId` (destino), `title`, `instructions`, `subjectId`/`gradeBand` (pistas) y sus `assets`.
-2. **Descarga los assets si los hay**: `GET /api/admin/content-requests/:id/assets/:assetId` (mismo Bearer) devuelve el binario. **Una solicitud puede NO tener `assets`** (petición SOLO de texto): entonces no hay nada que descargar y generas a partir de `title` + `instructions` (como una spec de la Vía A, pero publicando privado).
-   La solicitud trae además su **config**: `numQuestions` (cuántas preguntas, por defecto 20), `pointsPerCorrect` (puntos por acierto) y `modules` (1 = ficha única; >1 = path con N módulos).
-3. **Genera** `numQuestions` ejercicios en total, de los tipos adecuados, siguiendo `title` + `instructions`. Con material: si hay `ANTHROPIC_API_KEY`, usa Claude multimodal (`claude-opus-4-8`, salida `ExerciseSchema`, bloques `image` para fotos y `document` para PDF); sin key, extrae el texto (p. ej. Node `pdf-parse`) y redáctalos tú. Sin material (petición de texto), genera directamente de la descripción del tutor.
-4. **Valida** cada ejercicio con `ExerciseSchema` + `validateExercise`. **Nombre**: usa `title` para el nombre del skill/path; si `title` viene vacío (es opcional), genera tú un nombre corto y claro a partir del contenido/`instructions`. Decide la **estructura**: si `modules` = 1, un solo skill; si `modules` > 1, reparte los ejercicios en N skills-módulo que forman un **path** (comparten `pathId` = `path_<requestId>` y el `pathName` que hayas decidido; cada uno con `moduleIndex` 0..N-1 y su propio `skill.id`, p. ej. `PRIV.<algo>.M1`, `.M2`...).
-5. **Publica** cada skill vía `POST /api/admin/content/import` (Bearer):
+1. Infiere de la petición: asignatura, nivel, tema/skill, tipos y cantidad. Pregunta SOLO si algo imprescindible
+   es ininferible.
+2. Redacta tú los ejercicios (`ExerciseSchema`, `ownerId: null`). Comprueba tú la aritmética/los datos: el
+   self-check valida coherencia, no la verdad del mundo. Distractores plausibles basados en errores típicos;
+   `feedback` con solución trabajada.
+3. **Publica en producción** con `POST https://app.smart-kids.uk/api/admin/content/import` (Bearer). El `skillId`
+   debe existir en un curso que los niños tengan asignado (asignatura+nivel) para que lo vean. Sin confirmación.
+4. Reporta: nº de ejercicios publicados, `skillId`/`packageId`, y a qué curso aplican.
+
+## Vía B — procesar las solicitudes de los tutores (publica PRIVADO en prod)
+
+Autónomo de principio a fin. Para CADA solicitud pendiente:
+
+1. **Lista las pendientes:** `GET https://app.smart-kids.uk/api/admin/content-requests?status=uploaded` (Bearer).
+   Cada solicitud trae `ownerId` (tutor), `childId` (destino), `title`, `instructions`, `subjectId`/`gradeBand`
+   (pistas, pueden ser null), y su config: `numQuestions` (por defecto 20), `pointsPerCorrect`, `modules`
+   (1 = ficha única; >1 = path con N módulos), y sus `assets`.
+2. **Descarga los assets si los hay:** `GET .../content-requests/:id/assets/:assetId` (Bearer) devuelve el binario.
+   Guárdalo y léelo (el Read tool lee PDFs e imágenes directamente). Una solicitud puede NO tener assets (petición
+   solo de texto): entonces genera a partir de `title` + `instructions`.
+3. **Comprueba el destino:** confirma que el `childId` pertenece al `ownerId` (o a su hogar) y consulta su curso
+   (`subjectId`/`gradeBand`) para alinear el skill. (Puedes leer la D1 de prod con
+   `pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote --json --command "SELECT ..."`.)
+4. **Genera `numQuestions` ejercicios** auto-contenidos, de tipos variados, cubriendo el temario del material.
+   **Nombre del skill/path:** usa `title`; si viene vacío O es claramente un placeholder de prueba (p. ej.
+   "aaaa", "test", "asdf"), genera tú un nombre corto y claro a partir del contenido/`instructions`.
+   **Estructura:** si `modules` = 1, un solo skill; si `modules` > 1, reparte los ejercicios en N skills-módulo que
+   forman un **path** (comparten `pathId = path_<requestId>` y el `pathName` que decidas; cada uno con
+   `moduleIndex` 0..N-1 y su propio `skill.id`, p. ej. `PRIV.<TEMA>.M1`, `.M2`...).
+5. **Publica** cada skill vía `POST https://app.smart-kids.uk/api/admin/content/import` (Bearer), body:
    - `package.ownerId` = `skill.ownerId` = el `ownerId` de la solicitud (privado del hogar).
    - `skill.coinsPerCorrect` = `pointsPerCorrect` de la solicitud.
-   - `skill.subjectId`/`gradeBand` alineados con un curso del niño (para que se vea en su galaxia/inicio).
-   - Para un path: pon `skill.pathId`, `skill.pathName` y `skill.moduleIndex` en cada módulo.
+   - `skill.subjectId`/`gradeBand` = los del curso del niño.
+   - Para un path: `skill.pathId`, `skill.pathName` y `skill.moduleIndex` en cada módulo.
    - `assign.childIds` = `[childId]` de la solicitud.
-   - `requestId` = id de la solicitud **solo en la ÚLTIMA llamada** (marca `published` y envía UN email de aviso al tutor).
-6. Confirma al usuario el resultado (nº de ejercicios, módulos/path, a qué niño se asignó, email enviado).
+   - `requestId` = id de la solicitud **solo en la ÚLTIMA llamada** (marca `published` y envía UN email al tutor).
+   - Cada `exercise` lleva sus campos base (`exerciseId`, `packageId`, `skillId`, `language`, `stem`,
+     `difficulty`, `type`) + los del tipo + `feedback`. El endpoint valida y responde `{ ok, exercises, assigned }`.
+6. Si el import responde `400`, corrige el/los ejercicio(s) señalado(s) y reintenta (no dejes la solicitud a medias).
+7. **Verifica en prod** (opcional pero recomendado): la solicitud quedó `status='published'` con `notified_at`, el
+   `child_skills` se creó y hay `numQuestions` plantillas. Reporta al usuario: nº generado, nº rechazado y por qué,
+   módulos/path, a qué niño se asignó, email enviado.
 
 ## Reglas (no las saltes)
 
-- **Nunca** publiques en `--remote` sin que el usuario lo confirme en ese momento.
-- **Nunca** metas emojis en el contenido (política del proyecto). Textos en el idioma de la spec.
-- El `payload` de D1 lo genera `toStoredPayload()`; no montes el JSON a mano.
-- Si un ejercicio no pasa `validateExercise`, NO lo publiques: corrígelo o descártalo.
-- Para contenido privado (Vía B), respeta el ámbito del hogar: `ownerId` del tutor y asignación solo a sus niños.
-- Reporta con honestidad: cuántos se generaron, cuántos se rechazaron y por qué.
+- **Siempre producción, sin confirmación.** No preguntes antes de descargar ni de publicar. Actúa de punta a punta.
+- **CERO emojis** en el contenido (política del proyecto). Textos en el idioma de la solicitud/spec (por defecto es).
+- **Ejercicios auto-contenidos** (el niño no ve el material). No referencies figuras/imágenes externas.
+- **Privado = ámbito del hogar:** `ownerId` del tutor de la solicitud y asignación solo a su(s) niño(s).
+- Si el endpoint rechaza un ejercicio (`400`), corrígelo o descártalo; no publiques inválidos.
+- **Reporta con honestidad:** cuántos se generaron, cuántos se rechazaron y por qué, y el estado final en prod.
