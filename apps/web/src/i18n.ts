@@ -164,6 +164,11 @@ const es = {
     period: "Periodo de acumulación",
     periodWeek: "Semanal",
     periodMonth: "Mensual",
+    period_week: "Semanal",
+    period_month: "Mensual",
+    period_quarter: "Trimestral",
+    period_semester: "Semestral",
+    period_year: "Anual",
     limit: "Límite de canjes",
     limitNone: "Ilimitado",
     limitOnce: "Una sola vez",
@@ -204,7 +209,7 @@ const es = {
     deleteRequestConfirm: "¿Borrar esta solicitud y sus ficheros subidos? El contenido ya publicado no se borra.",
   },
   hud: { switchProfile: "Cambiar de perfil" },
-  settings: { theme: "Tema", system: "Sistema", light: "Claro", dark: "Oscuro", language: "Idioma" },
+  settings: { title: "Ajustes", appearance: "Apariencia", theme: "Tema", system: "Sistema", light: "Claro", dark: "Oscuro", language: "Idioma" },
 };
 
 const en: typeof es = {
@@ -369,6 +374,11 @@ const en: typeof es = {
     period: "Accumulation period",
     periodWeek: "Weekly",
     periodMonth: "Monthly",
+    period_week: "Weekly",
+    period_month: "Monthly",
+    period_quarter: "Quarterly",
+    period_semester: "Half-yearly",
+    period_year: "Yearly",
     limit: "Redemption limit",
     limitNone: "Unlimited",
     limitOnce: "Once only",
@@ -409,7 +419,7 @@ const en: typeof es = {
     deleteRequestConfirm: "Delete this request and its uploaded files? Already published content is not deleted.",
   },
   hud: { switchProfile: "Switch profile" },
-  settings: { theme: "Theme", system: "System", light: "Light", dark: "Dark", language: "Language" },
+  settings: { title: "Settings", appearance: "Appearance", theme: "Theme", system: "System", light: "Light", dark: "Dark", language: "Language" },
 };
 
 export const SUPPORTED_LANGS = ["es", "en"] as const;

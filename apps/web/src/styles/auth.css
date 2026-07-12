@@ -202,6 +202,8 @@
   flex-direction: column;
   gap: 0.7rem;
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+  max-height: calc(100dvh - 2.4rem);
+  overflow-y: auto;
 }
 .modal h3 {
   margin: 0;
@@ -298,6 +300,31 @@
 }
 .panel-top b {
   font-size: 0.85rem;
+}
+.panel-id {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  text-align: left;
+}
+.panel-id > svg {
+  color: var(--text-dim);
+}
+.panel-id-text {
+  display: flex;
+  flex-direction: column;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.1rem 0 0.3rem;
 }
 .panel-head {
   display: flex;

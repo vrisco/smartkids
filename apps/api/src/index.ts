@@ -66,6 +66,7 @@ const {
 } = schema;
 
 const COINS_PER_CORRECT = 10;
+const GOAL_PERIODS = ["week", "month", "quarter", "semester", "year"]; // ventanas rodantes de objetivo
 const VERIFY_TTL = 24 * 60 * 60 * 1000;
 const RESET_TTL = 60 * 60 * 1000;
 const INVITE_TTL = 7 * 24 * 60 * 60 * 1000; // invitación de tutor: 7 días
@@ -181,11 +182,15 @@ async function householdIds(db: DB, parentId: string): Promise<string[]> {
   return s?.spouseId === parentId ? [parentId, p.spouseId] : [parentId];
 }
 
-/** Inicio (ISO) de la ventana rodante: 'week'=7d, 'month'=30d, resto='all' (epoch). */
+/** Inicio (ISO) de la ventana rodante: week=7d, month=30d, quarter=90d, semester=180d, year=365d; resto='all' (epoch). */
 function periodStartIso(period: string | null | undefined): string {
   const now = Date.now();
-  if (period === "week") return new Date(now - 7 * 86400000).toISOString();
-  if (period === "month") return new Date(now - 30 * 86400000).toISOString();
+  const d = 86400000;
+  if (period === "week") return new Date(now - 7 * d).toISOString();
+  if (period === "month") return new Date(now - 30 * d).toISOString();
+  if (period === "quarter") return new Date(now - 90 * d).toISOString();
+  if (period === "semester") return new Date(now - 180 * d).toISOString();
+  if (period === "year") return new Date(now - 365 * d).toISOString();
   return new Date(0).toISOString();
 }
 
@@ -1495,7 +1500,7 @@ app.post("/api/tutor/rewards", async (c) => {
   const cost = Math.floor(Number(body.cost));
   if (!name || !Number.isFinite(cost) || cost < 1) return c.json({ error: "invalid", message: "Nombre y coste (>= 1) requeridos." }, 400);
   const kind = body.kind === "goal" ? "goal" : "spend";
-  const period = kind === "goal" ? (body.period === "week" ? "week" : "month") : null;
+  const period = kind === "goal" ? (body.period && GOAL_PERIODS.includes(body.period) ? body.period : "month") : null;
   let limitCount = body.limitCount != null && Number.isFinite(Number(body.limitCount)) && Number(body.limitCount) > 0 ? Math.floor(Number(body.limitCount)) : null;
   let limitPeriod = body.limitPeriod === "week" || body.limitPeriod === "month" ? body.limitPeriod : "all";
   // Un objetivo siempre lleva límite (si no, sería reclamable infinitas veces): por defecto una vez por su periodo.
@@ -1527,7 +1532,7 @@ app.patch("/api/tutor/rewards/:id", async (c) => {
   if (body.icon) patch.icon = body.icon;
   if (body.kind === "spend" || body.kind === "goal") {
     patch.kind = body.kind;
-    patch.period = body.kind === "goal" ? (body.period === "week" ? "week" : "month") : null;
+    patch.period = body.kind === "goal" ? (body.period && GOAL_PERIODS.includes(body.period) ? body.period : "month") : null;
   }
   if ("limitCount" in body) patch.limitCount = body.limitCount != null && Number(body.limitCount) > 0 ? Math.floor(Number(body.limitCount)) : null;
   if (body.limitPeriod === "week" || body.limitPeriod === "month" || body.limitPeriod === "all") patch.limitPeriod = body.limitPeriod;
@@ -1536,7 +1541,7 @@ app.patch("/api/tutor/rewards/:id", async (c) => {
   const resultLimit = "limitCount" in body ? patch.limitCount ?? null : r.limitCount;
   if (resultKind === "goal" && resultLimit == null) {
     patch.limitCount = 1;
-    patch.limitPeriod = (patch.period ?? r.period) === "week" ? "week" : "month";
+    patch.limitPeriod = (patch.period ?? r.period) ?? "month";
   }
   if (Object.keys(patch).length) await db.update(rewards).set(patch).where(eq(rewards.id, id));
   if (body.childIds) {

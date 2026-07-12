@@ -11,6 +11,7 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
   const [editing, setEditing] = useState<Child | null>(null);
   const [creating, setCreating] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,12 +30,14 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
   return (
     <div className="app-shell">
       <header className="panel-top">
-        <div>
-          <div className="panel-kicker">{t("tutor.role")}</div>
-          <b>{me.parent.email}</b>
-        </div>
+        <button className="panel-id" type="button" onClick={() => setSettingsOpen(true)} aria-label={t("settings.title")}>
+          <span className="panel-id-text">
+            <span className="panel-kicker">{t("tutor.role")}</span>
+            <b>{me.parent.email}</b>
+          </span>
+          <Icon name="chevronDown" size={14} />
+        </button>
         <div className="row-actions">
-          <SettingsToggle />
           <button className="btn-ghost sm" type="button" onClick={onLogout}>
             {t("common.logout")}
           </button>
@@ -80,15 +83,43 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
         <RewardsSection me={me} />
 
         <ContentSection me={me} />
-
-        <button className="btn-ghost panel-pw" type="button" onClick={() => setChangingPw(true)}>
-          {t("tutor.changeMyPw")}
-        </button>
       </div>
 
       {creating && <ChildForm courses={courses} onClose={() => setCreating(false)} onDone={() => { setCreating(false); onRefresh(); }} />}
       {editing && <ChildForm child={editing} courses={courses} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onRefresh(); }} />}
       {changingPw && <ChangePassword onClose={() => setChangingPw(false)} />}
+      {settingsOpen && (
+        <SettingsPanel
+          onClose={() => setSettingsOpen(false)}
+          onChangePassword={() => {
+            setSettingsOpen(false);
+            setChangingPw(true);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SettingsPanel({ onClose, onChangePassword }: { onClose: () => void; onChangePassword: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{t("settings.title")}</h3>
+        <div className="settings-row">
+          <span>{t("settings.appearance")}</span>
+          <SettingsToggle />
+        </div>
+        <button className="btn-ghost" type="button" onClick={onChangePassword}>
+          {t("tutor.changeMyPw")}
+        </button>
+        <div className="modal-actions">
+          <button className="btn-primary" type="button" onClick={onClose}>
+            {t("common.close")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -562,13 +593,12 @@ function RewardForm({ reward, kids, onClose, onDone }: { reward?: TutorReward; k
         />
 
         {kind === "goal" && (
-          <div className="seg">
-            <button type="button" className={period === "week" ? "on" : ""} onClick={() => setPeriod("week")}>
-              {t("rewards.periodWeek")}
-            </button>
-            <button type="button" className={period === "month" ? "on" : ""} onClick={() => setPeriod("month")}>
-              {t("rewards.periodMonth")}
-            </button>
+          <div className="seg wrap">
+            {(["week", "month", "quarter", "semester", "year"] as const).map((p) => (
+              <button key={p} type="button" className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>
+                {t(`rewards.period_${p}`)}
+              </button>
+            ))}
           </div>
         )}
 
@@ -738,7 +768,7 @@ function ContentSection({ me }: { me: Me }) {
         <p className="muted screen-pad">{t("content.noKids")}</p>
       ) : (
         <>
-          <p className="reward-hint">{t("content.hint")}</p>
+          <p className="muted screen-pad" style={{ textAlign: "center" }}>{t("content.hint")}</p>
           {(reqs ?? []).length > 0 && (
             <div className="list">
               {(reqs ?? []).map((r) => (
