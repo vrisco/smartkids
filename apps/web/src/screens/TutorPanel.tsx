@@ -165,6 +165,7 @@ function SettingsPanel({ onClose, onChangePassword }: { onClose: () => void; onC
         <button className="btn-ghost" type="button" onClick={onChangePassword}>
           {t("tutor.changeMyPw")}
         </button>
+        <div className="app-version" style={{ textAlign: "center" }}>v{__APP_VERSION__}</div>
         <div className="modal-actions">
           <button className="btn-primary" type="button" onClick={onClose}>
             {t("common.close")}
