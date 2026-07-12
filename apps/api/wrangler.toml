@@ -2,6 +2,12 @@ name = "app"
 main = "src/index.ts"
 compatibility_date = "2026-07-01"
 
+# Web Push (VAPID). La clave PÚBLICA no es secreta (va al cliente). La PRIVADA es un secreto:
+#   wrangler secret put VAPID_PRIVATE_JWK   (el JWK con la componente "d")
+[vars]
+VAPID_PUBLIC = "BBt5nkdUbJp9PtRHuGsyJXqmAjAdCrULfJ9dOzpCO3LIM6NZ4gDiyI-U1Fw3A-FYmC7C-y6hOOz8TTuESde72-4"
+VAPID_SUBJECT = "https://app.smart-kids.uk"
+
 # Dominio propio: el Worker se sirve en https://app.smart-kids.uk
 # Cloudflare provisiona el registro DNS de `app` y el certificado TLS automáticamente.
 # (La URL app.smartkids.workers.dev sigue funcionando como respaldo.)

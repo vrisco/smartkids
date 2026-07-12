@@ -1,14 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
+import { ContentPreview } from "../components/ContentPreview";
+import { StatsView } from "../components/StatsView";
+import { InstallCard } from "../components/InstallCard";
+import { NotificationsToggle } from "../components/NotificationsToggle";
+import { PasskeySettings } from "../components/PasskeySettings";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
+import { setBadge } from "../pwa";
 
 export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () => void; onRefresh: () => void }) {
   const { t } = useTranslation();
   const [courses, setCourses] = useState<Course[]>([]);
   const [editing, setEditing] = useState<Child | null>(null);
+  const [statsChild, setStatsChild] = useState<Child | null>(null);
   const [creating, setCreating] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -54,6 +61,8 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
         )}
         {verifyMsg && <div className="auth-info panel-msg">{verifyMsg}</div>}
 
+        <InstallCard />
+
         <PendingRedemptions />
 
         <div className="panel-head">
@@ -70,6 +79,9 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
                 <b>{ch.displayName}</b>
                 <span>@{ch.username}</span>
               </div>
+              <button className="btn-ghost sm" type="button" onClick={() => setStatsChild(ch)}>
+                {t("stats.progress")}
+              </button>
               <button className="btn-ghost sm" type="button" onClick={() => setEditing(ch)}>
                 {t("common.edit")}
               </button>
@@ -87,6 +99,7 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
 
       {creating && <ChildForm courses={courses} onClose={() => setCreating(false)} onDone={() => { setCreating(false); onRefresh(); }} />}
       {editing && <ChildForm child={editing} courses={courses} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onRefresh(); }} />}
+      {statsChild && <ChildStatsModal child={statsChild} onClose={() => setStatsChild(null)} />}
       {changingPw && <ChangePassword onClose={() => setChangingPw(false)} />}
       {settingsOpen && (
         <SettingsPanel
@@ -101,6 +114,42 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
   );
 }
 
+function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    api
+      .tutorChildStats(child.id)
+      .then(setStats)
+      .catch(() => setError(true));
+  }, [child.id]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal stats-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="preview-head">
+          <div className="list-main">
+            <b>{child.displayName}</b>
+            <span className="muted">{t("stats.title")}</span>
+          </div>
+          <button className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        {error ? (
+          <p className="muted screen-pad">{t("session.connError")}</p>
+        ) : !stats ? (
+          <p className="muted screen-pad">{t("content.previewLoading")}</p>
+        ) : (
+          <StatsView stats={stats} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsPanel({ onClose, onChangePassword }: { onClose: () => void; onChangePassword: () => void }) {
   const { t } = useTranslation();
   return (
@@ -111,9 +160,12 @@ function SettingsPanel({ onClose, onChangePassword }: { onClose: () => void; onC
           <span>{t("settings.appearance")}</span>
           <SettingsToggle />
         </div>
+        <NotificationsToggle />
+        <PasskeySettings />
         <button className="btn-ghost" type="button" onClick={onChangePassword}>
           {t("tutor.changeMyPw")}
         </button>
+        <div className="app-version" style={{ textAlign: "center" }}>v{__APP_VERSION__}</div>
         <div className="modal-actions">
           <button className="btn-primary" type="button" onClick={onClose}>
             {t("common.close")}
@@ -296,6 +348,28 @@ function SpouseSection({ me, onRefresh }: { me: Me; onRefresh: () => void }) {
   const { t } = useTranslation();
   const [inviting, setInviting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  async function resendInvite() {
+    setBusy(true);
+    try {
+      await api.resendSpouse();
+      setResent(true);
+    } catch {
+      /* noop */
+    }
+    setBusy(false);
+  }
+  async function cancelInvite() {
+    if (!window.confirm(t("tutor.cancelInviteConfirm"))) return;
+    setBusy(true);
+    try {
+      await api.cancelSpouseInvite();
+      onRefresh();
+    } catch {
+      setBusy(false);
+    }
+  }
 
   async function unlink() {
     if (!window.confirm(t("tutor.unlinkConfirm"))) return;
@@ -365,7 +439,23 @@ function SpouseSection({ me, onRefresh }: { me: Me; onRefresh: () => void }) {
           </div>
         </div>
       ) : me.spouseInviteOut ? (
-        <p className="muted screen-pad">{t("tutor.spouseOutPending", { email: me.spouseInviteOut.toEmail })}</p>
+        <div className="list">
+          <div className="list-row">
+            <div className="list-main">
+              <b>{me.spouseInviteOut.toEmail}</b>
+              <span>{t("tutor.spousePending")}</span>
+            </div>
+            <span className="row-actions">
+              <button className="btn-ghost sm" type="button" onClick={resendInvite} disabled={busy}>
+                {t("tutor.resendInvite")}
+              </button>
+              <button className="btn-ghost sm danger" type="button" onClick={cancelInvite} disabled={busy}>
+                {t("tutor.cancelInvite")}
+              </button>
+            </span>
+          </div>
+          {resent && <p className="muted screen-pad">{t("tutor.inviteResent")}</p>}
+        </div>
       ) : (
         <p className="muted screen-pad">{t("tutor.spouseHint")}</p>
       )}
@@ -653,7 +743,13 @@ function PendingRedemptions() {
   const [busy, setBusy] = useState<string | null>(null);
 
   function load() {
-    api.tutorRedemptions().then(setItems).catch(() => setItems([]));
+    api
+      .tutorRedemptions()
+      .then((r) => {
+        setItems(r);
+        setBadge(r.length); // nº de canjes pendientes en el icono de la app
+      })
+      .catch(() => setItems([]));
   }
   useEffect(() => {
     load();
@@ -705,6 +801,8 @@ function ContentSection({ me }: { me: Me }) {
   const [content, setContent] = useState<PrivateSkill[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState<ContentRequest | null>(null);
+  const [preview, setPreview] = useState<PrivateSkill | null>(null);
+  const [showOld, setShowOld] = useState(false);
   const contentRef = useRef<PrivateSkill[]>([]);
 
   function load() {
@@ -770,32 +868,69 @@ function ContentSection({ me }: { me: Me }) {
       ) : (
         <>
           <p className="muted screen-pad" style={{ textAlign: "center" }}>{t("content.hint")}</p>
-          {(reqs ?? []).length > 0 && (
-            <div className="list">
-              {(reqs ?? []).map((r) => (
-                <div className="list-row" key={r.id}>
-                  <div className="shop-ic sm">
-                    <Icon name="book" size={20} />
+          {(() => {
+            const active = (reqs ?? []).filter((r) => r.status !== "published");
+            const old = (reqs ?? []).filter((r) => r.status === "published");
+            return (
+              <>
+                {active.length > 0 && (
+                  <div className="list">
+                    {active.map((r) => (
+                      <div className="list-row" key={r.id}>
+                        <div className="shop-ic sm">
+                          <Icon name="book" size={20} />
+                        </div>
+                        <div className="list-main">
+                          <b>{r.title || t("content.untitled")}</b>
+                          <span>
+                            {t(`content.status_${r.status}`)}
+                            {r.exerciseCount ? ` · ${r.exerciseCount}` : r.assets && r.assets.length ? ` · ${r.assets.length}` : ""}
+                          </span>
+                        </div>
+                        {r.status === "uploaded" && (
+                          <button className="btn-ghost sm" type="button" onClick={() => setEditing(r)}>
+                            {t("common.edit")}
+                          </button>
+                        )}
+                        <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
+                          {t("common.delete")}
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <div className="list-main">
-                    <b>{r.title || t("content.untitled")}</b>
-                    <span>
-                      {t(`content.status_${r.status}`)}
-                      {r.exerciseCount ? ` · ${r.exerciseCount}` : r.assets && r.assets.length ? ` · ${r.assets.length}` : ""}
-                    </span>
-                  </div>
-                  {r.status === "uploaded" && (
-                    <button className="btn-ghost sm" type="button" onClick={() => setEditing(r)}>
-                      {t("common.edit")}
+                )}
+                {old.length > 0 && (
+                  <div className="archived">
+                    <button className="archived-toggle" type="button" onClick={() => setShowOld((v) => !v)}>
+                      <Icon name={showOld ? "chevronDown" : "chevronRight"} size={16} />
+                      {t("content.archived", { count: old.length })}
                     </button>
-                  )}
-                  <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
-                    {t("common.delete")}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+                    {showOld && (
+                      <div className="list">
+                        {old.map((r) => (
+                          <div className="list-row" key={r.id}>
+                            <div className="shop-ic sm">
+                              <Icon name="book" size={20} />
+                            </div>
+                            <div className="list-main">
+                              <b>{r.title || t("content.untitled")}</b>
+                              <span>
+                                {t(`content.status_${r.status}`)}
+                                {r.exerciseCount ? ` · ${r.exerciseCount}` : ""}
+                              </span>
+                            </div>
+                            <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
+                              {t("common.delete")}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
           {(content ?? []).length > 0 && (
             <div className="list">
               {(content ?? []).map((s) => (
@@ -807,6 +942,9 @@ function ContentSection({ me }: { me: Me }) {
                         {s.exercises} {t("content.exercises")}
                       </span>
                     </div>
+                    <button className="btn-ghost sm" type="button" onClick={() => setPreview(s)}>
+                      {t("content.preview")}
+                    </button>
                     <button className="btn-ghost sm danger" type="button" onClick={() => delContent(s.id)}>
                       {t("common.delete")}
                     </button>
@@ -840,6 +978,7 @@ function ContentSection({ me }: { me: Me }) {
           }}
         />
       )}
+      {preview && <ContentPreview skillId={preview.id} title={tx(preview.nameI18n)} onClose={() => setPreview(null)} />}
     </div>
   );
 }

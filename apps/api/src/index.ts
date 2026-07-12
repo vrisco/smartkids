@@ -21,6 +21,14 @@ import {
   verifySecret,
 } from "./auth";
 import { devLinksEnabled, emailLayout, sendEmail } from "./email";
+import { sendPush } from "./webpush";
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from "@simplewebauthn/server";
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import {
   AnswerSchema,
   ExerciseSchema,
@@ -41,6 +49,9 @@ export interface Env {
   EMAIL_FROM?: string;
   EMAIL_DEV_LINKS?: string;
   CONTENT_IMPORT_TOKEN?: string; // token de máquina para el import de contenido (pipeline/skill)
+  VAPID_PUBLIC?: string; // clave pública VAPID (base64url, para el cliente)
+  VAPID_PRIVATE_JWK?: string; // clave privada VAPID como JWK (SECRETO)
+  VAPID_SUBJECT?: string; // sub del JWT VAPID (URL o mailto:)
 }
 
 const {
@@ -63,6 +74,9 @@ const {
   contentRequests,
   contentRequestAssets,
   coinAwards,
+  pushSubscriptions,
+  webauthnCredentials,
+  webauthnFlows,
 } = schema;
 
 const COINS_PER_CORRECT = 10;
@@ -164,6 +178,11 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   await db.delete(wallets).where(eq(wallets.profileId, childId));
   await db.delete(attempts).where(eq(attempts.profileId, childId));
   await db.delete(skillProgress).where(eq(skillProgress.profileId, childId));
+  // Estas también referencian al niño (FK sin ON DELETE): sin vaciarlas, el borrado del niño falla.
+  await db.delete(coinAwards).where(eq(coinAwards.profileId, childId));
+  await db.delete(childSkills).where(eq(childSkills.childId, childId));
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, childId));
+  await db.update(contentRequests).set({ childId: null }).where(eq(contentRequests.childId, childId));
   await db.delete(childProfiles).where(eq(childProfiles.id, childId));
 }
 
@@ -477,6 +496,8 @@ app.delete("/api/admin/tutors/:id", async (c) => {
   await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, id));
   await db.delete(schema.authTokens).where(eq(schema.authTokens.parentId, id));
   await db.delete(schema.sessions).where(eq(schema.sessions.parentId, id));
+  await db.delete(webauthnCredentials).where(eq(webauthnCredentials.parentId, id));
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, id));
   await db.delete(parentAccounts).where(eq(parentAccounts.id, id));
   return c.json({ ok: true });
 });
@@ -608,6 +629,31 @@ app.post("/api/tutor/spouse/reject", async (c) => {
   if (typeof parentId !== "string") return parentId;
   await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.id, parentId));
   return c.json({ ok: true });
+});
+
+// Cancela la invitación SALIENTE pendiente (para poder invitar a otra dirección).
+app.delete("/api/tutor/spouse/invite", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  // Limpia el puntero en el lado del invitado (solo filas que apuntan a MÍ; no toca a terceros).
+  await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, parentId));
+  return c.json({ ok: true });
+});
+
+// Reenvía el correo de la invitación SALIENTE pendiente (mismo invitado, nuevo enlace si aún no tiene contraseña).
+app.post("/api/tutor/spouse/resend", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const [me] = await db.select().from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  if (!me || me.role !== "tutor") return c.json({ error: "forbidden" }, 403);
+  if (await rateLimited(db, `spouse:${parentId}`)) return c.json({ error: "rate_limited", message: "Demasiados intentos. Prueba más tarde." }, 429);
+  const [inv] = await db.select().from(parentAccounts).where(eq(parentAccounts.spousePendingFrom, parentId)).limit(1);
+  if (!inv) return c.json({ error: "invalid", message: "No hay ninguna invitación pendiente." }, 404);
+  await recordAttempt(db, `spouse:${parentId}`);
+  const devLink = await issueSpouseInvite(c, db, me.email, { id: inv.id, email: inv.email, verified: inv.emailVerified });
+  return c.json({ ok: true, invitee: { email: inv.email }, ...(devLink ? { devLink } : {}) });
 });
 
 app.delete("/api/tutor/spouse", async (c) => {
@@ -789,6 +835,351 @@ app.get("/api/child/me", async (c) => {
     customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0, pathId: s.pathId, pathName: s.pathName, moduleIndex: s.moduleIndex });
   }
   return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, courses: crs, customContent });
+});
+
+/* ================= Estadísticas / seguimiento ================= */
+
+const SESSION_GAP_MS = 20 * 60 * 1000; // hueco que separa una "sesión" de la siguiente al reconstruirlas
+
+// Agrega el progreso de un perfil desde attempts + wallet_ledger + skill_progress.
+// No hay tabla de sesiones: se RECONSTRUYEN agrupando los intentos por huecos de tiempo.
+async function computeProfileStats(db: DB, profileId: string) {
+  const now = Date.now();
+  const attemptRows = await db
+    .select({ skillId: attempts.skillId, correct: attempts.correct, rt: attempts.responseTimeMs, ts: attempts.ts })
+    .from(attempts)
+    .where(eq(attempts.profileId, profileId))
+    .orderBy(asc(attempts.ts))
+    .limit(5000);
+  const ledgerRows = await db
+    .select({ delta: walletLedger.delta, reason: walletLedger.reason, ts: walletLedger.ts })
+    .from(walletLedger)
+    .where(eq(walletLedger.profileId, profileId));
+  const [wallet] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, profileId)).limit(1);
+  const progressRows = await db
+    .select({ skillId: skillProgress.skillId, mastery: skillProgress.masteryScore, status: skillProgress.status })
+    .from(skillProgress)
+    .where(eq(skillProgress.profileId, profileId));
+  const progById = new Map(progressRows.map((p) => [p.skillId, p]));
+
+  const skillIds = [...new Set(attemptRows.map((a) => a.skillId))];
+  const nameById = new Map<string, unknown>();
+  if (skillIds.length) {
+    const srows = await db.select({ id: skills.id, name: skills.nameI18n }).from(skills).where(inArray(skills.id, skillIds));
+    for (const s of srows) nameById.set(s.id, s.name);
+  }
+
+  const isExercise = (r: string) => r.startsWith("exercise:");
+  const isRedeem = (r: string) => r.startsWith("redeem:");
+  const total = attemptRows.length;
+  const correct = attemptRows.filter((a) => a.correct).length;
+  const timed = attemptRows.filter((a) => typeof a.rt === "number");
+  const avgTimeMs = timed.length ? Math.round(timed.reduce((s, a) => s + (a.rt as number), 0) / timed.length) : null;
+  const activeDays = new Set(attemptRows.map((a) => a.ts.slice(0, 10))).size;
+  const sumEarnedSince = (fromMs: number) =>
+    ledgerRows.filter((l) => isExercise(l.reason) && Date.parse(l.ts) >= fromMs).reduce((s, l) => s + l.delta, 0);
+  const pointsEarned = ledgerRows.filter((l) => isExercise(l.reason)).reduce((s, l) => s + l.delta, 0);
+  const pointsSpent = ledgerRows.filter((l) => isRedeem(l.reason)).reduce((s, l) => s - l.delta, 0);
+
+  // Por skill
+  const bySkill = new Map<string, { attempts: number; correct: number; rtSum: number; rtN: number }>();
+  for (const a of attemptRows) {
+    const g = bySkill.get(a.skillId) ?? { attempts: 0, correct: 0, rtSum: 0, rtN: 0 };
+    g.attempts++;
+    if (a.correct) g.correct++;
+    if (typeof a.rt === "number") {
+      g.rtSum += a.rt;
+      g.rtN++;
+    }
+    bySkill.set(a.skillId, g);
+  }
+  const perSkill = [...bySkill.entries()]
+    .map(([id, g]) => ({
+      skillId: id,
+      name: nameById.get(id) ?? { es: id },
+      attempts: g.attempts,
+      correct: g.correct,
+      accuracyPct: g.attempts ? Math.round((g.correct / g.attempts) * 100) : 0,
+      avgTimeMs: g.rtN ? Math.round(g.rtSum / g.rtN) : null,
+      mastery: progById.get(id)?.mastery ?? null,
+      status: progById.get(id)?.status ?? null,
+    }))
+    .sort((a, b) => b.attempts - a.attempts);
+
+  // Sesiones reconstruidas (hueco > SESSION_GAP_MS = nueva sesión)
+  const exLedger = ledgerRows.filter((l) => isExercise(l.reason)).map((l) => ({ t: Date.parse(l.ts), d: l.delta }));
+  const sessions: Array<{ start: string; end: string; count: number; correct: number; wrong: number; timeMs: number; points: number }> = [];
+  let cur: { startT: number; endT: number; count: number; correct: number; rtSum: number } | null = null;
+  const flush = () => {
+    if (!cur) return;
+    const g = cur;
+    const points = exLedger.filter((l) => l.t >= g.startT - 1000 && l.t <= g.endT + 1000).reduce((s, l) => s + l.d, 0);
+    sessions.push({
+      start: new Date(g.startT).toISOString(),
+      end: new Date(g.endT).toISOString(),
+      count: g.count,
+      correct: g.correct,
+      wrong: g.count - g.correct,
+      timeMs: g.rtSum,
+      points,
+    });
+    cur = null;
+  };
+  for (const a of attemptRows) {
+    const t = Date.parse(a.ts);
+    if (cur && t - cur.endT > SESSION_GAP_MS) flush();
+    if (!cur) cur = { startT: t, endT: t, count: 0, correct: 0, rtSum: 0 };
+    cur.endT = t;
+    cur.count++;
+    if (a.correct) cur.correct++;
+    if (typeof a.rt === "number") cur.rtSum += a.rt;
+  }
+  flush();
+  sessions.reverse();
+
+  // Actividad últimos 14 días (para el mini-gráfico)
+  const attemptsByDay = new Map<string, { attempts: number; correct: number }>();
+  for (const a of attemptRows) {
+    const k = a.ts.slice(0, 10);
+    const g = attemptsByDay.get(k) ?? { attempts: 0, correct: 0 };
+    g.attempts++;
+    if (a.correct) g.correct++;
+    attemptsByDay.set(k, g);
+  }
+  const pointsByDay = new Map<string, number>();
+  for (const l of ledgerRows) if (isExercise(l.reason)) pointsByDay.set(l.ts.slice(0, 10), (pointsByDay.get(l.ts.slice(0, 10)) ?? 0) + l.delta);
+  const activity: Array<{ date: string; attempts: number; correct: number; points: number }> = [];
+  for (let i = 13; i >= 0; i--) {
+    const k = new Date(now - i * 86400000).toISOString().slice(0, 10);
+    const g = attemptsByDay.get(k);
+    activity.push({ date: k, attempts: g?.attempts ?? 0, correct: g?.correct ?? 0, points: pointsByDay.get(k) ?? 0 });
+  }
+
+  return {
+    overview: {
+      attempts: total,
+      correct,
+      accuracyPct: total ? Math.round((correct / total) * 100) : 0,
+      avgTimeMs,
+      balance: wallet?.balance ?? 0,
+      pointsEarned,
+      pointsSpent,
+      earned7d: sumEarnedSince(now - 7 * 86400000),
+      earned30d: sumEarnedSince(now - 30 * 86400000),
+      activeDays,
+      lastActivity: attemptRows.length ? attemptRows[attemptRows.length - 1]!.ts : null,
+    },
+    perSkill,
+    sessions: sessions.slice(0, 30),
+    activity,
+  };
+}
+
+// El niño ve SUS propias estadísticas.
+app.get("/api/child/stats", async (c) => {
+  const db = getDb(c.env.DB);
+  const kid = await currentChildId(c, db);
+  if (!kid) return c.json({ error: "unauthorized" }, 401);
+  return c.json(await computeProfileStats(db, kid));
+});
+
+// El tutor ve las estadísticas de un niño de su hogar.
+app.get("/api/tutor/children/:id/stats", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const childId = c.req.param("id");
+  if (!(await ownsProfile(db, a, childId))) return c.json({ error: "forbidden" }, 403);
+  return c.json(await computeProfileStats(db, childId));
+});
+
+/* ================= Web Push ================= */
+
+// Envía un push (sin payload) a todas las suscripciones de un dueño; limpia las caducadas.
+async function notifyOwner(env: Env, db: DB, ownerId: string): Promise<void> {
+  if (!env.VAPID_PRIVATE_JWK) return;
+  const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.ownerId, ownerId));
+  for (const s of subs) {
+    const r = await sendPush(env, s.endpoint);
+    if (r.gone) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
+  }
+}
+
+// Clave pública VAPID para que el cliente se suscriba.
+app.get("/api/push/key", (c) => c.json({ publicKey: c.env.VAPID_PUBLIC ?? null }));
+
+// Guarda (upsert) la suscripción de push del usuario actual (tutor o niño).
+app.post("/api/push/subscribe", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ endpoint?: string; keys?: { p256dh?: string; auth?: string } }>();
+  if (!body?.endpoint || !body.keys?.p256dh || !body.keys?.auth) return c.json({ error: "invalid" }, 400);
+  const kid = await currentChildId(c, db);
+  let ownerType: string;
+  let ownerId: string;
+  if (kid) {
+    ownerType = "child";
+    ownerId = kid;
+  } else {
+    const p = await requireParent(c, db);
+    if (typeof p !== "string") return p;
+    ownerType = "parent";
+    ownerId = p;
+  }
+  const now = new Date().toISOString();
+  await db
+    .insert(pushSubscriptions)
+    .values({ id: crypto.randomUUID(), ownerType, ownerId, endpoint: body.endpoint, p256dh: body.keys.p256dh, auth: body.keys.auth, createdAt: now })
+    .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { ownerType, ownerId, p256dh: body.keys.p256dh, auth: body.keys.auth } });
+  return c.json({ ok: true });
+});
+
+// Borra una suscripción de push (al desactivar en el dispositivo).
+app.post("/api/push/unsubscribe", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ endpoint?: string }>();
+  if (!body?.endpoint) return c.json({ error: "invalid" }, 400);
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, body.endpoint));
+  return c.json({ ok: true });
+});
+
+/* ================= Passkeys (WebAuthn) — login biométrico del tutor ================= */
+
+const WEBAUTHN_RP_NAME = "Smartkids";
+const FLOW_TTL_MS = 5 * 60 * 1000;
+
+// rpID = hostname del origen del navegador; origin = ese origen completo (deben cuadrar con la página).
+function rpFromReq(c: Ctx): { rpID: string; origin: string } {
+  const origin = c.req.header("origin") ?? new URL(c.req.url).origin;
+  return { rpID: new URL(origin).hostname, origin };
+}
+function b64urlToBytes(s: string): Uint8Array<ArrayBuffer> {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+function bytesToB64url(b: Uint8Array): string {
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function saveFlow(db: DB, kind: string, userId: string | null, challenge: string): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.insert(webauthnFlows).values({ id, kind, userId, challenge, expiresAt: new Date(Date.now() + FLOW_TTL_MS).toISOString() });
+  return id;
+}
+async function takeFlow(db: DB, id: string, kind: string): Promise<{ userId: string | null; challenge: string } | null> {
+  const [f] = await db.select().from(webauthnFlows).where(eq(webauthnFlows.id, id)).limit(1);
+  await db.delete(webauthnFlows).where(eq(webauthnFlows.id, id)); // un solo uso
+  if (!f || f.kind !== kind || new Date(f.expiresAt).getTime() < Date.now()) return null;
+  return { userId: f.userId, challenge: f.challenge };
+}
+
+// Registro (tutor logueado): opciones.
+app.post("/api/auth/passkey/register/options", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const [parent] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, a)).limit(1);
+  if (!parent) return c.json({ error: "not_found" }, 404);
+  const existing = await db.select({ id: webauthnCredentials.id }).from(webauthnCredentials).where(eq(webauthnCredentials.parentId, a));
+  const { rpID } = rpFromReq(c);
+  const options = await generateRegistrationOptions({
+    rpName: WEBAUTHN_RP_NAME,
+    rpID,
+    userName: parent.email,
+    userID: new TextEncoder().encode(a) as Uint8Array<ArrayBuffer>,
+    attestationType: "none",
+    excludeCredentials: existing.map((e) => ({ id: e.id })),
+    // authenticatorAttachment "platform" = SOLO el biométrico integrado (Face ID / Touch ID /
+    // Windows Hello / huella Android). Sin esto, el navegador ofrece también QR y llave de seguridad.
+    authenticatorSelection: { residentKey: "required", userVerification: "required", authenticatorAttachment: "platform" },
+  });
+  const flowId = await saveFlow(db, "reg", a, options.challenge);
+  return c.json({ options, flowId });
+});
+
+// Registro: verifica y guarda la credencial.
+app.post("/api/auth/passkey/register/verify", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const body = await c.req.json<{ flowId: string; response: RegistrationResponseJSON }>();
+  const flow = await takeFlow(db, body.flowId, "reg");
+  if (!flow || flow.userId !== a) return c.json({ error: "flow_expired" }, 400);
+  const { rpID, origin } = rpFromReq(c);
+  let verification;
+  try {
+    verification = await verifyRegistrationResponse({ response: body.response, expectedChallenge: flow.challenge, expectedOrigin: origin, expectedRPID: rpID });
+  } catch {
+    return c.json({ error: "verify_failed" }, 400);
+  }
+  if (!verification.verified || !verification.registrationInfo) return c.json({ error: "not_verified" }, 400);
+  const { credential } = verification.registrationInfo;
+  const pk = bytesToB64url(credential.publicKey);
+  await db
+    .insert(webauthnCredentials)
+    .values({ id: credential.id, parentId: a, publicKey: pk, counter: credential.counter, transports: JSON.stringify(credential.transports ?? []), createdAt: new Date().toISOString() })
+    .onConflictDoUpdate({ target: webauthnCredentials.id, set: { publicKey: pk, counter: credential.counter } });
+  return c.json({ ok: true });
+});
+
+// Login (sin sesión): opciones usernameless (passkeys descubribles).
+app.post("/api/auth/passkey/login/options", async (c) => {
+  const db = getDb(c.env.DB);
+  const { rpID } = rpFromReq(c);
+  const options = await generateAuthenticationOptions({ rpID, userVerification: "required" });
+  const flowId = await saveFlow(db, "auth", null, options.challenge);
+  return c.json({ options, flowId });
+});
+
+// Login: verifica la aserción, actualiza el contador y abre sesión.
+app.post("/api/auth/passkey/login/verify", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ flowId: string; response: AuthenticationResponseJSON }>();
+  const flow = await takeFlow(db, body.flowId, "auth");
+  if (!flow) return c.json({ error: "flow_expired" }, 400);
+  const [cred] = await db.select().from(webauthnCredentials).where(eq(webauthnCredentials.id, body.response.id)).limit(1);
+  if (!cred) return c.json({ error: "unknown_credential" }, 400);
+  const { rpID, origin } = rpFromReq(c);
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: body.response,
+      expectedChallenge: flow.challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      credential: { id: cred.id, publicKey: b64urlToBytes(cred.publicKey), counter: cred.counter, transports: JSON.parse(cred.transports ?? "[]") },
+    });
+  } catch {
+    return c.json({ error: "verify_failed" }, 400);
+  }
+  if (!verification.verified) return c.json({ error: "not_verified" }, 400);
+  await db.update(webauthnCredentials).set({ counter: verification.authenticationInfo.newCounter }).where(eq(webauthnCredentials.id, cred.id));
+  const [parent] = await db.select().from(parentAccounts).where(eq(parentAccounts.id, cred.parentId)).limit(1);
+  if (!parent) return c.json({ error: "not_found" }, 404);
+  const token = await createSession(db, parent.id);
+  setSessionCookie(c, token);
+  return c.json({ parent: { id: parent.id, email: parent.email, role: parent.role, emailVerified: Boolean(parent.emailVerified) } });
+});
+
+// ¿Cuántas passkeys tiene el tutor actual? (para la UI de ajustes)
+app.get("/api/auth/passkey/list", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const [row] = await db.select({ n: sql<number>`count(*)` }).from(webauthnCredentials).where(eq(webauthnCredentials.parentId, a));
+  return c.json({ count: row?.n ?? 0 });
+});
+
+// Borra todas las passkeys del tutor actual.
+app.delete("/api/auth/passkey", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  await db.delete(webauthnCredentials).where(eq(webauthnCredentials.parentId, a));
+  return c.json({ ok: true });
 });
 
 /* ================= Datos de juego ================= */
@@ -994,6 +1385,7 @@ app.post("/api/admin/content/import", async (c) => {
         );
         await db.update(contentRequests).set({ notifiedAt: new Date().toISOString() }).where(eq(contentRequests.id, body.requestId));
       }
+      await notifyOwner(c.env, db, req.ownerId); // push al tutor: "contenido listo"
     }
   }
 
@@ -1037,6 +1429,55 @@ app.post("/api/tutor/skills/:skillId/assign", async (c) => {
   return c.json({ ok: true, childIds: valid });
 });
 
+// Preview del tutor: TODOS los ejercicios (incluidos los ocultos) de un skill privado del hogar, CON solución.
+app.get("/api/tutor/skills/:skillId/exercises", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const skillId = c.req.param("skillId");
+  const household = await householdIds(db, a);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
+  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const rows = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const out: Array<{ templateId: string; hidden: boolean; exercise: Exercise }> = [];
+  for (const ex of rows) {
+    try {
+      const exercise = exerciseFromRow({
+        id: ex.id,
+        packageId: ex.packageId,
+        skillId: ex.skillId,
+        type: ex.type,
+        language: ex.language,
+        contentVersion: ex.contentVersion,
+        stem: ex.stem,
+        payload: ex.payload,
+        difficultyNumeric: ex.difficultyNumeric,
+        difficultyLevel: ex.difficultyLevel,
+      });
+      out.push({ templateId: ex.id, hidden: ex.hidden, exercise });
+    } catch {
+      /* plantilla no conforme al modelo: la omitimos del preview */
+    }
+  }
+  return c.json(out);
+});
+
+// El tutor oculta/muestra un ejercicio de un skill privado del hogar (el niño solo recibe los visibles).
+app.post("/api/tutor/exercises/:templateId/hidden", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const templateId = c.req.param("templateId");
+  const { hidden } = await c.req.json<{ hidden: boolean }>();
+  const [tpl] = await db.select({ skillId: exerciseTemplates.skillId }).from(exerciseTemplates).where(eq(exerciseTemplates.id, templateId)).limit(1);
+  if (!tpl) return c.json({ error: "not_found" }, 404);
+  const household = await householdIds(db, a);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, tpl.skillId)).limit(1);
+  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  await db.update(exerciseTemplates).set({ hidden: Boolean(hidden) }).where(eq(exerciseTemplates.id, templateId));
+  return c.json({ ok: true, hidden: Boolean(hidden) });
+});
+
 // Borra un skill PRIVADO del hogar y todo su contenido (plantillas, paquete vacío, progreso, asignaciones).
 app.delete("/api/tutor/skills/:skillId", async (c) => {
   const db = getDb(c.env.DB);
@@ -1047,10 +1488,15 @@ app.delete("/api/tutor/skills/:skillId", async (c) => {
   const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
   if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
   const pkgRows = await db.selectDistinct({ pkg: exerciseTemplates.packageId }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const tplRows = await db.select({ id: exerciseTemplates.id }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const tplIds = tplRows.map((r) => r.id);
   // Sin ON DELETE cascade: borramos respetando el orden de las FKs.
+  // coin_awards referencia exercise_templates: hay que vaciarlo ANTES de borrar las plantillas
+  // (si no, un ejercicio con monedas ya concedidas rompe el borrado por FK y el curso no se elimina).
   await db.delete(attempts).where(eq(attempts.skillId, skillId));
   await db.delete(skillProgress).where(eq(skillProgress.skillId, skillId));
   await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
+  if (tplIds.length) await db.delete(coinAwards).where(inArray(coinAwards.exerciseTemplateId, tplIds));
   await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
   await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
   for (const { pkg } of pkgRows) {
@@ -1288,7 +1734,12 @@ app.get("/api/session/next", async (c) => {
   if (!(await childCanAttemptSkill(db, profileId, skillId))) return c.json({ error: "no_course_access" }, 403);
 
   // Banco de plantillas del skill (con un tope de seguridad); ya no solo las 10 primeras.
-  const rows = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId)).limit(200);
+  // Excluye las ocultas por el tutor: el niño no las recibe.
+  const rows = await db
+    .select()
+    .from(exerciseTemplates)
+    .where(and(eq(exerciseTemplates.skillId, skillId), eq(exerciseTemplates.hidden, false)))
+    .limit(200);
   if (rows.length === 0) return c.json({ error: "no exercise found" }, 404);
 
   // Evitar repetición: excluye lo que pida el cliente (repaso / sesión en curso) y lo visto hace poco.
@@ -1337,6 +1788,7 @@ app.get("/api/session/next", async (c) => {
       skillId: ex.skillId,
       type: exercise.type,
       stem: exercise.stem,
+      figure: exercise.figure ?? null,
       contentVersion: ex.contentVersion,
       render,
     });
@@ -1541,6 +1993,7 @@ app.post("/api/rewards/:id/redeem", async (c) => {
     const earned = await earnedSince(db, profileId, periodStartIso(reward.period));
     if (earned < reward.cost) return c.json({ error: "goal_not_reached", message: "Aún no has alcanzado el objetivo.", earned, target: reward.cost }, 400);
     await db.insert(redemptions).values({ id: crypto.randomUUID(), profileId, rewardId, status, ts: now });
+    if (status === "pending") for (const pid of household) await notifyOwner(c.env, db, pid); // push: "canje pendiente"
     const [w] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, profileId)).limit(1);
     return c.json({ ok: true, balance: w?.balance ?? 0, status, reward: slim });
   }
@@ -1554,6 +2007,7 @@ app.post("/api/rewards/:id/redeem", async (c) => {
   const newBalance = updated[0]!.balance;
   await db.insert(walletLedger).values({ id: crypto.randomUUID(), profileId, delta: -reward.cost, reason: `redeem:${rewardId}`, ts: now });
   await db.insert(redemptions).values({ id: crypto.randomUUID(), profileId, rewardId, status, ts: now });
+  if (status === "pending") for (const pid of household) await notifyOwner(c.env, db, pid); // push: "canje pendiente"
   return c.json({ ok: true, balance: newBalance, status, reward: slim });
 });
 

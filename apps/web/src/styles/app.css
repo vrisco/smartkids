@@ -7,6 +7,9 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  /* Respeta el notch/safe-area lateral (iOS en horizontal). */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 .app-body {
   flex: 1;
@@ -55,6 +58,8 @@ code {
   align-items: center;
   gap: 0.55rem;
   padding: 0.7rem 1rem;
+  /* iOS standalone: el contenido de la cabecera baja de la barra de estado (hora/batería). */
+  padding-top: calc(0.7rem + env(safe-area-inset-top));
   position: sticky;
   top: 0;
   z-index: 3;
@@ -113,6 +118,8 @@ code {
   background: color-mix(in srgb, var(--space-900) 88%, transparent);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--line);
+  /* iOS standalone: deja hueco para el indicador de inicio (home indicator). */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .bottom-nav button {
   flex: 1;
@@ -250,6 +257,8 @@ code {
   display: flex;
   align-items: center;
   gap: 0.8rem;
+  /* La sesión oculta la cabecera: respeta la barra de estado en iOS standalone. */
+  padding-top: env(safe-area-inset-top);
 }
 .icon-btn {
   width: 34px;
@@ -929,5 +938,453 @@ button:focus-visible {
   }
   .p-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ---------- Ilustración del ejercicio (SVG inline, theme-aware) ---------- */
+/* La figura hereda currentColor de --text: trazos claros sobre superficie oscura
+   en tema oscuro y viceversa. La skill debe pintar con currentColor. */
+.ex-figure {
+  display: flex;
+  justify-content: center;
+  margin: var(--sp-3) 0;
+  color: var(--text);
+}
+.ex-figure svg {
+  width: 100%;
+  max-width: 320px;
+  max-height: 240px;
+  height: auto;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-1, 0 1px 2px rgba(0, 0, 0, 0.08));
+  box-sizing: border-box;
+  animation: figure-in 0.25s ease;
+}
+@keyframes figure-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+/* En la preview del tutor la figura va sobre --surface-2 (preview-body): dale
+   un fondo un punto distinto para que se despegue del panel. */
+.preview-body .ex-figure svg {
+  background: var(--surface);
+}
+
+/* ---------- Solicitudes antiguas (plegable) ---------- */
+.archived {
+  margin-top: var(--sp-2);
+}
+.archived-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Modal de preview del contenido ---------- */
+.preview-modal {
+  max-width: 560px;
+  width: 100%;
+}
+.preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.preview-head .list-main span {
+  display: block;
+  font-size: 0.85rem;
+}
+.preview-body {
+  position: relative;
+  min-height: 180px;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.preview-body.is-hidden {
+  opacity: 0.55;
+}
+.preview-hidden-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--coral);
+  margin-bottom: var(--sp-2);
+}
+.preview-body-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.preview-type {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.preview-hide-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 4px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.preview-hide-btn.is-hidden {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.preview-hide-btn:not(.is-hidden):hover {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+.preview-stem {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+}
+.preview-opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.preview-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.preview-opt.correct {
+  border-color: var(--green);
+  color: var(--green);
+  font-weight: 600;
+}
+.preview-answer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.preview-label {
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.preview-chip {
+  display: inline-block;
+  padding: 2px var(--sp-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 600;
+}
+.preview-order,
+.preview-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.preview-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.preview-pairs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.preview-pair {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.preview-pair span {
+  flex: 1;
+}
+.preview-solution {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px dashed var(--line);
+  font-size: 0.92rem;
+  color: var(--text-dim);
+}
+.preview-solution .preview-label {
+  display: block;
+  margin-bottom: var(--sp-1);
+}
+.preview-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+.preview-count {
+  font-weight: 600;
+  color: var(--text-dim);
+  min-width: 3.5em;
+  text-align: center;
+}
+/* Tira de miniaturas: un vistazo a todos los ejercicios y cuáles están ocultos. */
+.preview-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  justify-content: center;
+  margin-top: var(--sp-3);
+}
+.preview-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.preview-thumb.on {
+  border-color: var(--violet);
+  color: var(--violet);
+  box-shadow: 0 0 0 1px var(--violet) inset;
+}
+.preview-thumb.hidden {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+/* ---------- Tarjeta de instalación PWA ---------- */
+.install-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.install-ic {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--violet);
+}
+.install-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.install-text span {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.install-x {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* ---------- Estadísticas / seguimiento ---------- */
+.stats-modal {
+  max-width: 560px;
+  width: 100%;
+}
+.stats-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-2);
+}
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.stat-tile-ic {
+  display: inline-flex;
+  color: var(--violet);
+}
+.stat-tile.gold .stat-tile-ic {
+  color: var(--gold);
+}
+.stat-tile.green .stat-tile-ic {
+  color: var(--green);
+}
+.stat-tile-val {
+  font-size: 1.25rem;
+  color: var(--text);
+}
+.stat-tile-lbl {
+  font-size: 0.74rem;
+}
+.stat-chart {
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.stat-chart-title,
+.stat-block-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: var(--sp-2);
+}
+.stat-bars {
+  width: 100%;
+  height: auto;
+  color: var(--violet);
+  display: block;
+}
+.stat-bar {
+  fill: currentColor;
+}
+.stat-bar-base {
+  fill: var(--line);
+}
+.stat-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.stat-block-title {
+  margin-bottom: var(--sp-2);
+}
+.stat-skill-list,
+.stat-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.stat-skill {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.stat-skill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.stat-skill-acc {
+  font-weight: 700;
+  color: var(--green);
+}
+.stat-skill-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.stat-mastery {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.stat-mastery-bar {
+  display: block;
+  height: 100%;
+  background: var(--cyan);
+}
+.stat-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.stat-session-main {
+  display: flex;
+  flex-direction: column;
+}
+.stat-session-main .muted {
+  font-size: 0.8rem;
+}
+.stat-session-marks {
+  display: flex;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+.stat-session-marks .mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.mark.ok {
+  color: var(--green);
+}
+.mark.bad {
+  color: var(--coral);
+}
+.mark.pts {
+  color: var(--gold);
+}
+@media (min-width: 560px) {
+  .stat-tiles {
+    grid-template-columns: repeat(4, 1fr);
   }
 }

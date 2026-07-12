@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
+import { loginWithPasskey, passkeySupported } from "../passkeys";
 import { Orbi } from "./Orbi";
 import { Icon } from "./Icon";
 import { SettingsToggle } from "./SettingsToggle";
@@ -23,6 +24,18 @@ export function Auth({ onTutor, onChild }: { onTutor: () => void; onChild: () =>
     setError(null);
     setInfo(null);
     setDevLink(null);
+  }
+
+  async function passkeyLogin() {
+    setBusy(true);
+    reset();
+    try {
+      await loginWithPasskey();
+      onTutor();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
   }
 
   async function submit(e: FormEvent) {
@@ -97,6 +110,12 @@ export function Auth({ onTutor, onChild }: { onTutor: () => void; onChild: () =>
         </button>
       </form>
 
+      {mode === "tutor" && passkeySupported() && (
+        <button className="btn-ghost auth-passkey" type="button" disabled={busy} onClick={passkeyLogin}>
+          <Icon name="lock" size={16} /> {t("auth.passkey")}
+        </button>
+      )}
+
       {mode === "tutor" && (
         <button className="auth-toggle" type="button" onClick={() => { setMode("forgot"); reset(); }}>
           {t("auth.forgot")}
@@ -108,8 +127,7 @@ export function Auth({ onTutor, onChild }: { onTutor: () => void; onChild: () =>
         </button>
       )}
 
-      {mode === "tutor" && <p className="auth-demo">{t("auth.demoTutorLabel")} <b>demo@smartkids.dev</b> / <b>demo1234</b></p>}
-      {mode === "child" && <p className="auth-demo">{t("auth.demoKidLabel")} <b>lucia</b> / PIN <b>1234</b></p>}
+      <div className="app-version">v{__APP_VERSION__}</div>
     </div>
   );
 }

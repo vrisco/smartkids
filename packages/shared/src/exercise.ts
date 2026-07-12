@@ -48,6 +48,21 @@ export const TextNormalizeSchema = z.object({
 });
 export type TextNormalize = z.infer<typeof TextNormalizeSchema>;
 
+/**
+ * Ilustración opcional del ejercicio: un documento SVG en línea (autocontenido,
+ * SIN <script> ni recursos externos) que se muestra sobre el enunciado para
+ * presentar la información de forma visual (figuras geométricas, diagramas...).
+ * El cliente lo SANEA (allowlist de elementos/atributos) y lo pinta inline, por
+ * lo que hereda el color del tema: debe pintar con `currentColor`, no colores
+ * fijos. Debe empezar por "<svg".
+ */
+export const FigureSchema = z
+  .string()
+  .trim()
+  .refine((s) => s.startsWith("<svg") && !/<script/i.test(s), {
+    message: "figure debe ser un SVG en línea sin <script>",
+  });
+
 /** Campos comunes a todos los tipos de ejercicio. */
 const BaseExercise = z.object({
   exerciseId: z.string(),
@@ -56,6 +71,7 @@ const BaseExercise = z.object({
   language: z.string(),
   skillId: z.string(),
   stem: z.string(),
+  figure: FigureSchema.optional(),
   difficulty: DifficultySchema,
   feedback: FeedbackSchema.optional(),
 });

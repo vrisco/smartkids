@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Órbita">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12173a"/>
+      <stop offset="1" stop-color="#0a0d1f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.32" cy="0.28" r="0.9">
+      <stop offset="0" stop-color="#7c3aed" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#0b93a0" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#0b93a0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="planet" cx="0.36" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#a56bff"/>
+      <stop offset="0.55" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#0b93a0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+
+  <!-- estrellas -->
+  <g fill="#eaeeff">
+    <circle cx="110" cy="128" r="4" opacity="0.9"/>
+    <circle cx="410" cy="150" r="3" opacity="0.75"/>
+    <circle cx="150" cy="380" r="3" opacity="0.7"/>
+    <circle cx="392" cy="372" r="4.5" opacity="0.85"/>
+    <circle cx="86" cy="250" r="2.5" opacity="0.6"/>
+  </g>
+
+  <!-- planeta con anillo -->
+  <g transform="rotate(-22 256 262)">
+    <ellipse cx="256" cy="262" rx="188" ry="66" fill="none" stroke="#37e1e8" stroke-width="12" opacity="0.5"/>
+    <circle cx="256" cy="262" r="118" fill="url(#planet)"/>
+    <ellipse cx="256" cy="262" rx="188" ry="66" fill="none" stroke="#7ef0f4" stroke-width="12" opacity="0.9"
+             stroke-dasharray="300 600" stroke-dashoffset="150" stroke-linecap="round"/>
+  </g>
+</svg>

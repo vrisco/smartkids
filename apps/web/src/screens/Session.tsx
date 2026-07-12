@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type Answer, type AttemptResult, type Exercise } from "../api";
 import { ExerciseInput, FillBlanks, correctAnswerString } from "../components/ExerciseInput";
+import { ExerciseFigure } from "../components/ExerciseFigure";
 import { Icon } from "../components/Icon";
 import { MathText } from "../components/MathText";
 import { Orbi } from "../components/Orbi";
+import { keepAwake, vibrate } from "../pwa";
 
 const QUESTIONS_PER_SESSION = 5;
 const REVIEW_EXTRA = 3; // margen de reintentos sobre el nº de fallos, para no frustrar
@@ -50,6 +52,9 @@ export function Session({
     load();
   }, [load]);
 
+  // Mantén la pantalla encendida mientras dura la sesión (se libera al salir).
+  useEffect(() => keepAwake(), []);
+
   async function submit() {
     if (!exercise || !answer || result) return;
     try {
@@ -57,6 +62,7 @@ export function Session({
       onBalance(res.balance);
       served.current = [...served.current, exercise.id];
       setResult(res);
+      vibrate(res.correct ? 30 : [40, 60, 40]); // háptico: acierto corto, fallo doble
     } catch {
       setError(true);
     }
@@ -142,6 +148,7 @@ export function Session({
 
       <div className="q-card">
         <div className="qk">{qk}</div>
+        <ExerciseFigure svg={exercise.figure} />
         <div className="q-eq">
           {render.type === "fill_in_blank" ? (
             <FillBlanks key={exercise.id} stem={exercise.stem} render={render} onChange={setAnswer} result={result} />

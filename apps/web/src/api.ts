@@ -1,8 +1,14 @@
 import i18n from "./i18n";
-import type { Answer, RenderPayload } from "@smartkids/shared";
+import type { Answer, Exercise as FullExercise, RenderPayload } from "@smartkids/shared";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/browser";
 
 // Re-export de los tipos del modelo unificado para el resto de la web.
-export type { Answer, RenderPayload };
+export type { Answer, FullExercise, RenderPayload };
 
 export type LocaleText = Record<string, string>;
 
@@ -80,8 +86,16 @@ export interface Exercise {
   skillId: string;
   type: string;
   stem: string;
+  figure?: string | null; // SVG en línea opcional (ilustración)
   contentVersion: string;
   render: RenderPayload;
+}
+
+// Preview del tutor: ejercicio COMPLETO (con solución) + estado de visibilidad.
+export interface PreviewExercise {
+  templateId: string;
+  hidden: boolean;
+  exercise: FullExercise;
 }
 export interface AttemptResult {
   correct: boolean;
@@ -177,6 +191,51 @@ export interface PrivateSkill {
   childIds: string[];
 }
 
+export interface StatsOverview {
+  attempts: number;
+  correct: number;
+  accuracyPct: number;
+  avgTimeMs: number | null;
+  balance: number;
+  pointsEarned: number;
+  pointsSpent: number;
+  earned7d: number;
+  earned30d: number;
+  activeDays: number;
+  lastActivity: string | null;
+}
+export interface SkillStat {
+  skillId: string;
+  name: LocaleText;
+  attempts: number;
+  correct: number;
+  accuracyPct: number;
+  avgTimeMs: number | null;
+  mastery: number | null;
+  status: string | null;
+}
+export interface SessionStat {
+  start: string;
+  end: string;
+  count: number;
+  correct: number;
+  wrong: number;
+  timeMs: number;
+  points: number;
+}
+export interface ActivityDay {
+  date: string;
+  attempts: number;
+  correct: number;
+  points: number;
+}
+export interface ProfileStats {
+  overview: StatsOverview;
+  perSkill: SkillStat[];
+  sessions: SessionStat[];
+  activity: ActivityDay[];
+}
+
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, opts);
   if (!res.ok) {
@@ -230,6 +289,8 @@ export const api = {
   inviteSpouse: (email: string) => j<{ ok: boolean; pending: boolean; invitee: { email: string }; devLink?: string }>(`/api/tutor/spouse`, post({ email })),
   acceptSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse/accept`, { method: "POST" }),
   rejectSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse/reject`, { method: "POST" }),
+  resendSpouse: () => j<{ ok: boolean; invitee: { email: string }; devLink?: string }>(`/api/tutor/spouse/resend`, { method: "POST" }),
+  cancelSpouseInvite: () => j<{ ok: boolean }>(`/api/tutor/spouse/invite`, { method: "DELETE" }),
   unlinkSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse`, { method: "DELETE" }),
 
   // Niño auth
@@ -293,7 +354,27 @@ export const api = {
   },
   deleteRequestAsset: (reqId: string, assetId: string) =>
     j<{ ok: boolean }>(`/api/tutor/content-requests/${reqId}/assets/${assetId}`, { method: "DELETE" }),
+  // Estadísticas / seguimiento
+  childStats: () => j<ProfileStats>(`/api/child/stats`),
+  tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
+
+  // Web Push
+  pushKey: () => j<{ publicKey: string | null }>(`/api/push/key`),
+  pushSubscribe: (sub: PushSubscriptionJSON) => j<{ ok: boolean }>(`/api/push/subscribe`, post(sub)),
+  pushUnsubscribe: (endpoint: string) => j<{ ok: boolean }>(`/api/push/unsubscribe`, post({ endpoint })),
+
+  // Passkeys (WebAuthn)
+  passkeyRegisterOptions: () => j<{ options: PublicKeyCredentialCreationOptionsJSON; flowId: string }>(`/api/auth/passkey/register/options`, { method: "POST" }),
+  passkeyRegisterVerify: (flowId: string, response: RegistrationResponseJSON) => j<{ ok: boolean }>(`/api/auth/passkey/register/verify`, post({ flowId, response })),
+  passkeyLoginOptions: () => j<{ options: PublicKeyCredentialRequestOptionsJSON; flowId: string }>(`/api/auth/passkey/login/options`, { method: "POST" }),
+  passkeyLoginVerify: (flowId: string, response: AuthenticationResponseJSON) => j<{ parent: Parent }>(`/api/auth/passkey/login/verify`, post({ flowId, response })),
+  passkeyList: () => j<{ count: number }>(`/api/auth/passkey/list`),
+  passkeyDelete: () => j<{ ok: boolean }>(`/api/auth/passkey`, { method: "DELETE" }),
+
   tutorContent: () => j<PrivateSkill[]>(`/api/tutor/content`),
+  skillExercises: (skillId: string) => j<PreviewExercise[]>(`/api/tutor/skills/${encodeURIComponent(skillId)}/exercises`),
+  setExerciseHidden: (templateId: string, hidden: boolean) =>
+    j<{ ok: boolean; hidden: boolean }>(`/api/tutor/exercises/${encodeURIComponent(templateId)}/hidden`, post({ hidden })),
   assignSkill: (skillId: string, childIds: string[]) =>
     j<{ ok: boolean; childIds: string[] }>(`/api/tutor/skills/${skillId}/assign`, post({ childIds })),
   deleteContentSkill: (skillId: string) => j<{ ok: boolean }>(`/api/tutor/skills/${skillId}`, { method: "DELETE" }),
