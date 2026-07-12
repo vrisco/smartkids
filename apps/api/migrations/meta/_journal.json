@@ -29,6 +29,20 @@
       "when": 1783794957549,
       "tag": "0003_strong_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783804174535,
+      "tag": "0004_add_spouse",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783805159400,
+      "tag": "0005_spouse_pending",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import {
   clearAttempts,
@@ -48,6 +48,8 @@ const {
 const COINS_PER_CORRECT = 10;
 const VERIFY_TTL = 24 * 60 * 60 * 1000;
 const RESET_TTL = 60 * 60 * 1000;
+const INVITE_TTL = 7 * 24 * 60 * 60 * 1000; // invitación de tutor: 7 días
+const ADMIN_RESET_TTL = 24 * 60 * 60 * 1000; // reset iniciado por admin: 24 h
 const USERNAME_RE = /^[a-z0-9._-]{3,}$/;
 
 type Ctx = Context<{ Bindings: Env }>;
@@ -100,12 +102,66 @@ function childCoursesOf(db: DB, childId: string) {
     .where(eq(childCourses.childId, childId));
 }
 
+/** Borra un niño y todo lo suyo (cursos, sesión, progreso, monedero, intentos, canjes). */
+async function deleteChildCascade(db: DB, childId: string): Promise<void> {
+  await db.delete(childCourses).where(eq(childCourses.childId, childId));
+  await db.delete(schema.childSessions).where(eq(schema.childSessions.childId, childId));
+  await db.delete(redemptions).where(eq(redemptions.profileId, childId));
+  await db.delete(walletLedger).where(eq(walletLedger.profileId, childId));
+  await db.delete(wallets).where(eq(wallets.profileId, childId));
+  await db.delete(attempts).where(eq(attempts.profileId, childId));
+  await db.delete(skillProgress).where(eq(skillProgress.profileId, childId));
+  await db.delete(childProfiles).where(eq(childProfiles.id, childId));
+}
+
+/** IDs del "hogar": el propio tutor y su cónyuge, SOLO si el vínculo es simétrico (igual que ownsProfile). */
+async function householdIds(db: DB, parentId: string): Promise<string[]> {
+  const [p] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  if (!p?.spouseId) return [parentId];
+  const [s] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, p.spouseId)).limit(1);
+  return s?.spouseId === parentId ? [parentId, p.spouseId] : [parentId];
+}
+
 /* ================= Auth tutor / admin ================= */
 
 async function issueVerification(c: Ctx, db: DB, parentId: string, email: string): Promise<string | null> {
   const token = await createAuthToken(db, parentId, "verify", VERIFY_TTL);
   const url = `${new URL(c.req.url).origin}/verify?token=${token}`;
   await sendEmail(c.env, email, "Verifica tu email · smartkids", emailLayout("Verifica tu email", "Confirma tu email para tu cuenta de tutor.", { url, label: "Verificar email" }));
+  return devLinksEnabled(c.env) ? url : null;
+}
+
+/** Invitación a un tutor recién creado: enlace para que fije su propia contraseña (reutiliza el flujo reset). */
+async function issueInvite(c: Ctx, db: DB, parentId: string, email: string): Promise<string | null> {
+  const token = await createAuthToken(db, parentId, "reset", INVITE_TTL);
+  const url = `${new URL(c.req.url).origin}/reset?token=${token}`;
+  await sendEmail(
+    c.env,
+    email,
+    "Te damos la bienvenida a smartkids · crea tu contraseña",
+    emailLayout(
+      "Te han dado de alta como tutor",
+      "Un administrador te ha creado una cuenta de tutor en smartkids. Crea tu contraseña para entrar. El enlace caduca en 7 días.",
+      { url, label: "Crear mi contraseña" },
+    ),
+  );
+  return devLinksEnabled(c.env) ? url : null;
+}
+
+/** Reset de contraseña iniciado por el admin: enlace de un solo uso para que el tutor fije una nueva. */
+async function issueReset(c: Ctx, db: DB, parentId: string, email: string): Promise<string | null> {
+  const token = await createAuthToken(db, parentId, "reset", ADMIN_RESET_TTL);
+  const url = `${new URL(c.req.url).origin}/reset?token=${token}`;
+  await sendEmail(
+    c.env,
+    email,
+    "Restablece tu contraseña · smartkids",
+    emailLayout(
+      "Restablece tu contraseña",
+      "Un administrador ha solicitado restablecer tu contraseña. Elige una nueva. El enlace caduca en 24 horas.",
+      { url, label: "Restablecer contraseña" },
+    ),
+  );
   return devLinksEnabled(c.env) ? url : null;
 }
 
@@ -141,6 +197,7 @@ app.get("/api/auth/me", async (c) => {
   if (!parentId) return c.json({ error: "unauthorized" }, 401);
   const [p] = await db.select().from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
   if (!p) return c.json({ error: "unauthorized" }, 401);
+  const ids = await householdIds(db, parentId);
   const children = await db
     .select({
       id: childProfiles.id,
@@ -150,8 +207,28 @@ app.get("/api/auth/me", async (c) => {
       gradeBand: childProfiles.gradeBand,
     })
     .from(childProfiles)
-    .where(eq(childProfiles.parentId, parentId));
-  return c.json({ parent: { id: p.id, email: p.email, role: p.role, emailVerified: p.emailVerified }, children });
+    .where(inArray(childProfiles.parentId, ids));
+  let spouse: { id: string; email: string; emailVerified: boolean } | null = null;
+  if (p.spouseId) {
+    const [s] = await db
+      .select({ id: parentAccounts.id, email: parentAccounts.email, emailVerified: parentAccounts.emailVerified })
+      .from(parentAccounts)
+      .where(eq(parentAccounts.id, p.spouseId))
+      .limit(1);
+    if (s) spouse = { id: s.id, email: s.email, emailVerified: s.emailVerified };
+  }
+  // Invitación de cónyuge entrante (alguien me invitó) y saliente (yo invité, pendiente de aceptar).
+  let spouseInviteIn: { fromEmail: string } | null = null;
+  if (p.spousePendingFrom) {
+    const [inv] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, p.spousePendingFrom)).limit(1);
+    if (inv) spouseInviteIn = { fromEmail: inv.email };
+  }
+  let spouseInviteOut: { toEmail: string } | null = null;
+  if (!spouse) {
+    const [out] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.spousePendingFrom, parentId)).limit(1);
+    if (out) spouseInviteOut = { toEmail: out.email };
+  }
+  return c.json({ parent: { id: p.id, email: p.email, role: p.role, emailVerified: p.emailVerified }, spouse, spouseInviteIn, spouseInviteOut, children });
 });
 
 app.post("/api/auth/verify", async (c) => {
@@ -201,7 +278,8 @@ app.post("/api/auth/reset", async (c) => {
   if (!token || !password || password.length < 6) return c.json({ error: "invalid", message: "Contraseña de 6+ caracteres." }, 400);
   const parentId = await consumeAuthToken(db, token, "reset");
   if (!parentId) return c.json({ error: "invalid_token", message: "Enlace inválido o caducado." }, 400);
-  await db.update(parentAccounts).set({ passwordHash: await hashSecret(password) }).where(eq(parentAccounts.id, parentId));
+  // Al fijar la contraseña vía enlace de email (reset o invitación) damos el email por verificado.
+  await db.update(parentAccounts).set({ passwordHash: await hashSecret(password), emailVerified: true }).where(eq(parentAccounts.id, parentId));
   await db.delete(schema.sessions).where(eq(schema.sessions.parentId, parentId));
   return c.json({ ok: true });
 });
@@ -225,23 +303,36 @@ app.post("/api/admin/tutors", async (c) => {
   const db = getDb(c.env.DB);
   const a = await requireAdmin(c, db);
   if (typeof a !== "string") return a;
-  const body = await c.req.json<{ email?: string; password?: string }>();
+  const body = await c.req.json<{ email?: string }>();
   const email = body.email?.trim().toLowerCase();
-  const password = body.password ?? "";
-  if (!email || !email.includes("@") || password.length < 6)
-    return c.json({ error: "invalid", message: "Email válido y contraseña de 6+ caracteres." }, 400);
-  const [ex] = await db.select({ id: parentAccounts.id }).from(parentAccounts).where(eq(parentAccounts.email, email)).limit(1);
-  if (ex) return c.json({ error: "email_taken", message: "Ese email ya existe." }, 409);
+  if (!email || !email.includes("@"))
+    return c.json({ error: "invalid", message: "Introduce un email válido." }, 400);
+  const [ex] = await db
+    .select({ id: parentAccounts.id, role: parentAccounts.role, emailVerified: parentAccounts.emailVerified })
+    .from(parentAccounts)
+    .where(eq(parentAccounts.email, email))
+    .limit(1);
+  if (ex) {
+    // Idempotente: si es un tutor aún pendiente (sin contraseña fijada), reenvía la invitación.
+    // Cualquier otra cuenta (admin, o tutor ya verificado) es un email realmente en uso.
+    if (ex.role === "tutor" && !ex.emailVerified) {
+      const link = await issueInvite(c, db, ex.id, email);
+      return c.json({ tutor: { id: ex.id, email }, reinvited: true, ...(link ? { devLink: link } : {}) });
+    }
+    return c.json({ error: "email_taken", message: "Ese email ya existe." }, 409);
+  }
   const id = `par_${crypto.randomUUID()}`;
+  // Contraseña aleatoria inservible: el tutor fijará la suya con el enlace del email de invitación.
   await db.insert(parentAccounts).values({
     id,
     email,
-    passwordHash: await hashSecret(password),
+    passwordHash: await hashSecret(`${crypto.randomUUID()}${crypto.randomUUID()}`),
     role: "tutor",
     emailVerified: false,
     createdAt: new Date().toISOString(),
   });
-  return c.json({ tutor: { id, email } });
+  const devLink = await issueInvite(c, db, id, email);
+  return c.json({ tutor: { id, email }, ...(devLink ? { devLink } : {}) });
 });
 
 app.get("/api/admin/tutors", async (c) => {
@@ -260,12 +351,34 @@ app.post("/api/admin/tutors/:id/reset-password", async (c) => {
   const a = await requireAdmin(c, db);
   if (typeof a !== "string") return a;
   const id = c.req.param("id");
-  const { password } = await c.req.json<{ password?: string }>();
-  if (!password || password.length < 6) return c.json({ error: "invalid", message: "Contraseña de 6+ caracteres." }, 400);
-  const [t] = await db.select({ role: parentAccounts.role }).from(parentAccounts).where(eq(parentAccounts.id, id)).limit(1);
+  const [t] = await db.select({ role: parentAccounts.role, email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, id)).limit(1);
   if (!t || t.role !== "tutor") return c.json({ error: "not_found" }, 404);
-  await db.update(parentAccounts).set({ passwordHash: await hashSecret(password) }).where(eq(parentAccounts.id, id));
+  await db.delete(schema.sessions).where(eq(schema.sessions.parentId, id)); // cierra sesiones activas del tutor
+  const devLink = await issueReset(c, db, id, t.email);
+  return c.json({ ok: true, ...(devLink ? { devLink } : {}) });
+});
+
+app.delete("/api/admin/tutors/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireAdmin(c, db);
+  if (typeof a !== "string") return a;
+  const id = c.req.param("id");
+  const [t] = await db.select({ role: parentAccounts.role, spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, id)).limit(1);
+  if (!t || t.role !== "tutor") return c.json({ error: "not_found" }, 404);
+  if (t.spouseId) {
+    // Tiene cónyuge: los niños sobreviven. Se reasignan al cónyuge y se deshace el vínculo.
+    await db.update(childProfiles).set({ parentId: t.spouseId }).where(eq(childProfiles.parentId, id));
+    await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, t.spouseId));
+  } else {
+    // Sin cónyuge: se borran sus niños en cascada (con su progreso).
+    const kids = await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.parentId, id));
+    for (const k of kids) await deleteChildCascade(db, k.id);
+  }
+  // Limpia cualquier invitación de cónyuge pendiente que apuntara a este tutor.
+  await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, id));
+  await db.delete(schema.authTokens).where(eq(schema.authTokens.parentId, id));
   await db.delete(schema.sessions).where(eq(schema.sessions.parentId, id));
+  await db.delete(parentAccounts).where(eq(parentAccounts.id, id));
   return c.json({ ok: true });
 });
 
@@ -276,6 +389,140 @@ app.get("/api/courses", async (c) => {
   const a = await requireParent(c, db);
   if (typeof a !== "string") return a;
   return c.json(await db.select().from(courses));
+});
+
+/* ================= Tutor: cónyuge (co-tutor que comparte los niños) ================= */
+// Vinculación con consentimiento BILATERAL: invitar deja la invitación PENDIENTE (sin acceso);
+// el invitado la acepta/rechaza desde su panel. El vínculo se escribe simétrico y atómico.
+
+/** Aviso de invitación de cónyuge. Si el invitado aún no tiene cuenta activa, incluye enlace para crearla. */
+async function issueSpouseInvite(
+  c: Ctx,
+  db: DB,
+  inviterEmail: string,
+  invitee: { id: string; email: string; verified: boolean },
+): Promise<string | null> {
+  if (!invitee.verified) {
+    const token = await createAuthToken(db, invitee.id, "reset", INVITE_TTL);
+    const url = `${new URL(c.req.url).origin}/reset?token=${token}`;
+    await sendEmail(
+      c.env,
+      invitee.email,
+      "Te invitan como co-tutor · smartkids",
+      emailLayout(
+        "Te invitan a compartir la gestión",
+        `${inviterEmail} te ha invitado a co-gestionar vuestros niños en smartkids. Crea tu contraseña y, al entrar, acepta la invitación.`,
+        { url, label: "Crear mi contraseña" },
+      ),
+    );
+    return devLinksEnabled(c.env) ? url : null;
+  }
+  await sendEmail(
+    c.env,
+    invitee.email,
+    "Te invitan como co-tutor · smartkids",
+    emailLayout(
+      "Te invitan a compartir la gestión",
+      `${inviterEmail} te ha invitado a co-gestionar vuestros niños en smartkids. Entra en tu cuenta y acepta o rechaza la invitación.`,
+      { url: `${new URL(c.req.url).origin}/`, label: "Ir a smartkids" },
+    ),
+  );
+  return null;
+}
+
+app.post("/api/tutor/spouse", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const [me] = await db.select().from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  if (!me || me.role !== "tutor") return c.json({ error: "forbidden" }, 403);
+  if (me.spouseId) return c.json({ error: "already_linked", message: "Ya tienes un cónyuge vinculado." }, 409);
+  if (await rateLimited(db, `spouse:${parentId}`)) return c.json({ error: "rate_limited", message: "Demasiados intentos. Prueba más tarde." }, 429);
+  const body = await c.req.json<{ email?: string }>();
+  const email = body.email?.trim().toLowerCase();
+  if (!email || !email.includes("@")) return c.json({ error: "invalid", message: "Introduce un email válido." }, 400);
+  if (email === me.email) return c.json({ error: "invalid", message: "Ese es tu propio email." }, 400);
+  await recordAttempt(db, `spouse:${parentId}`);
+  let invitee: { id: string; email: string; verified: boolean };
+  const [ex] = await db.select().from(parentAccounts).where(eq(parentAccounts.email, email)).limit(1);
+  if (ex) {
+    if (ex.role !== "tutor") return c.json({ error: "invalid", message: "Ese email no se puede invitar." }, 409);
+    if (ex.spouseId) return c.json({ error: "invalid", message: "Ese tutor ya tiene un cónyuge." }, 409);
+    invitee = { id: ex.id, email: ex.email, verified: ex.emailVerified };
+  } else {
+    const nid = `par_${crypto.randomUUID()}`;
+    await db.insert(parentAccounts).values({
+      id: nid,
+      email,
+      passwordHash: await hashSecret(`${crypto.randomUUID()}${crypto.randomUUID()}`),
+      role: "tutor",
+      emailVerified: false,
+      createdAt: new Date().toISOString(),
+    });
+    invitee = { id: nid, email, verified: false };
+  }
+  // Un único invitado pendiente por invitador: limpia invitaciones salientes previas (evita carreras y estados obsoletos).
+  await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, parentId));
+  // Solo marca la invitación PENDIENTE en el lado del invitado: sin vínculo ni acceso hasta que acepte.
+  await db.update(parentAccounts).set({ spousePendingFrom: parentId }).where(eq(parentAccounts.id, invitee.id));
+  const devLink = await issueSpouseInvite(c, db, me.email, invitee);
+  return c.json({ ok: true, pending: true, invitee: { email: invitee.email }, ...(devLink ? { devLink } : {}) });
+});
+
+app.post("/api/tutor/spouse/accept", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const [me] = await db
+    .select({ spouseId: parentAccounts.spouseId, pending: parentAccounts.spousePendingFrom })
+    .from(parentAccounts)
+    .where(eq(parentAccounts.id, parentId))
+    .limit(1);
+  if (!me?.pending) return c.json({ error: "no_invite", message: "No tienes ninguna invitación pendiente." }, 404);
+  if (me.spouseId) return c.json({ error: "already_linked", message: "Ya tienes un cónyuge." }, 409);
+  const inviter = me.pending;
+  const [a] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, inviter)).limit(1);
+  if (!a || a.spouseId) {
+    await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.id, parentId));
+    return c.json({ error: "gone", message: "La invitación ya no es válida." }, 409);
+  }
+  // Vínculo simétrico, atómico y condicional (no piso vínculos ya existentes).
+  await db.batch([
+    db.update(parentAccounts).set({ spouseId: inviter, spousePendingFrom: null }).where(and(eq(parentAccounts.id, parentId), isNull(parentAccounts.spouseId))),
+    db.update(parentAccounts).set({ spouseId: parentId }).where(and(eq(parentAccounts.id, inviter), isNull(parentAccounts.spouseId))),
+  ]);
+  // Verifica que quedó SIMÉTRICO; si una carrera dejó un lado sin escribir, deshaz el lado colgante y aborta
+  // (sin tocar vínculos legítimos de terceros).
+  const [meAfter] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  const [aAfter] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, inviter)).limit(1);
+  if (meAfter?.spouseId !== inviter || aAfter?.spouseId !== parentId) {
+    if (meAfter?.spouseId === inviter) await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, parentId));
+    if (aAfter?.spouseId === parentId) await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, inviter));
+    return c.json({ error: "conflict", message: "No se pudo completar la vinculación. Inténtalo de nuevo." }, 409);
+  }
+  return c.json({ ok: true });
+});
+
+app.post("/api/tutor/spouse/reject", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.id, parentId));
+  return c.json({ ok: true });
+});
+
+app.delete("/api/tutor/spouse", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const [me] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  if (!me?.spouseId) return c.json({ ok: true });
+  const other = me.spouseId;
+  const [o] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, other)).limit(1);
+  await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, parentId));
+  // Solo desvincula el otro lado si de verdad apunta a mí (no corrompas el vínculo de un tercero).
+  if (o?.spouseId === parentId) await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, other));
+  return c.json({ ok: true });
 });
 
 /* ================= Tutor: gestión de niños ================= */
@@ -343,14 +590,7 @@ app.delete("/api/profiles/:id", async (c) => {
   const parentId = await requireParent(c, db);
   if (typeof parentId !== "string") return parentId;
   if (!(await ownsProfile(db, parentId, id))) return c.json({ error: "forbidden" }, 403);
-  await db.delete(childCourses).where(eq(childCourses.childId, id));
-  await db.delete(schema.childSessions).where(eq(schema.childSessions.childId, id));
-  await db.delete(redemptions).where(eq(redemptions.profileId, id));
-  await db.delete(walletLedger).where(eq(walletLedger.profileId, id));
-  await db.delete(wallets).where(eq(wallets.profileId, id));
-  await db.delete(attempts).where(eq(attempts.profileId, id));
-  await db.delete(skillProgress).where(eq(skillProgress.profileId, id));
-  await db.delete(childProfiles).where(eq(childProfiles.id, id));
+  await deleteChildCascade(db, id);
   return c.json({ ok: true });
 });
 

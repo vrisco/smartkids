@@ -1,0 +1,1 @@
+ALTER TABLE `parent_accounts` ADD `spouse_pending_from` text;

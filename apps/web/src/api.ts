@@ -1,3 +1,5 @@
+import i18n from "./i18n";
+
 export type LocaleText = Record<string, string>;
 
 export interface SkillNode {
@@ -32,8 +34,17 @@ export interface Course {
   nameI18n: LocaleText;
 }
 
+export interface Spouse {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+}
+
 export interface Me {
   parent: Parent;
+  spouse?: Spouse | null;
+  spouseInviteIn?: { fromEmail: string } | null;
+  spouseInviteOut?: { toEmail: string } | null;
   children: Child[];
 }
 
@@ -113,8 +124,9 @@ export const api = {
 
   // Admin
   adminTutors: () => j<Tutor[]>(`/api/admin/tutors`),
-  createTutor: (email: string, password: string) => j<{ tutor: { id: string; email: string } }>(`/api/admin/tutors`, post({ email, password })),
-  resetTutorPassword: (id: string, password: string) => j<{ ok: boolean }>(`/api/admin/tutors/${id}/reset-password`, post({ password })),
+  createTutor: (email: string) => j<{ tutor: { id: string; email: string }; devLink?: string; reinvited?: boolean }>(`/api/admin/tutors`, post({ email })),
+  resetTutorPassword: (id: string) => j<{ ok: boolean; devLink?: string }>(`/api/admin/tutors/${id}/reset-password`, { method: "POST" }),
+  deleteTutor: (id: string) => j<{ ok: boolean }>(`/api/admin/tutors/${id}`, { method: "DELETE" }),
 
   // Cursos + niños (tutor)
   courses: () => j<Course[]>(`/api/courses`),
@@ -125,6 +137,12 @@ export const api = {
   deleteChild: (id: string) => j<{ ok: boolean }>(`/api/profiles/${id}`, { method: "DELETE" }),
   setChildCourses: (id: string, courseIds: string[]) => j<{ ok: boolean; courseIds: string[] }>(`/api/profiles/${id}/courses`, post({ courseIds })),
   childCourses: (id: string) => j<Course[]>(`/api/profiles/${id}/courses`),
+
+  // Cónyuge (co-tutor que comparte los niños) — vinculación con consentimiento bilateral
+  inviteSpouse: (email: string) => j<{ ok: boolean; pending: boolean; invitee: { email: string }; devLink?: string }>(`/api/tutor/spouse`, post({ email })),
+  acceptSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse/accept`, { method: "POST" }),
+  rejectSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse/reject`, { method: "POST" }),
+  unlinkSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse`, { method: "DELETE" }),
 
   // Niño auth
   childMe: () => j<ChildMe>(`/api/child/me`),
@@ -140,5 +158,5 @@ export const api = {
   redeem: (rewardId: string, profileId: string) => j<{ ok: boolean; balance: number; status: string }>(`/api/rewards/${rewardId}/redeem`, post({ profileId })),
 };
 
-export const tx = (m: LocaleText | undefined, locale = "es"): string =>
+export const tx = (m: LocaleText | undefined, locale: string = i18n.language): string =>
   (m && (m[locale] ?? Object.values(m)[0])) ?? "";

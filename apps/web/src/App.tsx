@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, type ChildMe, type Me } from "./api";
 import { Starfield } from "./components/Starfield";
 import { Auth } from "./components/Auth";
@@ -8,6 +9,7 @@ import { KidApp } from "./screens/KidApp";
 import { VerifyPage, ResetPage } from "./screens/VerifyReset";
 
 export function App() {
+  const { t } = useTranslation();
   const path = window.location.pathname;
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
@@ -80,7 +82,7 @@ export function App() {
         <Starfield />
         <main className="hero">
           <h1 className="title">Órbita</h1>
-          <p className="tagline">Cargando…</p>
+          <p className="tagline">{t("common.loading")}</p>
         </main>
       </>
     );

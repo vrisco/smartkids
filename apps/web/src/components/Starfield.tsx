@@ -2,8 +2,6 @@ import { useEffect, useRef } from "react";
 
 type Star = { x: number; y: number; r: number; a: number; s: number; col: string };
 
-const COLORS = ["#FFFFFF", "#CFE8FF", "#37E1E8", "#B14BFF"];
-
 /** Campo de estrellas parpadeante en Canvas (respeta prefers-reduced-motion). */
 export function Starfield() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -15,6 +13,10 @@ export function Starfield() {
     if (!ctx) return;
 
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Paleta según el tema activo: brillante en oscuro, tonos de marca en claro.
+    const dt = document.documentElement.getAttribute("data-theme");
+    const dark = dt === "dark" || (dt === null && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const COLORS = dark ? ["#FFFFFF", "#CFE8FF", "#37E1E8", "#B14BFF"] : ["#8a94c8", "#7c3aed", "#0b93a0", "#b14bff"];
     let w = 0;
     let h = 0;
     let raf = 0;

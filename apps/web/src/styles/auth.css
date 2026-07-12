@@ -212,11 +212,13 @@
   flex-wrap: wrap;
 }
 .ava {
-  font-size: 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--surface-2);
   border: 1.5px solid var(--line);
   border-radius: 10px;
-  padding: 0.3rem 0.5rem;
+  padding: 0.25rem;
   cursor: pointer;
 }
 .ava.on {
@@ -358,23 +360,38 @@
   font-size: 0.82rem;
   color: var(--text);
 }
+.row-actions {
+  display: inline-flex;
+  gap: var(--sp-2);
+  align-items: center;
+  flex: 0 0 auto;
+}
+.panel-section {
+  margin-top: var(--sp-5);
+}
 
 /* ---------- Botones extra ---------- */
 .btn-primary.sm,
 .btn-ghost.sm {
-  padding: 0.42rem 0.75rem;
+  min-height: var(--btn-h-sm);
+  padding: 0 0.85rem;
   font-size: 0.8rem;
   border-radius: 10px;
 }
 .btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--btn-h);
   font-family: var(--sans);
   font-weight: 700;
   font-size: 0.86rem;
+  line-height: 1;
   color: var(--coral);
   background: transparent;
   border: 1.5px solid var(--coral);
   border-radius: 12px;
-  padding: 0.6rem 0.9rem;
+  padding: 0 0.9rem;
   cursor: pointer;
   margin-right: auto;
 }

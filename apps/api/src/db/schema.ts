@@ -10,6 +10,8 @@ export const parentAccounts = sqliteTable("parent_accounts", {
   passwordHash: text("password_hash").notNull(),
   emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
   role: text("role").notNull().default("tutor"), // 'admin' | 'tutor'
+  spouseId: text("spouse_id"), // co-tutor (cónyuge) que comparte los niños; vínculo simétrico
+  spousePendingFrom: text("spouse_pending_from"), // invitación de cónyuge pendiente de aceptar (id de quien invita)
   localeFormat: text("locale_format").notNull().default("es-ES"),
   createdAt: text("created_at").notNull(),
 });

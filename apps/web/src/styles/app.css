@@ -89,6 +89,9 @@ code {
   letter-spacing: 0.06em;
 }
 .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   font-family: var(--hud);
   font-size: 0.78rem;
   padding: 0.24rem 0.5rem;
@@ -555,24 +558,83 @@ code {
 
 /* ---------- Ghost button ---------- */
 .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--btn-h);
   font-family: var(--sans);
   font-weight: 700;
   font-size: 0.82rem;
+  line-height: 1;
   color: var(--cyan);
   background: transparent;
   border: 1.5px solid var(--cyan);
   border-radius: 12px;
-  padding: 0.5rem 0.85rem;
+  padding: 0 0.9rem;
   cursor: pointer;
 }
 .btn-ghost.sm {
-  padding: 0.3rem 0.6rem;
-  font-size: 0.7rem;
+  min-height: var(--btn-h-sm);
+  padding: 0 0.7rem;
+  font-size: 0.74rem;
   border-radius: 9px;
-  margin-left: auto;
+}
+/* Modificador de peligro para acciones destructivas (borrar, desvincular). */
+.btn-ghost.danger,
+.btn-ghost.sm.danger {
+  color: var(--coral);
+  border-color: var(--coral);
 }
 
 button:focus-visible {
   outline: 2px solid var(--cyan);
   outline-offset: 2px;
+}
+
+/* ---------- Conmutador de tema / idioma ---------- */
+.settings-toggle {
+  display: inline-flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--btn-h-sm);
+  min-width: var(--btn-h-sm);
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--hud);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.st-btn:hover {
+  color: var(--text);
+  border-color: var(--cyan);
+}
+
+/* ---------- Responsive: móvil (base) → tablet → desktop ---------- */
+@media (min-width: 760px) {
+  .app-shell {
+    max-width: 640px;
+  }
+  .kids-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .course-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (min-width: 1080px) {
+  .app-shell {
+    max-width: 860px;
+  }
+  .p-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Orbi } from "../components/Orbi";
+import { Icon } from "../components/Icon";
 
 function goHome() {
   window.location.href = "/";
 }
 
 export function VerifyPage({ token }: { token: string }) {
+  const { t } = useTranslation();
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
 
   useEffect(() => {
@@ -24,17 +27,22 @@ export function VerifyPage({ token }: { token: string }) {
     <div className="auth-screen">
       <Orbi className="auth-orbi" />
       <h1 className="auth-title">Órbita</h1>
-      {state === "loading" && <p className="auth-sub">Verificando tu email…</p>}
-      {state === "ok" && <p className="auth-sub">✅ ¡Email verificado! Ya puedes entrar.</p>}
-      {state === "error" && <p className="auth-error">El enlace es inválido o ha caducado.</p>}
+      {state === "loading" && <p className="auth-sub">{t("verify.verifying")}</p>}
+      {state === "ok" && (
+        <p className="auth-sub">
+          <Icon name="check" size={18} /> {t("verify.verified")}
+        </p>
+      )}
+      {state === "error" && <p className="auth-error">{t("verify.invalidLink")}</p>}
       <button className="btn-primary" type="button" onClick={goHome}>
-        Ir a la app
+        {t("verify.goApp")}
       </button>
     </div>
   );
 }
 
 export function ResetPage({ token }: { token: string }) {
+  const { t } = useTranslation();
   const [password, setPassword] = useState("");
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,26 +66,28 @@ export function ResetPage({ token }: { token: string }) {
       <h1 className="auth-title">Órbita</h1>
       {done ? (
         <>
-          <p className="auth-sub">✅ Contraseña cambiada. Ya puedes entrar con la nueva.</p>
+          <p className="auth-sub">
+            <Icon name="check" size={18} /> {t("verify.pwChanged")}
+          </p>
           <button className="btn-primary" type="button" onClick={goHome}>
-            Ir a la app
+            {t("verify.goApp")}
           </button>
         </>
       ) : (
         <>
-          <p className="auth-sub">Elige una nueva contraseña</p>
+          <p className="auth-sub">{t("verify.chooseNewPw")}</p>
           <div className="auth-form">
             <input
               className="field"
               type="password"
-              placeholder="Nueva contraseña (6+)"
+              placeholder={t("verify.newPwPh")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
             />
             {error && <div className="auth-error">{error}</div>}
             <button className="btn-primary" type="button" onClick={submit} disabled={busy || password.length < 6}>
-              {busy ? "…" : "Cambiar contraseña"}
+              {busy ? "…" : t("verify.changePw")}
             </button>
           </div>
         </>

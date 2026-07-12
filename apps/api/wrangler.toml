@@ -2,6 +2,13 @@ name = "app"
 main = "src/index.ts"
 compatibility_date = "2026-07-01"
 
+# Dominio propio: el Worker se sirve en https://app.smart-kids.uk
+# Cloudflare provisiona el registro DNS de `app` y el certificado TLS automáticamente.
+# (La URL app.smartkids.workers.dev sigue funcionando como respaldo.)
+[[routes]]
+pattern = "app.smart-kids.uk"
+custom_domain = true
+
 # La SPA (build de apps/web) se sirve como Static Assets desde el mismo Worker:
 # mismo origen que la API, un solo deploy, sin CORS. Requiere `pnpm --filter @smartkids/web build`.
 [assets]

@@ -99,12 +99,27 @@ export async function destroySession(c: Context, db: DB): Promise<void> {
 }
 
 export async function ownsProfile(db: DB, parentId: string, profileId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: schema.childProfiles.id })
+  const [child] = await db
+    .select({ owner: schema.childProfiles.parentId })
     .from(schema.childProfiles)
-    .where(and(eq(schema.childProfiles.id, profileId), eq(schema.childProfiles.parentId, parentId)))
+    .where(eq(schema.childProfiles.id, profileId))
     .limit(1);
-  return Boolean(row);
+  if (!child) return false;
+  if (child.owner === parentId) return true;
+  // El niño puede pertenecer al cónyuge (hogar compartido). Exigimos vínculo SIMÉTRICO
+  // en ambas cuentas: así un estado asimétrico (p.ej. por una carrera) nunca concede acceso.
+  const [me] = await db
+    .select({ spouseId: schema.parentAccounts.spouseId })
+    .from(schema.parentAccounts)
+    .where(eq(schema.parentAccounts.id, parentId))
+    .limit(1);
+  if (!me?.spouseId || me.spouseId !== child.owner) return false;
+  const [owner] = await db
+    .select({ spouseId: schema.parentAccounts.spouseId })
+    .from(schema.parentAccounts)
+    .where(eq(schema.parentAccounts.id, child.owner))
+    .limit(1);
+  return owner?.spouseId === parentId;
 }
 
 /* ---------- Tokens de verificación / recuperación (un solo uso) ---------- */

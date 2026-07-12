@@ -1,5 +1,94 @@
-/* Órbita — tokens del sistema de diseño (tema espacial oscuro). */
+/* =========================================================================
+   Tokens de diseño de smartkids.
+   Tema CLARO por defecto (:root). OSCURO «Órbita» si lo pide el sistema
+   (prefers-color-scheme) o el conmutador (data-theme en <html>).
+   Los componentes usan SOLO estos tokens; no colores sueltos.
+   ========================================================================= */
 :root {
+  /* Tipografía y formas */
+  --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --hud: "Cascadia Code", "SFMono-Regular", Consolas, ui-monospace, monospace;
+  --radius: 20px;
+
+  /* Escala de espaciado (para que la UI respire) */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-8: 3rem;
+
+  /* Altura uniforme de botones */
+  --btn-h: 2.75rem;
+  --btn-h-sm: 2.1rem;
+
+  /* CTA primario: acento fijo en ambos temas (identidad de marca) */
+  --btn-primary-bg: linear-gradient(94deg, #37e1e8, #4bf0d0);
+  --btn-primary-fg: #04121b;
+
+  /* ----- TEMA CLARO (por defecto) ----- */
+  color-scheme: light;
+  --space-950: #e7ebf7;
+  --space-900: #eef1fb;
+  --space-850: #f3f5fd;
+  --surface: #ffffff;
+  --surface-2: #eff2fc;
+  --line: #d5ddf0;
+  --line-soft: #e5eaf7;
+  --text: #131a30;
+  --text-dim: #4c5878;
+  --text-faint: #8b95b5;
+  --cyan: #0b93a0;
+  --violet: #7c3aed;
+  --gold: #a9790a;
+  --green: #12a35c;
+  --coral: #e5484d;
+  --on-accent: #ffffff;
+  --glow-cyan: none;
+  --glow-violet: none;
+  --glow-gold: none;
+  --gold-wash: rgba(169, 121, 10, 0.1);
+  --star: #7c3aed;
+  --scrim: 80%;
+  --bg-glow-1: rgba(124, 58, 237, 0.08);
+  --bg-glow-2: rgba(11, 147, 160, 0.08);
+}
+
+/* ----- TEMA OSCURO: preferencia del sistema (salvo override claro) ----- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --space-950: #06070f;
+    --space-900: #0a0d1f;
+    --space-850: #0e1330;
+    --surface: #141a3a;
+    --surface-2: #1b2450;
+    --line: #2a3468;
+    --line-soft: #202a58;
+    --text: #eaeeff;
+    --text-dim: #a7b0dc;
+    --text-faint: #6e79ac;
+    --cyan: #37e1e8;
+    --violet: #b14bff;
+    --gold: #ffd166;
+    --green: #45e08c;
+    --coral: #ff6b6b;
+    --on-accent: #04121b;
+    --glow-cyan: 0 0 22px rgba(55, 225, 232, 0.45);
+    --glow-violet: 0 0 22px rgba(177, 75, 255, 0.42);
+    --glow-gold: 0 0 18px rgba(255, 209, 102, 0.42);
+    --gold-wash: rgba(255, 209, 102, 0.14);
+    --star: #dfe6ff;
+    --scrim: 82%;
+    --bg-glow-1: rgba(177, 75, 255, 0.16);
+    --bg-glow-2: rgba(55, 225, 232, 0.12);
+  }
+}
+
+/* ----- TEMA OSCURO: forzado por el conmutador ----- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
   --space-950: #06070f;
   --space-900: #0a0d1f;
   --space-850: #0e1330;
@@ -15,10 +104,17 @@
   --gold: #ffd166;
   --green: #45e08c;
   --coral: #ff6b6b;
+  --on-accent: #04121b;
   --glow-cyan: 0 0 22px rgba(55, 225, 232, 0.45);
   --glow-violet: 0 0 22px rgba(177, 75, 255, 0.42);
   --glow-gold: 0 0 18px rgba(255, 209, 102, 0.42);
-  --radius: 20px;
-  --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --hud: "Cascadia Code", "SFMono-Regular", Consolas, ui-monospace, monospace;
+  --gold-wash: rgba(255, 209, 102, 0.14);
+  --star: #dfe6ff;
+  --scrim: 82%;
+  --bg-glow-1: rgba(177, 75, 255, 0.16);
+  --bg-glow-2: rgba(55, 225, 232, 0.12);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }

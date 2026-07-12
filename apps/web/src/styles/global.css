@@ -11,8 +11,8 @@ body {
   font-family: var(--sans);
   color: var(--text);
   background:
-    radial-gradient(1000px 600px at 80% -10%, rgba(177, 75, 255, 0.16), transparent 60%),
-    radial-gradient(900px 560px at 10% 0%, rgba(55, 225, 232, 0.12), transparent 58%),
+    radial-gradient(1000px 600px at 80% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(900px 560px at 10% 0%, var(--bg-glow-2), transparent 58%),
     linear-gradient(180deg, var(--space-950), var(--space-900));
   -webkit-font-smoothing: antialiased;
 }
@@ -83,16 +83,20 @@ body {
 }
 
 .btn-primary {
-  margin-top: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--btn-h);
   font-family: var(--sans);
   font-weight: 750;
   font-size: 1rem;
-  color: #04121b;
+  line-height: 1;
+  color: var(--btn-primary-fg);
   border: 0;
   cursor: pointer;
-  background: linear-gradient(94deg, var(--cyan), #4bf0d0);
+  background: var(--btn-primary-bg);
   border-radius: 14px;
-  padding: 0.8rem 1.6rem;
+  padding: 0 1.6rem;
   box-shadow: var(--glow-cyan);
 }
 .btn-primary:focus-visible {
