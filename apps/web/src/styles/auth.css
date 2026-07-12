@@ -216,7 +216,9 @@ select.field option {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.2rem;
+  /* Respeta la safe-area de iOS (barra de estado / notch / home indicator) en modo standalone. */
+  padding: calc(1.2rem + env(safe-area-inset-top)) calc(1.2rem + env(safe-area-inset-right))
+    calc(1.2rem + env(safe-area-inset-bottom)) calc(1.2rem + env(safe-area-inset-left));
 }
 .modal {
   background: var(--surface);
@@ -229,7 +231,7 @@ select.field option {
   flex-direction: column;
   gap: 0.85rem;
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
-  max-height: calc(100dvh - 2.4rem);
+  max-height: calc(100dvh - 2.4rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
 }
 .modal h3 {
