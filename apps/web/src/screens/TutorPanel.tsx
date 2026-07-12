@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type Course, type Me } from "../api";
+import { api, tx, type Child, type Course, type Me, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
+import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
 
 export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () => void; onRefresh: () => void }) {
@@ -73,6 +74,8 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
         </div>
 
         <SpouseSection me={me} onRefresh={onRefresh} />
+
+        <RewardsSection me={me} />
 
         <button className="btn-ghost panel-pw" type="button" onClick={() => setChangingPw(true)}>
           {t("tutor.changeMyPw")}
@@ -386,6 +389,225 @@ function InviteSpouse({ onClose, onDone }: { onClose: () => void; onDone: () => 
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+const REWARD_ICONS: IconName[] = ["gift", "clock", "star", "medal", "rocket", "book", "planet", "target"];
+
+function RewardsSection({ me }: { me: Me }) {
+  const { t } = useTranslation();
+  const [rewards, setRewards] = useState<TutorReward[] | null>(null);
+  const [editing, setEditing] = useState<TutorReward | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  function load() {
+    api.tutorRewards().then(setRewards).catch(() => setRewards([]));
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function remove(r: TutorReward) {
+    if (!window.confirm(t("rewards.deleteConfirm"))) return;
+    try {
+      await api.deleteReward(r.id);
+      load();
+    } catch {
+      /* noop */
+    }
+  }
+
+  return (
+    <div className="panel-section">
+      <div className="panel-head">
+        <h2 className="screen-title">{t("rewards.section")}</h2>
+        {me.children.length > 0 && (
+          <button className="btn-primary sm" type="button" onClick={() => setCreating(true)}>
+            {t("common.new")}
+          </button>
+        )}
+      </div>
+      {me.children.length === 0 ? (
+        <p className="muted screen-pad">{t("rewards.noKids")}</p>
+      ) : (
+        <div className="list">
+          {(rewards ?? []).map((r) => (
+            <div className="list-row" key={r.id}>
+              <div className="shop-ic sm">
+                <Icon name={(r.icon as IconName) || (r.kind === "goal" ? "target" : "gift")} size={20} />
+              </div>
+              <div className="list-main">
+                <b>{tx(r.nameI18n)}</b>
+                <span>
+                  {r.kind === "goal" ? t("rewards.kindGoal") : t("rewards.kindSpend")} · {r.cost}
+                </span>
+              </div>
+              <button className="btn-ghost sm" type="button" onClick={() => setEditing(r)}>
+                {t("common.edit")}
+              </button>
+              <button className="btn-ghost sm danger" type="button" onClick={() => remove(r)}>
+                {t("common.delete")}
+              </button>
+            </div>
+          ))}
+          {rewards && rewards.length === 0 && <p className="muted screen-pad">{t("rewards.none")}</p>}
+        </div>
+      )}
+      {(creating || editing) && (
+        <RewardForm
+          reward={editing ?? undefined}
+          kids={me.children}
+          onClose={() => {
+            setCreating(false);
+            setEditing(null);
+          }}
+          onDone={() => {
+            setCreating(false);
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+type LimitMode = "none" | "once" | "week" | "month";
+
+function RewardForm({ reward, kids, onClose, onDone }: { reward?: TutorReward; kids: Child[]; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation();
+  const editing = Boolean(reward);
+  const [name, setName] = useState(reward ? tx(reward.nameI18n) : "");
+  const [kind, setKind] = useState(reward?.kind ?? "spend");
+  const [cost, setCost] = useState(String(reward?.cost ?? ""));
+  const [period, setPeriod] = useState(reward?.period ?? "month");
+  const [limitMode, setLimitMode] = useState<LimitMode>(
+    reward
+      ? reward.limitCount == null
+        ? "none"
+        : reward.limitCount === 1 && reward.limitPeriod === "all"
+          ? "once"
+          : reward.limitPeriod === "week"
+            ? "week"
+            : "month"
+      : "none",
+  );
+  const [count, setCount] = useState(String(reward?.limitCount ?? 1));
+  const [icon, setIcon] = useState<string>(reward?.icon ?? "gift");
+  const [sel, setSel] = useState<string[]>(reward?.childIds ?? []);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(id: string) {
+    setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const limit =
+        limitMode === "none"
+          ? { limitCount: null, limitPeriod: "all" }
+          : limitMode === "once"
+            ? { limitCount: 1, limitPeriod: "all" }
+            : { limitCount: Math.max(1, parseInt(count) || 1), limitPeriod: limitMode };
+      const data = {
+        name: name.trim(),
+        cost: parseInt(cost) || 0,
+        icon,
+        childIds: sel,
+        kind,
+        period: kind === "goal" ? period : undefined,
+        ...limit,
+      };
+      if (editing) await api.updateReward(reward!.id, data);
+      else await api.createReward(data);
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{editing ? t("rewards.editTitle") : t("rewards.newTitle")}</h3>
+        <input className="field" placeholder={t("rewards.namePh")} value={name} onChange={(e) => setName(e.target.value)} />
+
+        <div className="course-label">{t("rewards.kind")}</div>
+        <div className="seg">
+          <button type="button" className={kind === "spend" ? "on" : ""} onClick={() => setKind("spend")}>
+            {t("rewards.kindSpend")}
+          </button>
+          <button type="button" className={kind === "goal" ? "on" : ""} onClick={() => setKind("goal")}>
+            {t("rewards.kindGoal")}
+          </button>
+        </div>
+        <p className="reward-hint">{kind === "goal" ? t("rewards.kindGoalHint") : t("rewards.kindSpendHint")}</p>
+
+        <input
+          className="field"
+          inputMode="numeric"
+          placeholder={kind === "goal" ? t("rewards.target") : t("rewards.cost")}
+          value={cost}
+          onChange={(e) => setCost(e.target.value.replace(/\D/g, ""))}
+        />
+
+        {kind === "goal" && (
+          <div className="seg">
+            <button type="button" className={period === "week" ? "on" : ""} onClick={() => setPeriod("week")}>
+              {t("rewards.periodWeek")}
+            </button>
+            <button type="button" className={period === "month" ? "on" : ""} onClick={() => setPeriod("month")}>
+              {t("rewards.periodMonth")}
+            </button>
+          </div>
+        )}
+
+        <div className="course-label">{t("rewards.limit")}</div>
+        <div className="seg wrap">
+          {(["none", "once", "week", "month"] as LimitMode[]).map((m) => (
+            <button key={m} type="button" className={limitMode === m ? "on" : ""} onClick={() => setLimitMode(m)}>
+              {m === "none" ? t("rewards.limitNone") : m === "once" ? t("rewards.limitOnce") : m === "week" ? t("rewards.limitPerWeek") : t("rewards.limitPerMonth")}
+            </button>
+          ))}
+        </div>
+        {(limitMode === "week" || limitMode === "month") && (
+          <input className="field" inputMode="numeric" placeholder={t("rewards.count")} value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} />
+        )}
+
+        <div className="course-label">{t("rewards.icon")}</div>
+        <div className="avatar-pick">
+          {REWARD_ICONS.map((ic) => (
+            <button key={ic} type="button" className={"ava" + (ic === icon ? " on" : "")} onClick={() => setIcon(ic)}>
+              <Icon name={ic} size={22} />
+            </button>
+          ))}
+        </div>
+
+        <div className="course-label">{t("rewards.forChildren")}</div>
+        <div className="course-checks">
+          {kids.map((ch) => (
+            <label className={"course-check" + (sel.includes(ch.id) ? " on" : "")} key={ch.id}>
+              <input type="checkbox" checked={sel.includes(ch.id)} onChange={() => toggle(ch.id)} />
+              {ch.displayName}
+            </label>
+          ))}
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+        <div className="modal-actions">
+          <button className="btn-ghost" type="button" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button className="btn-primary" type="button" onClick={save} disabled={busy || !name.trim() || !(parseInt(cost) > 0)}>
+            {t("common.save")}
+          </button>
+        </div>
       </div>
     </div>
   );

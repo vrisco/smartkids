@@ -23,7 +23,9 @@ export type IconName =
   | "star"
   | "globe"
   | "sun"
-  | "moon";
+  | "moon"
+  | "gift"
+  | "target";
 
 const STROKE: Partial<Record<IconName, ReactElement>> = {
   lock: (
@@ -84,6 +86,20 @@ const STROKE: Partial<Record<IconName, ReactElement>> = {
     </>
   ),
   moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />,
+  gift: (
+    <>
+      <rect x="4" y="9" width="16" height="11" rx="1.5" />
+      <path d="M4 13h16M12 9v11" />
+      <path d="M12 9C10 5.5 6.5 6 7.6 8.3 8.3 9 12 9 12 9ZM12 9c2-3.5 5.5-3 4.4-.7C15.7 9 12 9 12 9Z" />
+    </>
+  ),
+  target: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4.5" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </>
+  ),
 };
 
 const FILL: Partial<Record<IconName, ReactElement>> = {

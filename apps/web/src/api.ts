@@ -85,8 +85,40 @@ export interface Reward {
   id: string;
   cost: number;
   type: string;
-  payload: unknown;
+  kind: string; // 'spend' | 'goal'
+  period?: string | null; // goal: 'week' | 'month'
+  limitCount?: number | null;
+  limitPeriod?: string; // 'all' | 'week' | 'month'
+  icon?: string | null;
+  payload?: unknown;
   nameI18n: LocaleText;
+  // Calculados por el servidor para el niño:
+  progress?: number | null; // goal: puntos acumulados en la ventana
+  claimable?: boolean;
+  redeemedInWindow?: number;
+}
+
+export interface TutorReward {
+  id: string;
+  cost: number;
+  kind: string;
+  period?: string | null;
+  limitCount?: number | null;
+  limitPeriod?: string;
+  icon?: string | null;
+  nameI18n: LocaleText;
+  childIds: string[];
+}
+
+export interface RewardInput {
+  name: string;
+  cost: number;
+  icon: string;
+  childIds: string[];
+  kind: string; // 'spend' | 'goal'
+  period?: string; // goal
+  limitCount?: number | null;
+  limitPeriod?: string;
 }
 
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
@@ -156,6 +188,13 @@ export const api = {
     j<AttemptResult>(`/api/session/attempt`, post(body)),
   rewards: () => j<Reward[]>(`/api/rewards`),
   redeem: (rewardId: string, profileId: string) => j<{ ok: boolean; balance: number; status: string }>(`/api/rewards/${rewardId}/redeem`, post({ profileId })),
+
+  // Recompensas definidas por el tutor (asignadas por niño)
+  tutorRewards: () => j<TutorReward[]>(`/api/tutor/rewards`),
+  createReward: (data: RewardInput) => j<{ reward: { id: string } }>(`/api/tutor/rewards`, post(data)),
+  updateReward: (id: string, data: Partial<RewardInput>) =>
+    j<{ ok: boolean }>(`/api/tutor/rewards/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }),
+  deleteReward: (id: string) => j<{ ok: boolean }>(`/api/tutor/rewards/${id}`, { method: "DELETE" }),
 };
 
 export const tx = (m: LocaleText | undefined, locale: string = i18n.language): string =>

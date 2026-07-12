@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import {
   clearAttempts,
@@ -43,6 +43,7 @@ const {
   redemptions,
   courses,
   childCourses,
+  childRewards,
 } = schema;
 
 const COINS_PER_CORRECT = 10;
@@ -105,6 +106,7 @@ function childCoursesOf(db: DB, childId: string) {
 /** Borra un niño y todo lo suyo (cursos, sesión, progreso, monedero, intentos, canjes). */
 async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   await db.delete(childCourses).where(eq(childCourses.childId, childId));
+  await db.delete(childRewards).where(eq(childRewards.childId, childId));
   await db.delete(schema.childSessions).where(eq(schema.childSessions.childId, childId));
   await db.delete(redemptions).where(eq(redemptions.profileId, childId));
   await db.delete(walletLedger).where(eq(walletLedger.profileId, childId));
@@ -114,12 +116,45 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   await db.delete(childProfiles).where(eq(childProfiles.id, childId));
 }
 
+/** Borra una recompensa y sus asignaciones (child_rewards) y canjes (redemptions). */
+async function deleteRewardCascade(db: DB, rewardId: string): Promise<void> {
+  await db.delete(childRewards).where(eq(childRewards.rewardId, rewardId));
+  await db.delete(redemptions).where(eq(redemptions.rewardId, rewardId));
+  await db.delete(rewards).where(eq(rewards.id, rewardId));
+}
+
 /** IDs del "hogar": el propio tutor y su cónyuge, SOLO si el vínculo es simétrico (igual que ownsProfile). */
 async function householdIds(db: DB, parentId: string): Promise<string[]> {
   const [p] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
   if (!p?.spouseId) return [parentId];
   const [s] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, p.spouseId)).limit(1);
   return s?.spouseId === parentId ? [parentId, p.spouseId] : [parentId];
+}
+
+/** Inicio (ISO) de la ventana rodante: 'week'=7d, 'month'=30d, resto='all' (epoch). */
+function periodStartIso(period: string | null | undefined): string {
+  const now = Date.now();
+  if (period === "week") return new Date(now - 7 * 86400000).toISOString();
+  if (period === "month") return new Date(now - 30 * 86400000).toISOString();
+  return new Date(0).toISOString();
+}
+
+/** Puntos GANADOS (deltas positivos del ledger) por el niño desde una fecha. */
+async function earnedSince(db: DB, profileId: string, sinceIso: string): Promise<number> {
+  const [row] = await db
+    .select({ s: sql<number>`coalesce(sum(case when ${walletLedger.delta} > 0 then ${walletLedger.delta} else 0 end), 0)` })
+    .from(walletLedger)
+    .where(and(eq(walletLedger.profileId, profileId), gte(walletLedger.ts, sinceIso)));
+  return Number(row?.s ?? 0);
+}
+
+/** Nº de canjes de una recompensa por el niño desde una fecha. */
+async function redemptionsSince(db: DB, profileId: string, rewardId: string, sinceIso: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(redemptions)
+    .where(and(eq(redemptions.profileId, profileId), eq(redemptions.rewardId, rewardId), gte(redemptions.ts, sinceIso)));
+  return Number(row?.n ?? 0);
 }
 
 /* ================= Auth tutor / admin ================= */
@@ -366,13 +401,16 @@ app.delete("/api/admin/tutors/:id", async (c) => {
   const [t] = await db.select({ role: parentAccounts.role, spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, id)).limit(1);
   if (!t || t.role !== "tutor") return c.json({ error: "not_found" }, 404);
   if (t.spouseId) {
-    // Tiene cónyuge: los niños sobreviven. Se reasignan al cónyuge y se deshace el vínculo.
+    // Tiene cónyuge: los niños y las recompensas sobreviven. Se reasignan al cónyuge y se deshace el vínculo.
     await db.update(childProfiles).set({ parentId: t.spouseId }).where(eq(childProfiles.parentId, id));
+    await db.update(rewards).set({ ownerId: t.spouseId }).where(eq(rewards.ownerId, id));
     await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, t.spouseId));
   } else {
-    // Sin cónyuge: se borran sus niños en cascada (con su progreso).
+    // Sin cónyuge: se borran sus niños en cascada (con su progreso) y sus recompensas.
     const kids = await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.parentId, id));
     for (const k of kids) await deleteChildCascade(db, k.id);
+    const rw = await db.select({ id: rewards.id }).from(rewards).where(eq(rewards.ownerId, id));
+    for (const r of rw) await deleteRewardCascade(db, r.id);
   }
   // Limpia cualquier invitación de cónyuge pendiente que apuntara a este tutor.
   await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, id));
@@ -522,6 +560,13 @@ app.delete("/api/tutor/spouse", async (c) => {
   await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, parentId));
   // Solo desvincula el otro lado si de verdad apunta a mí (no corrompas el vínculo de un tercero).
   if (o?.spouseId === parentId) await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, other));
+  // Barre asignaciones de recompensas cruzadas entre los dos hogares que ahora se separan.
+  const aKids = (await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.parentId, parentId))).map((k) => k.id);
+  const bKids = (await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.parentId, other))).map((k) => k.id);
+  const aRewards = (await db.select({ id: rewards.id }).from(rewards).where(eq(rewards.ownerId, parentId))).map((r) => r.id);
+  const bRewards = (await db.select({ id: rewards.id }).from(rewards).where(eq(rewards.ownerId, other))).map((r) => r.id);
+  if (aKids.length && bRewards.length) await db.delete(childRewards).where(and(inArray(childRewards.childId, aKids), inArray(childRewards.rewardId, bRewards)));
+  if (bKids.length && aRewards.length) await db.delete(childRewards).where(and(inArray(childRewards.childId, bKids), inArray(childRewards.rewardId, aRewards)));
   return c.json({ ok: true });
 });
 
@@ -774,8 +819,45 @@ app.get("/api/rewards", async (c) => {
   const db = getDb(c.env.DB);
   const kid = await currentChildId(c, db);
   const parentId = await currentParentId(c, db);
-  if (!kid && !parentId) return c.json({ error: "unauthorized" }, 401);
-  return c.json(await db.select().from(rewards));
+  if (kid) {
+    // El niño solo ve las recompensas asignadas Y del hogar de su tutor, con su progreso/límite calculados.
+    const [childRow] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, kid)).limit(1);
+    const household = childRow ? await householdIds(db, childRow.parentId) : [];
+    const rows = await db
+      .select({
+        id: rewards.id,
+        ownerId: rewards.ownerId,
+        cost: rewards.cost,
+        type: rewards.type,
+        kind: rewards.kind,
+        period: rewards.period,
+        limitCount: rewards.limitCount,
+        limitPeriod: rewards.limitPeriod,
+        icon: rewards.icon,
+        nameI18n: rewards.nameI18n,
+      })
+      .from(rewards)
+      .innerJoin(childRewards, eq(childRewards.rewardId, rewards.id))
+      .where(eq(childRewards.childId, kid));
+    const out = [];
+    for (const r of rows) {
+      if (!r.ownerId || !household.includes(r.ownerId)) continue; // solo recompensas del hogar del niño
+      const redeemedInWindow = r.limitCount != null ? await redemptionsSince(db, kid, r.id, periodStartIso(r.limitPeriod)) : 0;
+      const limitOk = r.limitCount == null || redeemedInWindow < r.limitCount;
+      let progress: number | null = null;
+      let claimable = limitOk;
+      if (r.kind === "goal") {
+        progress = await earnedSince(db, kid, periodStartIso(r.period));
+        claimable = limitOk && progress >= r.cost;
+      }
+      out.push({ id: r.id, cost: r.cost, type: r.type, kind: r.kind, period: r.period, limitCount: r.limitCount, limitPeriod: r.limitPeriod, icon: r.icon, nameI18n: r.nameI18n, progress, claimable, redeemedInWindow });
+    }
+    return c.json(out);
+  }
+  if (!parentId) return c.json({ error: "unauthorized" }, 401);
+  // El tutor ve las recompensas de su hogar (las suyas y las del cónyuge).
+  const ids = await householdIds(db, parentId);
+  return c.json(await db.select().from(rewards).where(inArray(rewards.ownerId, ids)));
 });
 
 app.post("/api/rewards/:id/redeem", async (c) => {
@@ -786,16 +868,135 @@ app.post("/api/rewards/:id/redeem", async (c) => {
   if (typeof a !== "string") return a;
   const [reward] = await db.select().from(rewards).where(eq(rewards.id, rewardId)).limit(1);
   if (!reward) return c.json({ error: "reward not found" }, 404);
-  const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, profileId)).limit(1);
-  const balance = wallet?.balance ?? 0;
-  if (balance < reward.cost) return c.json({ error: "insufficient_funds", balance }, 400);
+  // La recompensa debe estar asignada a este niño (no se puede canjear una ajena por id).
+  const [assigned] = await db
+    .select({ r: childRewards.rewardId })
+    .from(childRewards)
+    .where(and(eq(childRewards.childId, profileId), eq(childRewards.rewardId, rewardId)))
+    .limit(1);
+  if (!assigned) return c.json({ error: "forbidden" }, 403);
+  // La recompensa debe pertenecer al HOGAR del niño (defensa ante asignaciones cruzadas, p.ej. tras desvincular cónyuge).
+  const [childRow] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, profileId)).limit(1);
+  const household = childRow ? await householdIds(db, childRow.parentId) : [];
+  if (!reward.ownerId || !household.includes(reward.ownerId)) return c.json({ error: "forbidden" }, 403);
+  // Límite de canjes en la ventana configurada (p.ej. una vez, o N al mes).
+  if (reward.limitCount != null) {
+    const cnt = await redemptionsSince(db, profileId, rewardId, periodStartIso(reward.limitPeriod));
+    if (cnt >= reward.limitCount) return c.json({ error: "limit_reached", message: "Ya lo has canjeado el máximo de veces." }, 409);
+  }
   const now = new Date().toISOString();
-  const newBalance = balance - reward.cost;
-  await db.update(wallets).set({ balance: newBalance }).where(eq(wallets.profileId, profileId));
+  // Las recompensas del mundo real (definidas por el tutor / vouchers) quedan pendientes de que la familia las conceda.
+  const inApp = reward.type === "cosmetic" || reward.type === "streak_freeze";
+  const status = inApp ? "applied" : "pending";
+  const slim = { id: reward.id, cost: reward.cost, kind: reward.kind, icon: reward.icon, nameI18n: reward.nameI18n };
+  if (reward.kind === "goal") {
+    // Objetivo por acumulación: exige puntos GANADOS en la ventana; NO descuenta el monedero.
+    const earned = await earnedSince(db, profileId, periodStartIso(reward.period));
+    if (earned < reward.cost) return c.json({ error: "goal_not_reached", message: "Aún no has alcanzado el objetivo.", earned, target: reward.cost }, 400);
+    await db.insert(redemptions).values({ id: crypto.randomUUID(), profileId, rewardId, status, ts: now });
+    const [w] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, profileId)).limit(1);
+    return c.json({ ok: true, balance: w?.balance ?? 0, status, reward: slim });
+  }
+  // Canjeable: decremento ATÓMICO condicional (evita doble gasto en concurrencia).
+  const updated = await db
+    .update(wallets)
+    .set({ balance: sql`${wallets.balance} - ${reward.cost}` })
+    .where(and(eq(wallets.profileId, profileId), gte(wallets.balance, reward.cost)))
+    .returning({ balance: wallets.balance });
+  if (!updated.length) return c.json({ error: "insufficient_funds" }, 400);
+  const newBalance = updated[0]!.balance;
   await db.insert(walletLedger).values({ id: crypto.randomUUID(), profileId, delta: -reward.cost, reason: `redeem:${rewardId}`, ts: now });
-  const status = reward.type === "screen_time_voucher" ? "pending" : "applied";
   await db.insert(redemptions).values({ id: crypto.randomUUID(), profileId, rewardId, status, ts: now });
-  return c.json({ ok: true, balance: newBalance, status, reward });
+  return c.json({ ok: true, balance: newBalance, status, reward: slim });
+});
+
+/* ================= Tutor: recompensas (definidas por el tutor, asignadas por niño) ================= */
+
+app.get("/api/tutor/rewards", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const ids = await householdIds(db, parentId);
+  const rows = await db.select().from(rewards).where(inArray(rewards.ownerId, ids));
+  const out = [];
+  for (const r of rows) {
+    const links = await db.select({ childId: childRewards.childId }).from(childRewards).where(eq(childRewards.rewardId, r.id));
+    out.push({ id: r.id, cost: r.cost, kind: r.kind, period: r.period, limitCount: r.limitCount, limitPeriod: r.limitPeriod, icon: r.icon, nameI18n: r.nameI18n, childIds: links.map((l) => l.childId) });
+  }
+  return c.json(out);
+});
+
+app.post("/api/tutor/rewards", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const body = await c.req.json<{ name?: string; cost?: number; icon?: string; childIds?: string[]; kind?: string; period?: string; limitCount?: number | null; limitPeriod?: string }>();
+  const name = body.name?.trim();
+  const cost = Math.floor(Number(body.cost));
+  if (!name || !Number.isFinite(cost) || cost < 1) return c.json({ error: "invalid", message: "Nombre y coste (>= 1) requeridos." }, 400);
+  const kind = body.kind === "goal" ? "goal" : "spend";
+  const period = kind === "goal" ? (body.period === "week" ? "week" : "month") : null;
+  let limitCount = body.limitCount != null && Number.isFinite(Number(body.limitCount)) && Number(body.limitCount) > 0 ? Math.floor(Number(body.limitCount)) : null;
+  let limitPeriod = body.limitPeriod === "week" || body.limitPeriod === "month" ? body.limitPeriod : "all";
+  // Un objetivo siempre lleva límite (si no, sería reclamable infinitas veces): por defecto una vez por su periodo.
+  if (kind === "goal" && limitCount == null) {
+    limitCount = 1;
+    limitPeriod = period ?? "month";
+  }
+  const ids = await householdIds(db, parentId);
+  const validKids = new Set((await db.select({ id: childProfiles.id }).from(childProfiles).where(inArray(childProfiles.parentId, ids))).map((k) => k.id));
+  const childIds = (body.childIds ?? []).filter((k) => validKids.has(k));
+  const id = `rw_${crypto.randomUUID()}`;
+  await db.insert(rewards).values({ id, ownerId: parentId, cost, type: "manual", kind, period, limitCount, limitPeriod, icon: body.icon ?? "gift", payload: null, nameI18n: { es: name, en: name } });
+  for (const cid of childIds) await db.insert(childRewards).values({ childId: cid, rewardId: id });
+  return c.json({ reward: { id, name, cost } });
+});
+
+app.patch("/api/tutor/rewards/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const id = c.req.param("id");
+  const ids = await householdIds(db, parentId);
+  const [r] = await db.select({ ownerId: rewards.ownerId, kind: rewards.kind, period: rewards.period, limitCount: rewards.limitCount }).from(rewards).where(eq(rewards.id, id)).limit(1);
+  if (!r || !r.ownerId || !ids.includes(r.ownerId)) return c.json({ error: "not_found" }, 404);
+  const body = await c.req.json<{ name?: string; cost?: number; icon?: string; childIds?: string[]; kind?: string; period?: string; limitCount?: number | null; limitPeriod?: string }>();
+  const patch: { nameI18n?: Record<string, string>; cost?: number; icon?: string; kind?: string; period?: string | null; limitCount?: number | null; limitPeriod?: string } = {};
+  if (body.name?.trim()) patch.nameI18n = { es: body.name.trim(), en: body.name.trim() };
+  if (body.cost != null && Number.isFinite(Number(body.cost))) patch.cost = Math.max(1, Math.floor(Number(body.cost)));
+  if (body.icon) patch.icon = body.icon;
+  if (body.kind === "spend" || body.kind === "goal") {
+    patch.kind = body.kind;
+    patch.period = body.kind === "goal" ? (body.period === "week" ? "week" : "month") : null;
+  }
+  if ("limitCount" in body) patch.limitCount = body.limitCount != null && Number(body.limitCount) > 0 ? Math.floor(Number(body.limitCount)) : null;
+  if (body.limitPeriod === "week" || body.limitPeriod === "month" || body.limitPeriod === "all") patch.limitPeriod = body.limitPeriod;
+  // Invariante: un objetivo siempre lleva límite (si no, sería reclamable infinitas veces).
+  const resultKind = patch.kind ?? r.kind;
+  const resultLimit = "limitCount" in body ? patch.limitCount ?? null : r.limitCount;
+  if (resultKind === "goal" && resultLimit == null) {
+    patch.limitCount = 1;
+    patch.limitPeriod = (patch.period ?? r.period) === "week" ? "week" : "month";
+  }
+  if (Object.keys(patch).length) await db.update(rewards).set(patch).where(eq(rewards.id, id));
+  if (body.childIds) {
+    const validKids = new Set((await db.select({ id: childProfiles.id }).from(childProfiles).where(inArray(childProfiles.parentId, ids))).map((k) => k.id));
+    await db.delete(childRewards).where(eq(childRewards.rewardId, id));
+    for (const cid of body.childIds.filter((k) => validKids.has(k))) await db.insert(childRewards).values({ childId: cid, rewardId: id });
+  }
+  return c.json({ ok: true });
+});
+
+app.delete("/api/tutor/rewards/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const id = c.req.param("id");
+  const ids = await householdIds(db, parentId);
+  const [r] = await db.select({ ownerId: rewards.ownerId }).from(rewards).where(eq(rewards.id, id)).limit(1);
+  if (!r || !r.ownerId || !ids.includes(r.ownerId)) return c.json({ error: "not_found" }, 404);
+  await deleteRewardCascade(db, id);
+  return c.json({ ok: true });
 });
 
 /* ================= SPA ================= */

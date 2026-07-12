@@ -149,8 +149,14 @@ export const walletLedger = sqliteTable("wallet_ledger", {
 
 export const rewards = sqliteTable("rewards", {
   id: text("id").primaryKey(),
-  cost: integer("cost").notNull(),
+  ownerId: text("owner_id"), // tutor/hogar dueño; null = recompensa del sistema (sembrada)
+  cost: integer("cost").notNull(), // spend: precio en puntos; goal: objetivo a acumular
   type: text("type").notNull(),
+  kind: text("kind").notNull().default("spend"), // 'spend' (canjeable) | 'goal' (acumular en el tiempo)
+  period: text("period"), // goal: ventana de acumulación 'week'|'month' (null = total)
+  limitCount: integer("limit_count"), // máx. canjes por ventana (null = ilimitado)
+  limitPeriod: text("limit_period").notNull().default("all"), // 'all'|'week'|'month'
+  icon: text("icon"), // nombre de icono (para recompensas definidas por el tutor)
   payload: text("payload", { mode: "json" }),
   nameI18n: text("name_i18n", { mode: "json" }).$type<LocaleText>().notNull(),
 });
@@ -227,4 +233,18 @@ export const childCourses = sqliteTable(
       .references(() => courses.id),
   },
   (t) => [primaryKey({ columns: [t.childId, t.courseId] })],
+);
+
+/** Acceso de un niño a una recompensa (lo concede el tutor). */
+export const childRewards = sqliteTable(
+  "child_rewards",
+  {
+    childId: text("child_id")
+      .notNull()
+      .references(() => childProfiles.id),
+    rewardId: text("reward_id")
+      .notNull()
+      .references(() => rewards.id),
+  },
+  (t) => [primaryKey({ columns: [t.childId, t.rewardId] })],
 );

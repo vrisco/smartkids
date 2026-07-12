@@ -475,6 +475,63 @@ code {
   cursor: default;
 }
 
+/* ---------- Recompensas: control segmentado + barra de objetivo ---------- */
+.seg {
+  display: flex;
+  gap: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 0.25rem;
+}
+.seg.wrap {
+  flex-wrap: wrap;
+}
+.seg button {
+  flex: 1 1 auto;
+  min-width: max-content;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.seg button.on {
+  background: var(--surface-2);
+  color: var(--cyan);
+}
+.reward-hint {
+  color: var(--text-faint);
+  font-size: 0.76rem;
+  margin: 0.1rem 0 0;
+}
+.shop-ic.sm {
+  width: 32px;
+  height: 32px;
+  font-size: 1rem;
+}
+.goal-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+  margin: 4px 0 3px;
+}
+.goal-bar i {
+  display: block;
+  height: 100%;
+  background: var(--violet);
+  border-radius: 4px;
+}
+.shop-item.goal .shop-ic {
+  background: rgba(177, 75, 255, 0.12);
+}
+
 /* ---------- Parent panel ---------- */
 .parent-screen {
   padding-bottom: 1rem;
