@@ -1,18 +1,17 @@
 ---
-name: smartkids_contenido
+name: smartkids_content
 description: "Genera contenido educativo (ejercicios de los 7 tipos) para smartkids, en dos vías: (A) desde una descripción en lenguaje natural del usuario, y (B) desde material que un tutor sube por la app (fotos, PDF, texto). Úsala cuando el usuario pida 'generar contenido', 'crear ejercicios de <asignatura/nivel>', o 'procesar las solicitudes de contenido de los tutores'."
-trigger: /smartkids_contenido
 ---
 
-# /smartkids_contenido
+# /smartkids_content
 
 Generador de contenido de smartkids. Convierte una petición (o el material subido por un tutor) en ejercicios validados y los publica en la D1, listos para jugar.
 
 ## Uso
 
 ```
-/smartkids_contenido <descripción>   # Vía A: "genera 30 ejercicios de mates 5º ESO sobre fracciones"
-/smartkids_contenido pendientes      # Vía B: procesa las solicitudes de contenido subidas por tutores
+/smartkids_content <descripción>   # Vía A: "genera 30 ejercicios de mates 5º ESO sobre fracciones"
+/smartkids_content pendientes      # Vía B: procesa las solicitudes de contenido subidas por tutores
 ```
 
 ## Contexto imprescindible (léelo antes de actuar)
@@ -39,7 +38,7 @@ Generador de contenido de smartkids. Convierte una petición (o el material subi
 2. **Descarga los assets si los hay**: `GET /api/admin/content-requests/:id/assets/:assetId` (mismo Bearer) devuelve el binario. **Una solicitud puede NO tener `assets`** (petición SOLO de texto): entonces no hay nada que descargar y generas a partir de `title` + `instructions` (como una spec de la Vía A, pero publicando privado).
    La solicitud trae además su **config**: `numQuestions` (cuántas preguntas, por defecto 20), `pointsPerCorrect` (puntos por acierto) y `modules` (1 = ficha única; >1 = path con N módulos).
 3. **Genera** `numQuestions` ejercicios en total, de los tipos adecuados, siguiendo `title` + `instructions`. Con material: si hay `ANTHROPIC_API_KEY`, usa Claude multimodal (`claude-opus-4-8`, salida `ExerciseSchema`, bloques `image` para fotos y `document` para PDF); sin key, extrae el texto (p. ej. Node `pdf-parse`) y redáctalos tú. Sin material (petición de texto), genera directamente de la descripción del tutor.
-4. **Valida** cada ejercicio con `ExerciseSchema` + `validateExercise`. Decide la **estructura**: si `modules` = 1, un solo skill; si `modules` > 1, reparte los ejercicios en N skills-módulo que forman un **path** (comparten `pathId` = `path_<requestId>` y `pathName` = el `title`; cada uno con `moduleIndex` 0..N-1 y su propio `skill.id`, p. ej. `PRIV.<algo>.M1`, `.M2`...).
+4. **Valida** cada ejercicio con `ExerciseSchema` + `validateExercise`. **Nombre**: usa `title` para el nombre del skill/path; si `title` viene vacío (es opcional), genera tú un nombre corto y claro a partir del contenido/`instructions`. Decide la **estructura**: si `modules` = 1, un solo skill; si `modules` > 1, reparte los ejercicios en N skills-módulo que forman un **path** (comparten `pathId` = `path_<requestId>` y el `pathName` que hayas decidido; cada uno con `moduleIndex` 0..N-1 y su propio `skill.id`, p. ej. `PRIV.<algo>.M1`, `.M2`...).
 5. **Publica** cada skill vía `POST /api/admin/content/import` (Bearer):
    - `package.ownerId` = `skill.ownerId` = el `ownerId` de la solicitud (privado del hogar).
    - `skill.coinsPerCorrect` = `pointsPerCorrect` de la solicitud.

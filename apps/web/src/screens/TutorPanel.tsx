@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type ContentRequest, type Course, type Me, type PrivateSkill, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
@@ -704,6 +704,7 @@ function ContentSection({ me }: { me: Me }) {
   const [reqs, setReqs] = useState<ContentRequest[] | null>(null);
   const [content, setContent] = useState<PrivateSkill[] | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState<ContentRequest | null>(null);
   const contentRef = useRef<PrivateSkill[]>([]);
 
   function load() {
@@ -777,12 +778,17 @@ function ContentSection({ me }: { me: Me }) {
                     <Icon name="book" size={20} />
                   </div>
                   <div className="list-main">
-                    <b>{r.title}</b>
+                    <b>{r.title || t("content.untitled")}</b>
                     <span>
                       {t(`content.status_${r.status}`)}
-                      {r.exerciseCount ? ` · ${r.exerciseCount}` : ""}
+                      {r.exerciseCount ? ` · ${r.exerciseCount}` : r.assets && r.assets.length ? ` · ${r.assets.length}` : ""}
                     </span>
                   </div>
+                  {r.status === "uploaded" && (
+                    <button className="btn-ghost sm" type="button" onClick={() => setEditing(r)}>
+                      {t("common.edit")}
+                    </button>
+                  )}
                   <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
                     {t("common.delete")}
                   </button>
@@ -819,26 +825,54 @@ function ContentSection({ me }: { me: Me }) {
           )}
         </>
       )}
-      {uploading && <UploadContent kids={me.children} onClose={() => setUploading(false)} onDone={() => { setUploading(false); load(); }} />}
+      {(uploading || editing) && (
+        <UploadContent
+          kids={me.children}
+          request={editing ?? undefined}
+          onClose={() => {
+            setUploading(false);
+            setEditing(null);
+          }}
+          onDone={() => {
+            setUploading(false);
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () => void; onDone: () => void }) {
+function UploadContent({ kids, request, onClose, onDone }: { kids: Child[]; request?: ContentRequest; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation();
-  const [title, setTitle] = useState("");
-  const [instructions, setInstructions] = useState("");
-  const [childId, setChildId] = useState(kids[0]?.id ?? "");
+  const editingReq = Boolean(request);
+  const [title, setTitle] = useState(request?.title ?? "");
+  const [instructions, setInstructions] = useState(request?.instructions ?? "");
+  const [childId, setChildId] = useState(request?.childId ?? kids[0]?.id ?? "");
   const [files, setFiles] = useState<FileList | null>(null);
-  const [numQuestions, setNumQuestions] = useState("20");
-  const [points, setPoints] = useState("10");
-  const [modules, setModules] = useState("1");
+  const [assets, setAssets] = useState<ContentAsset[]>(request?.assets ?? []);
+  const [numQuestions, setNumQuestions] = useState(String(request?.numQuestions ?? 20));
+  const [points, setPoints] = useState(String(request?.pointsPerCorrect ?? 10));
+  const [modules, setModules] = useState(String(request?.modules ?? 1));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const hasNewFiles = Boolean(files && files.length > 0);
+  const canSave = Boolean(title.trim() || instructions.trim() || hasNewFiles || assets.length > 0);
+
+  async function removeAsset(assetId: string) {
+    if (!request) return;
+    try {
+      await api.deleteRequestAsset(request.id, assetId);
+      setAssets((a) => a.filter((x) => x.id !== assetId));
+    } catch {
+      /* noop */
+    }
+  }
+
   async function save() {
-    const hasFiles = Boolean(files && files.length > 0);
-    if (!title.trim() || (!hasFiles && !instructions.trim())) return;
+    if (!canSave) return;
     setBusy(true);
     setError(null);
     try {
@@ -850,7 +884,8 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
       form.set("pointsPerCorrect", points);
       form.set("modules", modules);
       if (files) for (const f of Array.from(files)) form.append("files", f);
-      await api.createContentRequest(form);
+      if (request) await api.updateContentRequest(request.id, form);
+      else await api.createContentRequest(form);
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -861,7 +896,7 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{t("content.uploadTitle")}</h3>
+        <h3>{editingReq ? t("content.editTitle") : t("content.uploadTitle")}</h3>
         <p className="muted">{t("content.uploadHint")}</p>
         <input className="field" placeholder={t("content.titlePh")} value={title} onChange={(e) => setTitle(e.target.value)} />
         <textarea className="field" rows={5} placeholder={t("content.instructionsPh")} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
@@ -891,15 +926,27 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
           <option value="2">{t("content.path2")}</option>
           <option value="3">{t("content.path3")}</option>
         </select>
-        <div className="course-label">{t("content.filesOptional")}</div>
+        {assets.length > 0 && (
+          <div className="asset-list">
+            {assets.map((as) => (
+              <div className="asset-row" key={as.id}>
+                <span className="asset-name">{as.filename}</span>
+                <button className="asset-x" type="button" onClick={() => removeAsset(as.id)} aria-label={t("common.delete")}>
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="course-label">{editingReq ? t("content.addFiles") : t("content.filesOptional")}</div>
         <input className="field" type="file" multiple accept="image/*,application/pdf,text/plain,.md" onChange={(e) => setFiles(e.target.files)} />
         {error && <div className="auth-error">{error}</div>}
         <div className="modal-actions">
           <button className="btn-ghost" type="button" onClick={onClose}>
             {t("common.cancel")}
           </button>
-          <button className="btn-primary" type="button" onClick={save} disabled={busy || !title.trim() || (!(files && files.length > 0) && !instructions.trim())}>
-            {busy ? "…" : t("content.send")}
+          <button className="btn-primary" type="button" onClick={save} disabled={busy || !canSave}>
+            {busy ? "…" : editingReq ? t("common.save") : t("content.send")}
           </button>
         </div>
       </div>

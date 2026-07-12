@@ -143,6 +143,13 @@ export interface Redemption {
   ts: string;
 }
 
+export interface ContentAsset {
+  id: string;
+  filename: string;
+  kind: string;
+  size: number;
+}
+
 export interface ContentRequest {
   id: string;
   title: string;
@@ -151,10 +158,14 @@ export interface ContentRequest {
   childId?: string | null;
   subjectId?: string | null;
   gradeBand?: string | null;
+  numQuestions?: number | null;
+  pointsPerCorrect?: number | null;
+  modules?: number | null;
   exerciseCount?: number | null;
   skillId?: string | null;
   createdAt: string;
   publishedAt?: string | null;
+  assets?: ContentAsset[];
 }
 
 export interface PrivateSkill {
@@ -266,6 +277,22 @@ export const api = {
     }
     return (await res.json()) as { ok: boolean; requestId: string };
   },
+  updateContentRequest: async (id: string, form: FormData): Promise<{ ok: boolean }> => {
+    const res = await fetch(`/api/tutor/content-requests/${id}`, { method: "POST", body: form });
+    if (!res.ok) {
+      let m = `${res.status}`;
+      try {
+        const b = (await res.json()) as { detail?: string; message?: string; error?: string };
+        m = b.detail ?? b.message ?? b.error ?? m;
+      } catch {
+        /* sin cuerpo */
+      }
+      throw new Error(m);
+    }
+    return (await res.json()) as { ok: boolean };
+  },
+  deleteRequestAsset: (reqId: string, assetId: string) =>
+    j<{ ok: boolean }>(`/api/tutor/content-requests/${reqId}/assets/${assetId}`, { method: "DELETE" }),
   tutorContent: () => j<PrivateSkill[]>(`/api/tutor/content`),
   assignSkill: (skillId: string, childIds: string[]) =>
     j<{ ok: boolean; childIds: string[] }>(`/api/tutor/skills/${skillId}/assign`, post({ childIds })),

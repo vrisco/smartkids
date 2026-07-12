@@ -182,6 +182,12 @@ async function householdIds(db: DB, parentId: string): Promise<string[]> {
   return s?.spouseId === parentId ? [parentId, p.spouseId] : [parentId];
 }
 
+/** Acota un valor a un entero en [lo, hi], con defecto si no es número. */
+function clampInt(v: unknown, lo: number, hi: number, def: number): number {
+  const n = parseInt(String(v ?? ""), 10);
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
+}
+
 /** Inicio (ISO) de la ventana rodante: week=7d, month=30d, quarter=90d, semester=180d, year=365d; resto='all' (epoch). */
 function periodStartIso(period: string | null | undefined): string {
   const now = Date.now();
@@ -1086,7 +1092,15 @@ app.get("/api/tutor/content-requests", async (c) => {
   if (typeof a !== "string") return a;
   const household = await householdIds(db, a);
   const rows = await db.select().from(contentRequests).where(inArray(contentRequests.ownerId, household)).orderBy(desc(contentRequests.createdAt));
-  return c.json(rows);
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of rows) {
+    const assets = await db
+      .select({ id: contentRequestAssets.id, filename: contentRequestAssets.filename, kind: contentRequestAssets.kind, size: contentRequestAssets.size })
+      .from(contentRequestAssets)
+      .where(eq(contentRequestAssets.requestId, r.id));
+    out.push({ ...r, assets });
+  }
+  return c.json(out);
 });
 
 /* ---------- Vía B: subida de material del tutor (R2) ---------- */
@@ -1116,14 +1130,9 @@ app.post("/api/tutor/content-requests", async (c) => {
   const childId = form["childId"] ? String(form["childId"]) : null;
   const subjectId = form["subjectId"] ? String(form["subjectId"]) : null;
   const gradeBand = form["gradeBand"] ? String(form["gradeBand"]) : null;
-  const clampInt = (v: unknown, lo: number, hi: number, def: number): number => {
-    const n = parseInt(String(v ?? ""), 10);
-    return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
-  };
   const numQuestions = form["numQuestions"] ? clampInt(form["numQuestions"], 5, 40, 20) : null;
   const pointsPerCorrect = form["pointsPerCorrect"] ? clampInt(form["pointsPerCorrect"], 1, 50, 10) : null;
   const modules = form["modules"] ? clampInt(form["modules"], 1, 6, 1) : null;
-  if (!title) return c.json({ error: "title_required" }, 400);
 
   const household = await householdIds(db, a);
   if (childId) {
@@ -1133,8 +1142,8 @@ app.post("/api/tutor/content-requests", async (c) => {
 
   const raw = form["files"];
   const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File);
-  // Se permite una petición SOLO de texto (sin ficheros) si hay instrucciones que describan qué generar.
-  if (files.length === 0 && !instructions) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
+  // Título opcional (la skill lo nombra con la info). Solo hace falta ALGO con lo que generar: fichero, descripción o al menos un título/tema.
+  if (files.length === 0 && !instructions && !title) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
   if (files.length > UPLOAD_MAX_FILES) return c.json({ error: "too_many_files" }, 400);
   for (const f of files) {
     if (!UPLOAD_KINDS[f.type]) return c.json({ error: "unsupported_type", detail: `${f.name}: ${f.type}` }, 400);
@@ -1155,6 +1164,78 @@ app.post("/api/tutor/content-requests", async (c) => {
     stored.push({ id: assetId, filename: file.name, kind });
   }
   return c.json({ ok: true, requestId, assets: stored });
+});
+
+// Editar una solicitud AÚN NO procesada (status 'uploaded'): cambia campos y/o AÑADE ficheros.
+app.post("/api/tutor/content-requests/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  if (!c.env.UPLOADS) return c.json({ error: "uploads_unavailable" }, 503);
+  const reqId = c.req.param("id");
+  const household = await householdIds(db, a);
+  const [req] = await db.select().from(contentRequests).where(eq(contentRequests.id, reqId)).limit(1);
+  if (!req || !household.includes(req.ownerId)) return c.json({ error: "forbidden" }, 403);
+  if (req.status !== "uploaded") return c.json({ error: "not_editable", message: "La solicitud ya se ha procesado." }, 409);
+
+  const form = await c.req.parseBody({ all: true });
+  const title = String(form["title"] ?? "").trim();
+  const instructions = String(form["instructions"] ?? "").trim();
+  const childId = form["childId"] ? String(form["childId"]) : null;
+  const numQuestions = form["numQuestions"] ? clampInt(form["numQuestions"], 5, 40, 20) : req.numQuestions;
+  const pointsPerCorrect = form["pointsPerCorrect"] ? clampInt(form["pointsPerCorrect"], 1, 50, 10) : req.pointsPerCorrect;
+  const modules = form["modules"] ? clampInt(form["modules"], 1, 6, 1) : req.modules;
+  if (childId) {
+    const [ch] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
+    if (!ch || !household.includes(ch.parentId)) return c.json({ error: "child_forbidden" }, 403);
+  }
+
+  const raw = form["files"];
+  const newFiles = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File);
+  const [cnt] = await db.select({ n: sql<number>`count(*)` }).from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
+  if ((cnt?.n ?? 0) + newFiles.length > UPLOAD_MAX_FILES) return c.json({ error: "too_many_files" }, 400);
+  for (const f of newFiles) {
+    if (!UPLOAD_KINDS[f.type]) return c.json({ error: "unsupported_type", detail: `${f.name}: ${f.type}` }, 400);
+    if (f.size > UPLOAD_MAX_BYTES) return c.json({ error: "file_too_large", detail: f.name }, 400);
+  }
+
+  const now = new Date().toISOString();
+  await db.update(contentRequests).set({ title, instructions, childId, numQuestions, pointsPerCorrect, modules }).where(eq(contentRequests.id, reqId));
+  for (const file of newFiles) {
+    const kind = UPLOAD_KINDS[file.type]!;
+    const assetId = `asset_${crypto.randomUUID()}`;
+    const key = `requests/${reqId}/${assetId}`;
+    await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
+    await db.insert(contentRequestAssets).values({ id: assetId, requestId: reqId, r2Key: key, filename: file.name, contentType: file.type, kind, size: file.size, createdAt: now });
+  }
+  return c.json({ ok: true });
+});
+
+// Quitar un fichero de una solicitud aún no procesada.
+app.delete("/api/tutor/content-requests/:id/assets/:assetId", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const reqId = c.req.param("id");
+  const household = await householdIds(db, a);
+  const [req] = await db.select({ ownerId: contentRequests.ownerId, status: contentRequests.status }).from(contentRequests).where(eq(contentRequests.id, reqId)).limit(1);
+  if (!req || !household.includes(req.ownerId)) return c.json({ error: "forbidden" }, 403);
+  if (req.status !== "uploaded") return c.json({ error: "not_editable" }, 409);
+  const [asset] = await db
+    .select()
+    .from(contentRequestAssets)
+    .where(and(eq(contentRequestAssets.id, c.req.param("assetId")), eq(contentRequestAssets.requestId, reqId)))
+    .limit(1);
+  if (!asset) return c.json({ error: "not_found" }, 404);
+  if (c.env.UPLOADS) {
+    try {
+      await c.env.UPLOADS.delete(asset.r2Key);
+    } catch {
+      /* noop */
+    }
+  }
+  await db.delete(contentRequestAssets).where(eq(contentRequestAssets.id, asset.id));
+  return c.json({ ok: true });
 });
 
 // Máquina (skill/pipeline): lista de solicitudes con sus assets, filtrable por estado.
