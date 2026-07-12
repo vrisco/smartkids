@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { ContentPreview } from "../components/ContentPreview";
+import { StatsView } from "../components/StatsView";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
 
@@ -10,6 +11,7 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
   const { t } = useTranslation();
   const [courses, setCourses] = useState<Course[]>([]);
   const [editing, setEditing] = useState<Child | null>(null);
+  const [statsChild, setStatsChild] = useState<Child | null>(null);
   const [creating, setCreating] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -71,6 +73,9 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
                 <b>{ch.displayName}</b>
                 <span>@{ch.username}</span>
               </div>
+              <button className="btn-ghost sm" type="button" onClick={() => setStatsChild(ch)}>
+                {t("stats.progress")}
+              </button>
               <button className="btn-ghost sm" type="button" onClick={() => setEditing(ch)}>
                 {t("common.edit")}
               </button>
@@ -88,6 +93,7 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
 
       {creating && <ChildForm courses={courses} onClose={() => setCreating(false)} onDone={() => { setCreating(false); onRefresh(); }} />}
       {editing && <ChildForm child={editing} courses={courses} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onRefresh(); }} />}
+      {statsChild && <ChildStatsModal child={statsChild} onClose={() => setStatsChild(null)} />}
       {changingPw && <ChangePassword onClose={() => setChangingPw(false)} />}
       {settingsOpen && (
         <SettingsPanel
@@ -98,6 +104,42 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    api
+      .tutorChildStats(child.id)
+      .then(setStats)
+      .catch(() => setError(true));
+  }, [child.id]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal stats-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="preview-head">
+          <div className="list-main">
+            <b>{child.displayName}</b>
+            <span className="muted">{t("stats.title")}</span>
+          </div>
+          <button className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        {error ? (
+          <p className="muted screen-pad">{t("session.connError")}</p>
+        ) : !stats ? (
+          <p className="muted screen-pad">{t("content.previewLoading")}</p>
+        ) : (
+          <StatsView stats={stats} />
+        )}
+      </div>
     </div>
   );
 }
@@ -297,6 +339,28 @@ function SpouseSection({ me, onRefresh }: { me: Me; onRefresh: () => void }) {
   const { t } = useTranslation();
   const [inviting, setInviting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  async function resendInvite() {
+    setBusy(true);
+    try {
+      await api.resendSpouse();
+      setResent(true);
+    } catch {
+      /* noop */
+    }
+    setBusy(false);
+  }
+  async function cancelInvite() {
+    if (!window.confirm(t("tutor.cancelInviteConfirm"))) return;
+    setBusy(true);
+    try {
+      await api.cancelSpouseInvite();
+      onRefresh();
+    } catch {
+      setBusy(false);
+    }
+  }
 
   async function unlink() {
     if (!window.confirm(t("tutor.unlinkConfirm"))) return;
@@ -366,7 +430,23 @@ function SpouseSection({ me, onRefresh }: { me: Me; onRefresh: () => void }) {
           </div>
         </div>
       ) : me.spouseInviteOut ? (
-        <p className="muted screen-pad">{t("tutor.spouseOutPending", { email: me.spouseInviteOut.toEmail })}</p>
+        <div className="list">
+          <div className="list-row">
+            <div className="list-main">
+              <b>{me.spouseInviteOut.toEmail}</b>
+              <span>{t("tutor.spousePending")}</span>
+            </div>
+            <span className="row-actions">
+              <button className="btn-ghost sm" type="button" onClick={resendInvite} disabled={busy}>
+                {t("tutor.resendInvite")}
+              </button>
+              <button className="btn-ghost sm danger" type="button" onClick={cancelInvite} disabled={busy}>
+                {t("tutor.cancelInvite")}
+              </button>
+            </span>
+          </div>
+          {resent && <p className="muted screen-pad">{t("tutor.inviteResent")}</p>}
+        </div>
       ) : (
         <p className="muted screen-pad">{t("tutor.spouseHint")}</p>
       )}

@@ -610,6 +610,31 @@ app.post("/api/tutor/spouse/reject", async (c) => {
   return c.json({ ok: true });
 });
 
+// Cancela la invitación SALIENTE pendiente (para poder invitar a otra dirección).
+app.delete("/api/tutor/spouse/invite", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  // Limpia el puntero en el lado del invitado (solo filas que apuntan a MÍ; no toca a terceros).
+  await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, parentId));
+  return c.json({ ok: true });
+});
+
+// Reenvía el correo de la invitación SALIENTE pendiente (mismo invitado, nuevo enlace si aún no tiene contraseña).
+app.post("/api/tutor/spouse/resend", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const [me] = await db.select().from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  if (!me || me.role !== "tutor") return c.json({ error: "forbidden" }, 403);
+  if (await rateLimited(db, `spouse:${parentId}`)) return c.json({ error: "rate_limited", message: "Demasiados intentos. Prueba más tarde." }, 429);
+  const [inv] = await db.select().from(parentAccounts).where(eq(parentAccounts.spousePendingFrom, parentId)).limit(1);
+  if (!inv) return c.json({ error: "invalid", message: "No hay ninguna invitación pendiente." }, 404);
+  await recordAttempt(db, `spouse:${parentId}`);
+  const devLink = await issueSpouseInvite(c, db, me.email, { id: inv.id, email: inv.email, verified: inv.emailVerified });
+  return c.json({ ok: true, invitee: { email: inv.email }, ...(devLink ? { devLink } : {}) });
+});
+
 app.delete("/api/tutor/spouse", async (c) => {
   const db = getDb(c.env.DB);
   const parentId = await requireParent(c, db);
@@ -789,6 +814,162 @@ app.get("/api/child/me", async (c) => {
     customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0, pathId: s.pathId, pathName: s.pathName, moduleIndex: s.moduleIndex });
   }
   return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, courses: crs, customContent });
+});
+
+/* ================= Estadísticas / seguimiento ================= */
+
+const SESSION_GAP_MS = 20 * 60 * 1000; // hueco que separa una "sesión" de la siguiente al reconstruirlas
+
+// Agrega el progreso de un perfil desde attempts + wallet_ledger + skill_progress.
+// No hay tabla de sesiones: se RECONSTRUYEN agrupando los intentos por huecos de tiempo.
+async function computeProfileStats(db: DB, profileId: string) {
+  const now = Date.now();
+  const attemptRows = await db
+    .select({ skillId: attempts.skillId, correct: attempts.correct, rt: attempts.responseTimeMs, ts: attempts.ts })
+    .from(attempts)
+    .where(eq(attempts.profileId, profileId))
+    .orderBy(asc(attempts.ts))
+    .limit(5000);
+  const ledgerRows = await db
+    .select({ delta: walletLedger.delta, reason: walletLedger.reason, ts: walletLedger.ts })
+    .from(walletLedger)
+    .where(eq(walletLedger.profileId, profileId));
+  const [wallet] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, profileId)).limit(1);
+  const progressRows = await db
+    .select({ skillId: skillProgress.skillId, mastery: skillProgress.masteryScore, status: skillProgress.status })
+    .from(skillProgress)
+    .where(eq(skillProgress.profileId, profileId));
+  const progById = new Map(progressRows.map((p) => [p.skillId, p]));
+
+  const skillIds = [...new Set(attemptRows.map((a) => a.skillId))];
+  const nameById = new Map<string, unknown>();
+  if (skillIds.length) {
+    const srows = await db.select({ id: skills.id, name: skills.nameI18n }).from(skills).where(inArray(skills.id, skillIds));
+    for (const s of srows) nameById.set(s.id, s.name);
+  }
+
+  const isExercise = (r: string) => r.startsWith("exercise:");
+  const isRedeem = (r: string) => r.startsWith("redeem:");
+  const total = attemptRows.length;
+  const correct = attemptRows.filter((a) => a.correct).length;
+  const timed = attemptRows.filter((a) => typeof a.rt === "number");
+  const avgTimeMs = timed.length ? Math.round(timed.reduce((s, a) => s + (a.rt as number), 0) / timed.length) : null;
+  const activeDays = new Set(attemptRows.map((a) => a.ts.slice(0, 10))).size;
+  const sumEarnedSince = (fromMs: number) =>
+    ledgerRows.filter((l) => isExercise(l.reason) && Date.parse(l.ts) >= fromMs).reduce((s, l) => s + l.delta, 0);
+  const pointsEarned = ledgerRows.filter((l) => isExercise(l.reason)).reduce((s, l) => s + l.delta, 0);
+  const pointsSpent = ledgerRows.filter((l) => isRedeem(l.reason)).reduce((s, l) => s - l.delta, 0);
+
+  // Por skill
+  const bySkill = new Map<string, { attempts: number; correct: number; rtSum: number; rtN: number }>();
+  for (const a of attemptRows) {
+    const g = bySkill.get(a.skillId) ?? { attempts: 0, correct: 0, rtSum: 0, rtN: 0 };
+    g.attempts++;
+    if (a.correct) g.correct++;
+    if (typeof a.rt === "number") {
+      g.rtSum += a.rt;
+      g.rtN++;
+    }
+    bySkill.set(a.skillId, g);
+  }
+  const perSkill = [...bySkill.entries()]
+    .map(([id, g]) => ({
+      skillId: id,
+      name: nameById.get(id) ?? { es: id },
+      attempts: g.attempts,
+      correct: g.correct,
+      accuracyPct: g.attempts ? Math.round((g.correct / g.attempts) * 100) : 0,
+      avgTimeMs: g.rtN ? Math.round(g.rtSum / g.rtN) : null,
+      mastery: progById.get(id)?.mastery ?? null,
+      status: progById.get(id)?.status ?? null,
+    }))
+    .sort((a, b) => b.attempts - a.attempts);
+
+  // Sesiones reconstruidas (hueco > SESSION_GAP_MS = nueva sesión)
+  const exLedger = ledgerRows.filter((l) => isExercise(l.reason)).map((l) => ({ t: Date.parse(l.ts), d: l.delta }));
+  const sessions: Array<{ start: string; end: string; count: number; correct: number; wrong: number; timeMs: number; points: number }> = [];
+  let cur: { startT: number; endT: number; count: number; correct: number; rtSum: number } | null = null;
+  const flush = () => {
+    if (!cur) return;
+    const g = cur;
+    const points = exLedger.filter((l) => l.t >= g.startT - 1000 && l.t <= g.endT + 1000).reduce((s, l) => s + l.d, 0);
+    sessions.push({
+      start: new Date(g.startT).toISOString(),
+      end: new Date(g.endT).toISOString(),
+      count: g.count,
+      correct: g.correct,
+      wrong: g.count - g.correct,
+      timeMs: g.rtSum,
+      points,
+    });
+    cur = null;
+  };
+  for (const a of attemptRows) {
+    const t = Date.parse(a.ts);
+    if (cur && t - cur.endT > SESSION_GAP_MS) flush();
+    if (!cur) cur = { startT: t, endT: t, count: 0, correct: 0, rtSum: 0 };
+    cur.endT = t;
+    cur.count++;
+    if (a.correct) cur.correct++;
+    if (typeof a.rt === "number") cur.rtSum += a.rt;
+  }
+  flush();
+  sessions.reverse();
+
+  // Actividad últimos 14 días (para el mini-gráfico)
+  const attemptsByDay = new Map<string, { attempts: number; correct: number }>();
+  for (const a of attemptRows) {
+    const k = a.ts.slice(0, 10);
+    const g = attemptsByDay.get(k) ?? { attempts: 0, correct: 0 };
+    g.attempts++;
+    if (a.correct) g.correct++;
+    attemptsByDay.set(k, g);
+  }
+  const pointsByDay = new Map<string, number>();
+  for (const l of ledgerRows) if (isExercise(l.reason)) pointsByDay.set(l.ts.slice(0, 10), (pointsByDay.get(l.ts.slice(0, 10)) ?? 0) + l.delta);
+  const activity: Array<{ date: string; attempts: number; correct: number; points: number }> = [];
+  for (let i = 13; i >= 0; i--) {
+    const k = new Date(now - i * 86400000).toISOString().slice(0, 10);
+    const g = attemptsByDay.get(k);
+    activity.push({ date: k, attempts: g?.attempts ?? 0, correct: g?.correct ?? 0, points: pointsByDay.get(k) ?? 0 });
+  }
+
+  return {
+    overview: {
+      attempts: total,
+      correct,
+      accuracyPct: total ? Math.round((correct / total) * 100) : 0,
+      avgTimeMs,
+      balance: wallet?.balance ?? 0,
+      pointsEarned,
+      pointsSpent,
+      earned7d: sumEarnedSince(now - 7 * 86400000),
+      earned30d: sumEarnedSince(now - 30 * 86400000),
+      activeDays,
+      lastActivity: attemptRows.length ? attemptRows[attemptRows.length - 1]!.ts : null,
+    },
+    perSkill,
+    sessions: sessions.slice(0, 30),
+    activity,
+  };
+}
+
+// El niño ve SUS propias estadísticas.
+app.get("/api/child/stats", async (c) => {
+  const db = getDb(c.env.DB);
+  const kid = await currentChildId(c, db);
+  if (!kid) return c.json({ error: "unauthorized" }, 401);
+  return c.json(await computeProfileStats(db, kid));
+});
+
+// El tutor ve las estadísticas de un niño de su hogar.
+app.get("/api/tutor/children/:id/stats", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const childId = c.req.param("id");
+  if (!(await ownsProfile(db, a, childId))) return c.json({ error: "forbidden" }, 403);
+  return c.json(await computeProfileStats(db, childId));
 });
 
 /* ================= Datos de juego ================= */

@@ -185,6 +185,51 @@ export interface PrivateSkill {
   childIds: string[];
 }
 
+export interface StatsOverview {
+  attempts: number;
+  correct: number;
+  accuracyPct: number;
+  avgTimeMs: number | null;
+  balance: number;
+  pointsEarned: number;
+  pointsSpent: number;
+  earned7d: number;
+  earned30d: number;
+  activeDays: number;
+  lastActivity: string | null;
+}
+export interface SkillStat {
+  skillId: string;
+  name: LocaleText;
+  attempts: number;
+  correct: number;
+  accuracyPct: number;
+  avgTimeMs: number | null;
+  mastery: number | null;
+  status: string | null;
+}
+export interface SessionStat {
+  start: string;
+  end: string;
+  count: number;
+  correct: number;
+  wrong: number;
+  timeMs: number;
+  points: number;
+}
+export interface ActivityDay {
+  date: string;
+  attempts: number;
+  correct: number;
+  points: number;
+}
+export interface ProfileStats {
+  overview: StatsOverview;
+  perSkill: SkillStat[];
+  sessions: SessionStat[];
+  activity: ActivityDay[];
+}
+
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, opts);
   if (!res.ok) {
@@ -238,6 +283,8 @@ export const api = {
   inviteSpouse: (email: string) => j<{ ok: boolean; pending: boolean; invitee: { email: string }; devLink?: string }>(`/api/tutor/spouse`, post({ email })),
   acceptSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse/accept`, { method: "POST" }),
   rejectSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse/reject`, { method: "POST" }),
+  resendSpouse: () => j<{ ok: boolean; invitee: { email: string }; devLink?: string }>(`/api/tutor/spouse/resend`, { method: "POST" }),
+  cancelSpouseInvite: () => j<{ ok: boolean }>(`/api/tutor/spouse/invite`, { method: "DELETE" }),
   unlinkSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse`, { method: "DELETE" }),
 
   // Niño auth
@@ -301,6 +348,10 @@ export const api = {
   },
   deleteRequestAsset: (reqId: string, assetId: string) =>
     j<{ ok: boolean }>(`/api/tutor/content-requests/${reqId}/assets/${assetId}`, { method: "DELETE" }),
+  // Estadísticas / seguimiento
+  childStats: () => j<ProfileStats>(`/api/child/stats`),
+  tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
+
   tutorContent: () => j<PrivateSkill[]>(`/api/tutor/content`),
   skillExercises: (skillId: string) => j<PreviewExercise[]>(`/api/tutor/skills/${encodeURIComponent(skillId)}/exercises`),
   setExerciseHidden: (templateId: string, hidden: boolean) =>

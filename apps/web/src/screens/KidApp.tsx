@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { tx, type ChildMe, type Course, type CustomContent } from "../api";
+import { api, tx, type ChildMe, type Course, type CustomContent, type ProfileStats } from "../api";
 import { Hud } from "../components/Hud";
 import { Icon } from "../components/Icon";
+import { StatsView } from "../components/StatsView";
 import { GalaxyMap } from "./GalaxyMap";
 import { Session } from "./Session";
 import { RewardShop } from "./RewardShop";
@@ -38,7 +39,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   const [view, setView] = useState<View>("map");
   const [skillId, setSkillId] = useState<string | null>(null);
   const [balance, setBalance] = useState(data.balance);
-  const [homeShop, setHomeShop] = useState(false);
+  const [homeTab, setHomeTab] = useState<"home" | "stats" | "shop">("home");
 
   // Ficha o módulo: se juega directamente, sin galaxia intermedia.
   if (customSkill) {
@@ -103,8 +104,10 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
       <div className="app-shell">
         <Hud profile={data.child} balance={balance} onExit={onLogout} />
         <div className="app-body">
-          {homeShop ? (
+          {homeTab === "shop" ? (
             <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />
+          ) : homeTab === "stats" ? (
+            <KidStats />
           ) : (
             <>
               {data.courses.length > 0 && (
@@ -172,13 +175,19 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
           )}
         </div>
         <nav className="bottom-nav">
-          <button className={!homeShop ? "on" : ""} onClick={() => setHomeShop(false)}>
+          <button className={homeTab === "home" ? "on" : ""} onClick={() => setHomeTab("home")}>
             <span className="ic">
               <Icon name="planet" size={22} />
             </span>
             <span>{t("kid.home")}</span>
           </button>
-          <button className={homeShop ? "on" : ""} onClick={() => setHomeShop(true)}>
+          <button className={homeTab === "stats" ? "on" : ""} onClick={() => setHomeTab("stats")}>
+            <span className="ic">
+              <Icon name="target" size={22} />
+            </span>
+            <span>{t("kid.stats")}</span>
+          </button>
+          <button className={homeTab === "shop" ? "on" : ""} onClick={() => setHomeTab("shop")}>
             <span className="ic">
               <Icon name="coin" size={22} />
             </span>
@@ -227,5 +236,34 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
         </nav>
       )}
     </div>
+  );
+}
+
+// Pestaña "Mis puntos": el niño ve sus propias estadísticas.
+function KidStats() {
+  const { t } = useTranslation();
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    api
+      .childStats()
+      .then(setStats)
+      .catch(() => setError(true));
+  }, []);
+
+  return (
+    <>
+      <h2 className="screen-title" style={{ paddingTop: "1rem" }}>
+        {t("stats.myPoints")}
+      </h2>
+      {error ? (
+        <p className="muted screen-pad">{t("session.connError")}</p>
+      ) : !stats ? (
+        <p className="muted screen-pad">{t("content.previewLoading")}</p>
+      ) : (
+        <StatsView stats={stats} />
+      )}
+    </>
   );
 }
