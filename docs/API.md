@@ -1,5 +1,10 @@
 # API de smartkids
 
+> **Nota (M9):** este catálogo no incluye los endpoints del sistema de contenido: `/api/session/*` (endurecidos),
+> `/api/admin/content/import`, `/api/tutor/content`, `/api/tutor/skills/:id/assign` + `DELETE`,
+> `/api/tutor/content-requests` (GET/POST/PATCH-editar/DELETE + assets). Para el catálogo vivo, lee las rutas en
+> `apps/api/src/index.ts`; la visión de conjunto está en `../CLAUDE.md` §8.
+
 Catálogo de todos los endpoints del Worker (`apps/api/src/index.ts`). Todos cuelgan de `/api/*` y responden JSON.
 El cliente de la SPA que los consume está en `apps/web/src/api.ts`.
 

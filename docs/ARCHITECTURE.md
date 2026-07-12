@@ -1,5 +1,10 @@
 # Arquitectura de smartkids
 
+> **Nota (M9, 2026-07-12):** el **sistema de contenido** (7 tipos con modelo unificado en `packages/shared`,
+> generación en dos vías, contenido privado del hogar, anti-farm atómico) es posterior a partes de este documento.
+> Para el estado ACTUAL de contenido/economía la verdad viva es `../CLAUDE.md` §8, `docs/adr/` y `apps/api/src/db/schema.ts`
+> (24 tablas). Este documento conserva el modelo de datos base, la jerarquía de usuarios y los flujos de auth.
+
 Referencia profunda del sistema. Para la guía operativa breve, ver `../CLAUDE.md`. Para el catálogo de
 endpoints, ver `API.md`. Este documento describe el **modelo de datos**, la **jerarquía de usuarios**, la
 **economía de recompensas**, los **flujos de autenticación**, el **ciclo de vida de una petición** y el

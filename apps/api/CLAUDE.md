@@ -54,10 +54,12 @@ Para **producción** usa los scripts de la raíz: `pnpm db:migrate:remote`, `pnp
   saldo baja sin registro. No lo empeores.
 - **Economía por convención de texto**: `earnedSince` filtra `reason LIKE 'exercise:%'`. Mantén los prefijos del
   ledger (`exercise:`, `redeem:`, `refund:`). Ventanas **rodantes** (7d/30d), no de calendario.
-- **`POST /api/session/attempt` confía en el cliente**: otorga monedas según el `correct` que envía el front y no
-  valida que skill/plantilla pertenezcan a un curso del niño. Conocido; no lo tomes como patrón.
-- **`GET /api/session/next`** ignora si el skill es del curso y cae a `MATH.ESO5.FRAC.ADD` por defecto; elige entre
-  las 10 primeras plantillas al azar.
+- **`POST /api/session/attempt` es autoritativo** (endurecido, M9): corrige EN SERVIDOR con `grade()` de
+  `@smartkids/shared`, valida acceso con `childCanAttemptSkill` (403 si no) y el anti-farm es ATÓMICO
+  (`coin_awards`, `INSERT ON CONFLICT DO NOTHING RETURNING`). El cuerpo es `{ answer }` (`AnswerSchema`), con
+  compat del viejo `selectedOptionId`. Las monedas por acierto salen de `skills.coins_per_correct` o el global.
+- **`GET /api/session/next`** valida el curso/skill (403 si no), NO envía la solución (`redactForClient`), baraja
+  opciones y evita plantillas vistas hace poco; `?exclude=` sirve a la fase de repaso. Modelo/lógica en `shared`.
 - **Rate-limiting caro y con carrera**: cada check hace DELETE de poda + COUNT sobre `login_attempts`.
 - **`EMAIL_DEV_LINKS`** devuelve enlaces de reset en la respuesta HTTP: **jamás `true` en producción.**
 - Secrets de prod (`RESEND_API_KEY`, `EMAIL_FROM`) van por `wrangler secret put`, no en `wrangler.toml` ni `.dev.vars`.
