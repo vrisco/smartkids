@@ -14,6 +14,10 @@ body {
     radial-gradient(1000px 600px at 80% -10%, var(--bg-glow-1), transparent 60%),
     radial-gradient(900px 560px at 10% 0%, var(--bg-glow-2), transparent 58%),
     linear-gradient(180deg, var(--space-950), var(--space-900));
+  /* Fijo al viewport: el gradiente cubre toda la página al hacer scroll (evita la
+     banda descolorida al final cuando el contenido es más alto que la pantalla). */
+  background-attachment: fixed;
+  background-color: var(--space-900);
   -webkit-font-smoothing: antialiased;
 }
 

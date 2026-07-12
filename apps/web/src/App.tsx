@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type ChildMe, type Me } from "./api";
+import { useScrollTop } from "./useScrollTop";
 import { Starfield } from "./components/Starfield";
 import { Auth } from "./components/Auth";
 import { AdminPanel } from "./screens/AdminPanel";
@@ -43,6 +44,9 @@ export function App() {
     if (path === "/verify" || path === "/reset") return;
     void load();
   }, [load, path]);
+
+  // Reset de scroll al cambiar la pantalla de nivel superior (login/rol/estado).
+  useScrollTop(`${ready ? "r" : "l"}|${kid?.child.id ?? ""}|${me?.parent.id ?? ""}|${path}`);
 
   if (path === "/verify")
     return (

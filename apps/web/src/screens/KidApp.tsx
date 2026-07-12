@@ -4,6 +4,7 @@ import { api, tx, type ChildMe, type Course, type CustomContent, type ProfileSta
 import { Hud } from "../components/Hud";
 import { Icon } from "../components/Icon";
 import { StatsView } from "../components/StatsView";
+import { useScrollTop } from "../useScrollTop";
 import { GalaxyMap } from "./GalaxyMap";
 import { Session } from "./Session";
 import { RewardShop } from "./RewardShop";
@@ -40,6 +41,9 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   const [skillId, setSkillId] = useState<string | null>(null);
   const [balance, setBalance] = useState(data.balance);
   const [homeTab, setHomeTab] = useState<"home" | "stats" | "shop">("home");
+
+  // Al navegar (curso, vista, pestaña, ficha, path) devolvemos el scroll al inicio.
+  useScrollTop(`${course?.id ?? "home"}|${view}|${homeTab}|${customSkill?.skillId ?? ""}|${openPath?.pathId ?? ""}`);
 
   // Ficha o módulo: se juega directamente, sin galaxia intermedia.
   if (customSkill) {
