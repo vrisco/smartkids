@@ -1,0 +1,24 @@
+{
+  "subjectId": "math",
+  "subjectName": { "es": "Matemáticas", "en": "Maths", "ca": "Matemàtiques" },
+  "gradeBand": "ESO-2",
+  "courseId": "course_math_eso2_oper",
+  "courseName": {
+    "es": "Matemáticas · 2º ESO · Operaciones",
+    "en": "Maths · Year 8 · Operations"
+  },
+  "language": "es",
+  "version": "1.0.0",
+  "modules": [
+    { "file": "01-enteros.json" },
+    { "file": "02-fracciones.json" },
+    { "file": "03-potencias.json" },
+    { "file": "04-raices.json" },
+    { "file": "05-notacion-cientifica.json" },
+    { "file": "06-monomios.json" },
+    { "file": "07-polinomios.json" },
+    { "file": "08-productos-notables.json" },
+    { "file": "09-ecuaciones-primer-grado.json" },
+    { "file": "10-ecuaciones-segundo-grado.json" }
+  ]
+}

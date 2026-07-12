@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate": "node --experimental-strip-types src/generate.ts"
+    "generate": "node --experimental-strip-types src/generate.ts",
+    "build:course": "node --experimental-strip-types src/build-course.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",

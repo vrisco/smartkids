@@ -1,0 +1,162 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.ALG.MONO",
+    "name": { "es": "Lenguaje algebraico y monomios", "en": "Algebraic language and monomials" },
+    "difficultyBase": 0.45,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "fill_in_blank",
+      "stem": "Escribe en lenguaje algebraico 'el doble de un número x'. Respuesta: {{1}}",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "blanks": [{ "accept": ["2x", "2·x", "2*x"], "placeholder": "expresión" }],
+      "feedback": {
+        "correct": "Bien: el doble es multiplicar por 2.",
+        "incorrect": "El doble de x se escribe 2x (2 por x).",
+        "solution": "El doble de x es 2x."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Expresa en lenguaje algebraico: 'un número x disminuido en 5'.",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "options": [
+        { "id": "a", "text": "x - 5", "isCorrect": true },
+        { "id": "b", "text": "5 - x", "isCorrect": false },
+        { "id": "c", "text": "x + 5", "isCorrect": false },
+        { "id": "d", "text": "5x", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: 'disminuido en 5' es restar 5 al número.",
+        "incorrect": "Disminuir el número en 5 es x - 5, no 5 - x.",
+        "solution": "'x disminuido en 5' = x - 5."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "El coeficiente del monomio 7x^2 es {{1}}.",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "blanks": [{ "accept": ["7"], "placeholder": "número" }],
+      "feedback": {
+        "correct": "Bien: el coeficiente es el número que multiplica a la parte literal.",
+        "incorrect": "El coeficiente es el número delante de la letra: 7.",
+        "solution": "En 7x^2 el coeficiente es 7."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "El grado del monomio 5x^3 es {{1}}.",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "blanks": [{ "accept": ["3"], "placeholder": "número" }],
+      "feedback": {
+        "correct": "Correcto: el grado es el exponente de la parte literal.",
+        "incorrect": "El grado es el exponente de la x, que es 3.",
+        "solution": "El grado de 5x^3 es 3."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula el valor numérico de 3x cuando x = 4.",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 12 },
+      "feedback": {
+        "correct": "Bien: sustituyes x por 4 y multiplicas.",
+        "incorrect": "3x significa 3 · x; con x = 4 es 3 · 4.",
+        "solution": "3x con x = 4 → 3 · 4 = 12."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula el valor numérico de x^2 + 1 cuando x = 3.",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 10 },
+      "feedback": {
+        "correct": "Correcto: primero el cuadrado y luego la suma.",
+        "incorrect": "x^2 con x = 3 es 9; después súmale 1.",
+        "solution": "3^2 + 1 = 9 + 1 = 10."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula el valor numérico de 2x^2 cuando x = 5.",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "answer": { "value": 50 },
+      "feedback": {
+        "correct": "Bien: primero elevas al cuadrado y después multiplicas por 2.",
+        "incorrect": "Cuidado: el exponente solo afecta a la x. Primero 5^2 = 25 y luego · 2.",
+        "solution": "2x^2 con x = 5 → 2 · 5^2 = 2 · 25 = 50."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "¿Cuál de estos monomios es SEMEJANTE a 3x^2?",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "5x^2", "isCorrect": true },
+        { "id": "b", "text": "3x", "isCorrect": false },
+        { "id": "c", "text": "2x^3", "isCorrect": false },
+        { "id": "d", "text": "x", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: semejantes = misma parte literal (x^2).",
+        "incorrect": "Dos monomios son semejantes si tienen la misma letra con el mismo exponente.",
+        "solution": "5x^2 tiene la misma parte literal (x^2) que 3x^2."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Reduce sumando monomios semejantes: 3x + 5x",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "options": [
+        { "id": "a", "text": "8x", "isCorrect": true },
+        { "id": "b", "text": "15x", "isCorrect": false },
+        { "id": "c", "text": "8x^2", "isCorrect": false },
+        { "id": "d", "text": "8", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: sumas los coeficientes y mantienes la parte literal.",
+        "incorrect": "Se suman los coeficientes (3 + 5) y la x se queda igual.",
+        "solution": "3x + 5x = 8x."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Reduce: 7a - 2a = {{1}}",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "blanks": [{ "accept": ["5a", "5·a", "5*a"], "placeholder": "monomio" }],
+      "feedback": {
+        "correct": "Correcto.",
+        "incorrect": "Resta los coeficientes: 7 - 2 = 5, y mantén la a.",
+        "solution": "7a - 2a = 5a."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Multiplica los monomios: 2x · 3x",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "options": [
+        { "id": "a", "text": "6x^2", "isCorrect": true },
+        { "id": "b", "text": "6x", "isCorrect": false },
+        { "id": "c", "text": "5x^2", "isCorrect": false },
+        { "id": "d", "text": "6x^3", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: multiplicas coeficientes y sumas exponentes de la x.",
+        "incorrect": "En el producto: 2·3 = 6 y x·x = x^2.",
+        "solution": "2x · 3x = (2·3)(x·x) = 6x^2."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Son semejantes los monomios 4x y 4y?",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": false },
+      "feedback": {
+        "correct": "Muy bien: tienen letras distintas, no son semejantes.",
+        "incorrect": "Semejantes = misma parte literal; x e y son letras diferentes.",
+        "solution": "4x y 4y NO son semejantes porque la parte literal (x frente a y) es distinta."
+      }
+    }
+  ]
+}

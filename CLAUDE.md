@@ -173,7 +173,7 @@ Reglas que hay que respetar siempre:
 - **Cliente API (`src/api.ts`):** rutas **relativas** `/api/...`, cookies de mismo origen (sin `credentials:"include"`).
   Cualquier despliegue cross-origin rompería la sesión. Errores: cada pantalla hace `try/catch` y muestra `e.message`.
 
-## 8. Sistema de contenido (7 tipos + 2 vías de generación)
+## 8. Sistema de contenido (7 tipos + 3 vías de publicación)
 
 **Modelo unificado del ejercicio = fuente ÚNICA de verdad en `packages/shared`** (`src/exercise.ts` esquemas Zod
 de los 7 tipos + `src/grading.ts` la lógica). Lo importan la API Y la web (se acabó la divergencia con D1).
@@ -206,7 +206,19 @@ solicitud `published` y **envía email al tutor**. `modules>1` genera un **path*
 procesada (status `uploaded`) es **editable** (`POST .../content-requests/:id` añade ficheros/campos;
 `DELETE .../:id/assets/:assetId` quita uno).
 
-**Skill del proyecto** `.claude/skills/smartkids_content/SKILL.md`: guía paso a paso de ambas vías. Invócala con
+**Vía C — cursos fijos** (catálogo GLOBAL, redactados a mano y VERSIONADOS en el repo): a diferencia de la Vía A
+(que genera con IA a `out/` gitignored), estos cursos viven en **`content/<curso>/`** (fuente de verdad EDITABLE, en
+git): un `course.json` (metadatos + lista ORDENADA de módulos) y un fichero por módulo (`NN-<slug>.json` con
+`{ skill, exercises }`; los ejercicios NO llevan los campos de contexto —`exerciseId`/`packageId`/`skillId`/
+`language`—, los inyecta el builder). `tools/content-gen/src/build-course.ts` (script `build:course`) valida cada
+ejercicio (`validateExercise` + Zod) y emite UN `.sql` **idempotente** (UPSERT de subject/curso/skills, cadena de
+`skill_prerequisites` por orden de módulo, `DELETE`+`INSERT` de paquetes/plantillas) en `out/<courseId>.sql`. Se
+aplica con `wrangler d1 execute` (local o `--remote`). **Evolucionar** = editar el JSON del módulo y re-ejecutar
+(los paquetes se reemplazan por completo). El niño ve el curso cuando el tutor se lo **asigna** (asignatura+nivel);
+`owner_id` NULL = global. Primer curso: `content/math-eso2-operaciones/` (2º ESO, nivel `ESO-2`, 10 módulos, 118
+ejercicios). Nota: el `gradeBand` del niño es cosmético (HUD), NO filtra contenido: lo entrega el curso asignado.
+
+**Skill del proyecto** `.claude/skills/smartkids_content/SKILL.md`: guía paso a paso de las vías A y B. Invócala con
 `/smartkids_content <descripción>` o `/smartkids_content pendientes`. El frontmatter usa `name`+`description` (NO
 `trigger`). **OJO discovery**: Claude Code solo escanea `.claude/skills/` de `~/` y de la RAÍZ del workspace, no de
 subcarpetas; para verla, abre el workspace EN `smartkids/` (o usa la copia personal `~/.claude/skills/smartkids_content/`).
@@ -279,6 +291,7 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 | Modelo unificado del ejercicio (7 tipos) + grading | `packages/shared/src/exercise.ts`, `grading.ts` |
 | Inputs de ejercicio en la web (7 tipos) | `apps/web/src/components/ExerciseInput.tsx` |
 | Pipeline de contenido (spec-driven, Vía A) | `tools/content-gen/src/generate.ts` |
+| Cursos fijos versionados (Vía C) + builder | `content/<curso>/`, `tools/content-gen/src/build-course.ts` |
 | Skill de generación de contenido | `.claude/skills/smartkids_content/SKILL.md` |
 | Cómo desplegar | `DEPLOY.md` |
 | Modelo de datos a fondo (24 tablas, auth, economía) | `docs/ARCHITECTURE.md` |

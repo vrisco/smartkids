@@ -1,0 +1,190 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.POLY.NOTABLE",
+    "name": { "es": "Productos notables y factor común", "en": "Special products and common factor" },
+    "difficultyBase": 0.6,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "multiple_choice",
+      "stem": "Desarrolla el cuadrado de una suma: (x + 3)^2",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "options": [
+        { "id": "a", "text": "x^2 + 6x + 9", "isCorrect": true },
+        { "id": "b", "text": "x^2 + 9", "isCorrect": false },
+        { "id": "c", "text": "x^2 + 3x + 9", "isCorrect": false },
+        { "id": "d", "text": "x^2 + 6x + 6", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: cuadrado del primero, doble producto y cuadrado del segundo.",
+        "incorrect": "No olvides el doble producto: (a+b)^2 = a^2 + 2ab + b^2.",
+        "solution": "(x + 3)^2 = x^2 + 2·x·3 + 3^2 = x^2 + 6x + 9."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Desarrolla el cuadrado de una diferencia: (x - 4)^2",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "options": [
+        { "id": "a", "text": "x^2 - 8x + 16", "isCorrect": true },
+        { "id": "b", "text": "x^2 + 16", "isCorrect": false },
+        { "id": "c", "text": "x^2 - 16", "isCorrect": false },
+        { "id": "d", "text": "x^2 - 8x - 16", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: el término del medio es negativo, pero el último es positivo.",
+        "incorrect": "(a-b)^2 = a^2 - 2ab + b^2; el cuadrado de b siempre suma.",
+        "solution": "(x - 4)^2 = x^2 - 2·x·4 + 4^2 = x^2 - 8x + 16."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Desarrolla la suma por diferencia: (x + 5)(x - 5)",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "options": [
+        { "id": "a", "text": "x^2 - 25", "isCorrect": true },
+        { "id": "b", "text": "x^2 + 25", "isCorrect": false },
+        { "id": "c", "text": "x^2 - 10x - 25", "isCorrect": false },
+        { "id": "d", "text": "x^2 - 5x", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: suma por diferencia da diferencia de cuadrados.",
+        "incorrect": "(a+b)(a-b) = a^2 - b^2; los términos en x se cancelan.",
+        "solution": "(x + 5)(x - 5) = x^2 - 25."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Completa la fórmula del cuadrado de una suma: (a + b)^2 = a^2 + {{1}} + b^2",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "blanks": [{ "accept": ["2ab", "2·a·b", "2*a*b", "2ba"], "placeholder": "término" }],
+      "feedback": {
+        "correct": "Correcto: el doble producto de los dos términos.",
+        "incorrect": "El término que falta es el doble producto: 2ab.",
+        "solution": "(a + b)^2 = a^2 + 2ab + b^2."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Completa el desarrollo: (x + 2)^2 = x^2 + 4x + {{1}}",
+      "difficulty": { "level": "easy", "numeric": 0.4 },
+      "blanks": [{ "accept": ["4"], "placeholder": "número" }],
+      "feedback": {
+        "correct": "Bien: es el cuadrado del segundo término, 2^2.",
+        "incorrect": "Falta el cuadrado de 2, que es 4.",
+        "solution": "(x + 2)^2 = x^2 + 4x + 4."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Desarrolla: (2x + 1)^2",
+      "difficulty": { "level": "hard", "numeric": 0.65 },
+      "options": [
+        { "id": "a", "text": "4x^2 + 4x + 1", "isCorrect": true },
+        { "id": "b", "text": "4x^2 + 1", "isCorrect": false },
+        { "id": "c", "text": "2x^2 + 4x + 1", "isCorrect": false },
+        { "id": "d", "text": "4x^2 + 2x + 1", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Perfecto: (2x)^2 = 4x^2 y el doble producto es 2·2x·1 = 4x.",
+        "incorrect": "Cuidado: el primer término es (2x)^2 = 4x^2 y el doble producto 4x.",
+        "solution": "(2x + 1)^2 = (2x)^2 + 2·2x·1 + 1^2 = 4x^2 + 4x + 1."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es cierto que (x + 1)^2 = x^2 + 1?",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "answer": { "value": false },
+      "feedback": {
+        "correct": "Muy bien: falta el doble producto 2x.",
+        "incorrect": "El cuadrado de una suma NO es la suma de cuadrados: sobra el 2x.",
+        "solution": "(x + 1)^2 = x^2 + 2x + 1, no x^2 + 1. Es FALSO."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Extrae el factor común: 6x + 9",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "3(2x + 3)", "isCorrect": true },
+        { "id": "b", "text": "3(2x + 9)", "isCorrect": false },
+        { "id": "c", "text": "6(x + 9)", "isCorrect": false },
+        { "id": "d", "text": "3(2x + 6)", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: 3 es el mayor número que divide a 6 y a 9.",
+        "incorrect": "Comprueba multiplicando: 3·(2x+3) debe dar 6x+9.",
+        "solution": "6x + 9 = 3·2x + 3·3 = 3(2x + 3)."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Extrae el máximo factor común: 4x^2 + 2x",
+      "difficulty": { "level": "hard", "numeric": 0.65 },
+      "options": [
+        { "id": "a", "text": "2x(2x + 1)", "isCorrect": true },
+        { "id": "b", "text": "2x(2x + 2)", "isCorrect": false },
+        { "id": "c", "text": "4x(x + 1)", "isCorrect": false },
+        { "id": "d", "text": "2x(2x - 1)", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Perfecto: el factor común es 2x (número y letra).",
+        "incorrect": "Saca 2x de los dos términos y comprueba multiplicando.",
+        "solution": "4x^2 + 2x = 2x·2x + 2x·1 = 2x(2x + 1)."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Aplica suma por diferencia: (x - 3)(x + 3) = x^2 - {{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "blanks": [{ "accept": ["9"], "placeholder": "número" }],
+      "feedback": {
+        "correct": "Bien: es el cuadrado de 3.",
+        "incorrect": "El resultado es la diferencia de cuadrados: x^2 - 3^2.",
+        "solution": "(x - 3)(x + 3) = x^2 - 9."
+      }
+    },
+    {
+      "type": "step_problem",
+      "stem": "Desarrolla (x + 4)^2 paso a paso usando (a + b)^2 = a^2 + 2ab + b^2.",
+      "difficulty": { "level": "hard", "numeric": 0.65 },
+      "steps": [
+        { "id": "s1", "prompt": "Cuadrado del primer término, a^2 (escríbelo, p. ej. x^2):", "kind": "short_text", "accept": ["x^2", "x2"] },
+        { "id": "s2", "prompt": "Coeficiente del doble producto 2ab (número que acompaña a la x):", "kind": "numeric", "answer": { "value": 8 } },
+        { "id": "s3", "prompt": "Cuadrado del segundo término, b^2:", "kind": "numeric", "answer": { "value": 16 } }
+      ],
+      "feedback": {
+        "correct": "Excelente: (x + 4)^2 = x^2 + 8x + 16.",
+        "incorrect": "a = x, b = 4: a^2 = x^2, 2ab = 8x, b^2 = 16.",
+        "solution": "(x + 4)^2 = x^2 + 2·x·4 + 4^2 = x^2 + 8x + 16."
+      }
+    },
+    {
+      "type": "matching",
+      "stem": "Empareja cada producto notable con su desarrollo.",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "left": [
+        { "id": "l1", "text": "(x + 1)^2" },
+        { "id": "l2", "text": "(x - 1)^2" },
+        { "id": "l3", "text": "(x + 1)(x - 1)" }
+      ],
+      "right": [
+        { "id": "r1", "text": "x^2 + 2x + 1" },
+        { "id": "r2", "text": "x^2 - 2x + 1" },
+        { "id": "r3", "text": "x^2 - 1" }
+      ],
+      "correctPairs": [
+        { "leftId": "l1", "rightId": "r1" },
+        { "leftId": "l2", "rightId": "r2" },
+        { "leftId": "l3", "rightId": "r3" }
+      ],
+      "feedback": {
+        "correct": "Perfecto: distingues los tres productos notables.",
+        "incorrect": "Fíjate en el signo del término central y en si hay diferencia de cuadrados.",
+        "solution": "(x+1)^2=x^2+2x+1; (x-1)^2=x^2-2x+1; (x+1)(x-1)=x^2-1."
+      }
+    }
+  ]
+}

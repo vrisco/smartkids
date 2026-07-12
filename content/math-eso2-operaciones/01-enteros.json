@@ -1,0 +1,181 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.INT.OPS",
+    "name": { "es": "Enteros y jerarquía de operaciones", "en": "Integers and order of operations" },
+    "difficultyBase": 0.3,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "numeric",
+      "stem": "Calcula: -7 + 12",
+      "difficulty": { "level": "easy", "numeric": 0.2 },
+      "answer": { "value": 5 },
+      "feedback": {
+        "correct": "Bien: sumar un positivo mayor que el negativo da resultado positivo.",
+        "incorrect": "Piensa en la recta: partiendo de -7 avanzas 12 hacia la derecha.",
+        "solution": "-7 + 12 = 12 - 7 = 5."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: -8 - 5",
+      "difficulty": { "level": "easy", "numeric": 0.25 },
+      "answer": { "value": -13 },
+      "feedback": {
+        "correct": "Correcto: dos negativos se acumulan.",
+        "incorrect": "Restar 5 a -8 es alejarse más de cero por la izquierda.",
+        "solution": "-8 - 5 = -(8 + 5) = -13."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: (-3) · (-6)",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "answer": { "value": 18 },
+      "feedback": {
+        "correct": "Bien: menos por menos da más.",
+        "incorrect": "El producto de dos números negativos es positivo.",
+        "solution": "(-3) · (-6) = +18."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: 5 - (-3)",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "answer": { "value": 8 },
+      "feedback": {
+        "correct": "Correcto: restar un negativo equivale a sumar.",
+        "incorrect": "Menos por menos: -(-3) = +3.",
+        "solution": "5 - (-3) = 5 + 3 = 8."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "En la expresión 3 + 4 · 2, la operación que se hace PRIMERO es la {{1}}.",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "blanks": [{ "accept": ["multiplicación", "multiplicacion", "multiplicar", "producto"], "placeholder": "operación" }],
+      "feedback": {
+        "correct": "Eso es: multiplicaciones y divisiones antes que sumas y restas.",
+        "incorrect": "La jerarquía manda: primero multiplicar y dividir.",
+        "solution": "3 + 4 · 2 = 3 + 8 = 11."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula respetando la jerarquía: 2 + 3 · 4",
+      "difficulty": { "level": "medium", "numeric": 0.4 },
+      "answer": { "value": 14 },
+      "feedback": {
+        "correct": "Bien: primero 3 · 4 y luego sumas.",
+        "incorrect": "No sumes 2 + 3 primero; la multiplicación va antes.",
+        "solution": "2 + 3 · 4 = 2 + 12 = 14."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: 10 - 2 · (3 + 1)",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 2 },
+      "feedback": {
+        "correct": "Perfecto: paréntesis, después producto y por último resta.",
+        "incorrect": "Resuelve el paréntesis, luego multiplica y al final resta.",
+        "solution": "10 - 2 · (3 + 1) = 10 - 2 · 4 = 10 - 8 = 2."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: 20 - 3^2",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "answer": { "value": 11 },
+      "feedback": {
+        "correct": "Correcto: la potencia va antes que la resta.",
+        "incorrect": "Primero calcula 3^2 = 9 y luego resta.",
+        "solution": "20 - 3^2 = 20 - 9 = 11."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: (-2)^3",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "answer": { "value": -8 },
+      "feedback": {
+        "correct": "Bien: exponente impar mantiene el signo negativo.",
+        "incorrect": "(-2)^3 = (-2)·(-2)·(-2); tres factores negativos dan negativo.",
+        "solution": "(-2)^3 = (-2)·(-2)·(-2) = 4 · (-2) = -8."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "¿Cuál es el signo y el valor de (-5) · 3 · (-2)?",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "30", "isCorrect": true },
+        { "id": "b", "text": "-30", "isCorrect": false },
+        { "id": "c", "text": "-10", "isCorrect": false },
+        { "id": "d", "text": "10", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: número par de factores negativos, resultado positivo.",
+        "incorrect": "Cuenta los signos negativos: hay dos, así que el resultado es positivo.",
+        "solution": "(-5)·3 = -15; -15·(-2) = +30."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es cierto que -3 es mayor que -5?",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Sí: en los negativos, cuanto más cerca de cero, mayor.",
+        "incorrect": "En la recta numérica -3 está a la derecha de -5, así que es mayor.",
+        "solution": "-3 > -5 porque -3 está más cerca de cero."
+      }
+    },
+    {
+      "type": "ordering",
+      "stem": "Ordena estos enteros de MENOR a mayor.",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "items": [
+        { "id": "a", "text": "3" },
+        { "id": "b", "text": "-5" },
+        { "id": "c", "text": "0" },
+        { "id": "d", "text": "-2" }
+      ],
+      "correctOrder": ["b", "d", "c", "a"],
+      "feedback": {
+        "correct": "Bien ordenado de menor a mayor.",
+        "incorrect": "Los negativos van primero: cuanto más grande el número tras el signo menos, menor es.",
+        "solution": "-5 < -2 < 0 < 3."
+      }
+    },
+    {
+      "type": "matching",
+      "stem": "Empareja cada operación con su resultado.",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "left": [
+        { "id": "l1", "text": "-3 + 8" },
+        { "id": "l2", "text": "-3 - 8" },
+        { "id": "l3", "text": "-3 · 8" },
+        { "id": "l4", "text": "(-24) : (-3)" }
+      ],
+      "right": [
+        { "id": "r1", "text": "5" },
+        { "id": "r2", "text": "-11" },
+        { "id": "r3", "text": "-24" },
+        { "id": "r4", "text": "8" }
+      ],
+      "correctPairs": [
+        { "leftId": "l1", "rightId": "r1" },
+        { "leftId": "l2", "rightId": "r2" },
+        { "leftId": "l3", "rightId": "r3" },
+        { "leftId": "l4", "rightId": "r4" }
+      ],
+      "feedback": {
+        "correct": "Perfecto: dominas suma, resta, producto y división de enteros.",
+        "incorrect": "Repasa la regla de los signos en cada operación.",
+        "solution": "-3+8=5; -3-8=-11; -3·8=-24; (-24):(-3)=8."
+      }
+    }
+  ]
+}
