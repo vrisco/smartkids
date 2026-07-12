@@ -585,6 +585,12 @@ code {
   align-items: stretch;
   gap: 0.5rem;
 }
+.content-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
 textarea.field {
   resize: vertical;
   font: inherit;

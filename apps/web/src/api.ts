@@ -52,10 +52,17 @@ export interface Me {
   children: Child[];
 }
 
+export interface CustomContent {
+  skillId: string;
+  nameI18n: LocaleText;
+  exercises: number;
+}
+
 export interface ChildMe {
   child: { id: string; displayName: string; avatar: string; gradeBand: string };
   balance: number;
   courses: Course[];
+  customContent?: CustomContent[];
 }
 
 export interface Tutor {
@@ -259,6 +266,8 @@ export const api = {
   tutorContent: () => j<PrivateSkill[]>(`/api/tutor/content`),
   assignSkill: (skillId: string, childIds: string[]) =>
     j<{ ok: boolean; childIds: string[] }>(`/api/tutor/skills/${skillId}/assign`, post({ childIds })),
+  deleteContentSkill: (skillId: string) => j<{ ok: boolean }>(`/api/tutor/skills/${skillId}`, { method: "DELETE" }),
+  deleteContentRequest: (id: string) => j<{ ok: boolean }>(`/api/tutor/content-requests/${id}`, { method: "DELETE" }),
 };
 
 export const tx = (m: LocaleText | undefined, locale: string = i18n.language): string =>

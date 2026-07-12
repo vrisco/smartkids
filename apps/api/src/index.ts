@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, desc, eq, gte, inArray, isNull, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import {
   clearAttempts,
@@ -758,7 +758,18 @@ app.get("/api/child/me", async (c) => {
   if (!child) return c.json({ error: "unauthorized" }, 401);
   const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, kid)).limit(1);
   const crs = await childCoursesOf(db, kid);
-  return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, courses: crs });
+  // Contenido a medida (skills PRIVADOS asignados): se ofrecen como "cursos" independientes jugables directamente.
+  const privRows = await db
+    .select({ id: skills.id, nameI18n: skills.nameI18n })
+    .from(childSkills)
+    .innerJoin(skills, eq(skills.id, childSkills.skillId))
+    .where(and(eq(childSkills.childId, kid), isNotNull(skills.ownerId)));
+  const customContent: Array<{ skillId: string; nameI18n: unknown; exercises: number }> = [];
+  for (const s of privRows) {
+    const [cnt] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, s.id));
+    customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0 });
+  }
+  return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, courses: crs, customContent });
 });
 
 /* ================= Datos de juego ================= */
@@ -964,6 +975,54 @@ app.post("/api/tutor/skills/:skillId/assign", async (c) => {
   await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
   for (const childId of valid) await db.insert(childSkills).values({ childId, skillId }).onConflictDoNothing();
   return c.json({ ok: true, childIds: valid });
+});
+
+// Borra un skill PRIVADO del hogar y todo su contenido (plantillas, paquete vacío, progreso, asignaciones).
+app.delete("/api/tutor/skills/:skillId", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const skillId = c.req.param("skillId");
+  const household = await householdIds(db, a);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
+  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const pkgRows = await db.selectDistinct({ pkg: exerciseTemplates.packageId }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  // Sin ON DELETE cascade: borramos respetando el orden de las FKs.
+  await db.delete(attempts).where(eq(attempts.skillId, skillId));
+  await db.delete(skillProgress).where(eq(skillProgress.skillId, skillId));
+  await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
+  await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
+  for (const { pkg } of pkgRows) {
+    const [rem] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.packageId, pkg));
+    if ((rem?.n ?? 0) === 0) await db.delete(contentPackages).where(and(eq(contentPackages.id, pkg), inArray(contentPackages.ownerId, household)));
+  }
+  await db.delete(skills).where(eq(skills.id, skillId));
+  return c.json({ ok: true });
+});
+
+// Borra una solicitud de contenido del hogar y sus ficheros en R2. No borra el contenido ya publicado.
+app.delete("/api/tutor/content-requests/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const reqId = c.req.param("id");
+  const household = await householdIds(db, a);
+  const [req] = await db.select({ ownerId: contentRequests.ownerId }).from(contentRequests).where(eq(contentRequests.id, reqId)).limit(1);
+  if (!req || !household.includes(req.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const assets = await db.select().from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
+  if (c.env.UPLOADS) {
+    for (const as of assets) {
+      try {
+        await c.env.UPLOADS.delete(as.r2Key);
+      } catch {
+        /* el objeto pudo no existir; seguimos */
+      }
+    }
+  }
+  await db.delete(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
+  await db.delete(contentRequests).where(eq(contentRequests.id, reqId));
+  return c.json({ ok: true });
 });
 
 // Solicitudes de contenido del hogar (Vía B) con su estado.

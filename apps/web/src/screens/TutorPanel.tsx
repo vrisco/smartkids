@@ -693,6 +693,26 @@ function ContentSection({ me }: { me: Me }) {
     }
   }
 
+  async function delRequest(id: string) {
+    if (!window.confirm(t("content.deleteRequestConfirm"))) return;
+    try {
+      await api.deleteContentRequest(id);
+      load();
+    } catch {
+      /* noop */
+    }
+  }
+
+  async function delContent(id: string) {
+    if (!window.confirm(t("content.deleteContentConfirm"))) return;
+    try {
+      await api.deleteContentSkill(id);
+      load();
+    } catch {
+      /* noop */
+    }
+  }
+
   return (
     <div className="panel-section">
       <div className="panel-head">
@@ -722,6 +742,9 @@ function ContentSection({ me }: { me: Me }) {
                       {r.exerciseCount ? ` · ${r.exerciseCount}` : ""}
                     </span>
                   </div>
+                  <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
+                    {t("common.delete")}
+                  </button>
                 </div>
               ))}
             </div>
@@ -730,11 +753,16 @@ function ContentSection({ me }: { me: Me }) {
             <div className="list">
               {(content ?? []).map((s) => (
                 <div className="list-row col" key={s.id}>
-                  <div className="list-main">
-                    <b>{tx(s.nameI18n)}</b>
-                    <span>
-                      {s.exercises} {t("content.exercises")}
-                    </span>
+                  <div className="content-row-head">
+                    <div className="list-main">
+                      <b>{tx(s.nameI18n)}</b>
+                      <span>
+                        {s.exercises} {t("content.exercises")}
+                      </span>
+                    </div>
+                    <button className="btn-ghost sm danger" type="button" onClick={() => delContent(s.id)}>
+                      {t("common.delete")}
+                    </button>
                   </div>
                   <div className="course-checks">
                     {me.children.map((ch) => (

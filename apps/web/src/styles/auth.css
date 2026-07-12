@@ -415,6 +415,20 @@
   color: var(--text);
   font-size: 1rem;
 }
+.course-card.custom {
+  border-color: var(--violet);
+}
+.course-card .course-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: flex-start;
+}
+.course-card .course-sub {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
 .course-emoji {
   font-size: 1.8rem;
 }
