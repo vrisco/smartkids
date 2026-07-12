@@ -837,7 +837,8 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
-    if (!title.trim() || !files || files.length === 0) return;
+    const hasFiles = Boolean(files && files.length > 0);
+    if (!title.trim() || (!hasFiles && !instructions.trim())) return;
     setBusy(true);
     setError(null);
     try {
@@ -848,7 +849,7 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
       form.set("numQuestions", numQuestions);
       form.set("pointsPerCorrect", points);
       form.set("modules", modules);
-      for (const f of Array.from(files)) form.append("files", f);
+      if (files) for (const f of Array.from(files)) form.append("files", f);
       await api.createContentRequest(form);
       onDone();
     } catch (e) {
@@ -863,7 +864,7 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
         <h3>{t("content.uploadTitle")}</h3>
         <p className="muted">{t("content.uploadHint")}</p>
         <input className="field" placeholder={t("content.titlePh")} value={title} onChange={(e) => setTitle(e.target.value)} />
-        <textarea className="field" rows={3} placeholder={t("content.instructionsPh")} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
+        <textarea className="field" rows={5} placeholder={t("content.instructionsPh")} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
         <div className="course-label">{t("content.forChild")}</div>
         <select className="field" value={childId} onChange={(e) => setChildId(e.target.value)}>
           {kids.map((ch) => (
@@ -890,14 +891,14 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
           <option value="2">{t("content.path2")}</option>
           <option value="3">{t("content.path3")}</option>
         </select>
-        <div className="course-label">{t("content.files")}</div>
+        <div className="course-label">{t("content.filesOptional")}</div>
         <input className="field" type="file" multiple accept="image/*,application/pdf,text/plain,.md" onChange={(e) => setFiles(e.target.files)} />
         {error && <div className="auth-error">{error}</div>}
         <div className="modal-actions">
           <button className="btn-ghost" type="button" onClick={onClose}>
             {t("common.cancel")}
           </button>
-          <button className="btn-primary" type="button" onClick={save} disabled={busy || !title.trim() || !files || files.length === 0}>
+          <button className="btn-primary" type="button" onClick={save} disabled={busy || !title.trim() || (!(files && files.length > 0) && !instructions.trim())}>
             {busy ? "…" : t("content.send")}
           </button>
         </div>

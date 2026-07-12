@@ -1133,7 +1133,8 @@ app.post("/api/tutor/content-requests", async (c) => {
 
   const raw = form["files"];
   const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File);
-  if (files.length === 0) return c.json({ error: "no_files" }, 400);
+  // Se permite una petición SOLO de texto (sin ficheros) si hay instrucciones que describan qué generar.
+  if (files.length === 0 && !instructions) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
   if (files.length > UPLOAD_MAX_FILES) return c.json({ error: "too_many_files" }, 400);
   for (const f of files) {
     if (!UPLOAD_KINDS[f.type]) return c.json({ error: "unsupported_type", detail: `${f.name}: ${f.type}` }, 400);
