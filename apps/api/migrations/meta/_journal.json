@@ -85,6 +85,20 @@
       "when": 1783866529345,
       "tag": "0011_gifted_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1783884351558,
+      "tag": "0012_lyrical_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1783884900220,
+      "tag": "0013_lush_bastion",
+      "breakpoints": true
     }
   ]
 }

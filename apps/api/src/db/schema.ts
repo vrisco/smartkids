@@ -325,3 +325,36 @@ export const contentRequestAssets = sqliteTable("content_request_assets", {
   size: integer("size").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+/** Suscripción de Web Push (tutor o niño). Sin FK a propósito (ownerId es par_ o kid_);
+ *  se limpia por ownerId al borrar. `endpoint` único para poder hacer upsert. */
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: text("id").primaryKey(),
+  ownerType: text("owner_type").notNull(), // 'parent' | 'child'
+  ownerId: text("owner_id").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(), // clave pública del cliente (base64url)
+  auth: text("auth").notNull(), // secreto de auth del cliente (base64url)
+  createdAt: text("created_at").notNull(),
+});
+
+/** Credencial WebAuthn (passkey) de un tutor: login biométrico (Face ID / huella). */
+export const webauthnCredentials = sqliteTable("webauthn_credentials", {
+  id: text("id").primaryKey(), // credentialID (base64url)
+  parentId: text("parent_id")
+    .notNull()
+    .references(() => parentAccounts.id),
+  publicKey: text("public_key").notNull(), // clave pública COSE (base64url)
+  counter: integer("counter").notNull().default(0),
+  transports: text("transports"), // JSON: ["internal","hybrid",...]
+  createdAt: text("created_at").notNull(),
+});
+
+/** Challenge efímero de una ceremonia WebAuthn (registro o login). Se borra al verificar. */
+export const webauthnFlows = sqliteTable("webauthn_flows", {
+  id: text("id").primaryKey(), // flowId aleatorio devuelto al cliente
+  kind: text("kind").notNull(), // 'reg' | 'auth'
+  userId: text("user_id"), // parentId en registro; null en login (usernameless)
+  challenge: text("challenge").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});

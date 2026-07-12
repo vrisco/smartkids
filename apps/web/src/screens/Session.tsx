@@ -6,6 +6,7 @@ import { ExerciseFigure } from "../components/ExerciseFigure";
 import { Icon } from "../components/Icon";
 import { MathText } from "../components/MathText";
 import { Orbi } from "../components/Orbi";
+import { keepAwake, vibrate } from "../pwa";
 
 const QUESTIONS_PER_SESSION = 5;
 const REVIEW_EXTRA = 3; // margen de reintentos sobre el nº de fallos, para no frustrar
@@ -51,6 +52,9 @@ export function Session({
     load();
   }, [load]);
 
+  // Mantén la pantalla encendida mientras dura la sesión (se libera al salir).
+  useEffect(() => keepAwake(), []);
+
   async function submit() {
     if (!exercise || !answer || result) return;
     try {
@@ -58,6 +62,7 @@ export function Session({
       onBalance(res.balance);
       served.current = [...served.current, exercise.id];
       setResult(res);
+      vibrate(res.correct ? 30 : [40, 60, 40]); // háptico: acierto corto, fallo doble
     } catch {
       setError(true);
     }

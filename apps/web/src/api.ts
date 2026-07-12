@@ -1,5 +1,11 @@
 import i18n from "./i18n";
 import type { Answer, Exercise as FullExercise, RenderPayload } from "@smartkids/shared";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/browser";
 
 // Re-export de los tipos del modelo unificado para el resto de la web.
 export type { Answer, FullExercise, RenderPayload };
@@ -351,6 +357,19 @@ export const api = {
   // Estadísticas / seguimiento
   childStats: () => j<ProfileStats>(`/api/child/stats`),
   tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
+
+  // Web Push
+  pushKey: () => j<{ publicKey: string | null }>(`/api/push/key`),
+  pushSubscribe: (sub: PushSubscriptionJSON) => j<{ ok: boolean }>(`/api/push/subscribe`, post(sub)),
+  pushUnsubscribe: (endpoint: string) => j<{ ok: boolean }>(`/api/push/unsubscribe`, post({ endpoint })),
+
+  // Passkeys (WebAuthn)
+  passkeyRegisterOptions: () => j<{ options: PublicKeyCredentialCreationOptionsJSON; flowId: string }>(`/api/auth/passkey/register/options`, { method: "POST" }),
+  passkeyRegisterVerify: (flowId: string, response: RegistrationResponseJSON) => j<{ ok: boolean }>(`/api/auth/passkey/register/verify`, post({ flowId, response })),
+  passkeyLoginOptions: () => j<{ options: PublicKeyCredentialRequestOptionsJSON; flowId: string }>(`/api/auth/passkey/login/options`, { method: "POST" }),
+  passkeyLoginVerify: (flowId: string, response: AuthenticationResponseJSON) => j<{ parent: Parent }>(`/api/auth/passkey/login/verify`, post({ flowId, response })),
+  passkeyList: () => j<{ count: number }>(`/api/auth/passkey/list`),
+  passkeyDelete: () => j<{ ok: boolean }>(`/api/auth/passkey`, { method: "DELETE" }),
 
   tutorContent: () => j<PrivateSkill[]>(`/api/tutor/content`),
   skillExercises: (skillId: string) => j<PreviewExercise[]>(`/api/tutor/skills/${encodeURIComponent(skillId)}/exercises`),

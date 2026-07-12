@@ -1189,6 +1189,41 @@ button:focus-visible {
   border-style: dashed;
 }
 
+/* ---------- Tarjeta de instalación PWA ---------- */
+.install-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.install-ic {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--violet);
+}
+.install-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.install-text span {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.install-x {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+}
+
 /* ---------- Estadísticas / seguimiento ---------- */
 .stats-modal {
   max-width: 560px;

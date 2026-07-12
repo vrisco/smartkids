@@ -4,8 +4,12 @@ import { api, tx, type Child, type ContentAsset, type ContentRequest, type Cours
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { ContentPreview } from "../components/ContentPreview";
 import { StatsView } from "../components/StatsView";
+import { InstallCard } from "../components/InstallCard";
+import { NotificationsToggle } from "../components/NotificationsToggle";
+import { PasskeySettings } from "../components/PasskeySettings";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
+import { setBadge } from "../pwa";
 
 export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () => void; onRefresh: () => void }) {
   const { t } = useTranslation();
@@ -56,6 +60,8 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
           </div>
         )}
         {verifyMsg && <div className="auth-info panel-msg">{verifyMsg}</div>}
+
+        <InstallCard />
 
         <PendingRedemptions />
 
@@ -154,6 +160,8 @@ function SettingsPanel({ onClose, onChangePassword }: { onClose: () => void; onC
           <span>{t("settings.appearance")}</span>
           <SettingsToggle />
         </div>
+        <NotificationsToggle />
+        <PasskeySettings />
         <button className="btn-ghost" type="button" onClick={onChangePassword}>
           {t("tutor.changeMyPw")}
         </button>
@@ -734,7 +742,13 @@ function PendingRedemptions() {
   const [busy, setBusy] = useState<string | null>(null);
 
   function load() {
-    api.tutorRedemptions().then(setItems).catch(() => setItems([]));
+    api
+      .tutorRedemptions()
+      .then((r) => {
+        setItems(r);
+        setBadge(r.length); // nº de canjes pendientes en el icono de la app
+      })
+      .catch(() => setItems([]));
   }
   useEffect(() => {
     load();

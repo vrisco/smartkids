@@ -7,6 +7,8 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      // Inyecta el handler de Web Push (public/push-sw.js) en el SW generado.
+      workbox: { importScripts: ["push-sw.js"] },
       manifest: {
         name: "Smartkids · Órbita",
         short_name: "Smartkids",

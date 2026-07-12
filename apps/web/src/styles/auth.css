@@ -18,6 +18,9 @@
   width: 120px;
   filter: drop-shadow(0 14px 26px rgba(55, 225, 232, 0.25));
 }
+.auth-passkey {
+  margin-top: 0.5rem;
+}
 .auth-title {
   font-size: 2.6rem;
   font-weight: 800;

@@ -11,6 +11,7 @@
     "gen:icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
     "@smartkids/shared": "workspace:*",
     "i18next": "^24.2.0",
     "react": "^19.0.0",

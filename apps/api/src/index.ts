@@ -21,6 +21,14 @@ import {
   verifySecret,
 } from "./auth";
 import { devLinksEnabled, emailLayout, sendEmail } from "./email";
+import { sendPush } from "./webpush";
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from "@simplewebauthn/server";
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import {
   AnswerSchema,
   ExerciseSchema,
@@ -41,6 +49,9 @@ export interface Env {
   EMAIL_FROM?: string;
   EMAIL_DEV_LINKS?: string;
   CONTENT_IMPORT_TOKEN?: string; // token de máquina para el import de contenido (pipeline/skill)
+  VAPID_PUBLIC?: string; // clave pública VAPID (base64url, para el cliente)
+  VAPID_PRIVATE_JWK?: string; // clave privada VAPID como JWK (SECRETO)
+  VAPID_SUBJECT?: string; // sub del JWT VAPID (URL o mailto:)
 }
 
 const {
@@ -63,6 +74,9 @@ const {
   contentRequests,
   contentRequestAssets,
   coinAwards,
+  pushSubscriptions,
+  webauthnCredentials,
+  webauthnFlows,
 } = schema;
 
 const COINS_PER_CORRECT = 10;
@@ -167,6 +181,7 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   // Estas también referencian al niño (FK sin ON DELETE): sin vaciarlas, el borrado del niño falla.
   await db.delete(coinAwards).where(eq(coinAwards.profileId, childId));
   await db.delete(childSkills).where(eq(childSkills.childId, childId));
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, childId));
   await db.update(contentRequests).set({ childId: null }).where(eq(contentRequests.childId, childId));
   await db.delete(childProfiles).where(eq(childProfiles.id, childId));
 }
@@ -481,6 +496,8 @@ app.delete("/api/admin/tutors/:id", async (c) => {
   await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, id));
   await db.delete(schema.authTokens).where(eq(schema.authTokens.parentId, id));
   await db.delete(schema.sessions).where(eq(schema.sessions.parentId, id));
+  await db.delete(webauthnCredentials).where(eq(webauthnCredentials.parentId, id));
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, id));
   await db.delete(parentAccounts).where(eq(parentAccounts.id, id));
   return c.json({ ok: true });
 });
@@ -976,6 +993,193 @@ app.get("/api/tutor/children/:id/stats", async (c) => {
   return c.json(await computeProfileStats(db, childId));
 });
 
+/* ================= Web Push ================= */
+
+// Envía un push (sin payload) a todas las suscripciones de un dueño; limpia las caducadas.
+async function notifyOwner(env: Env, db: DB, ownerId: string): Promise<void> {
+  if (!env.VAPID_PRIVATE_JWK) return;
+  const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.ownerId, ownerId));
+  for (const s of subs) {
+    const r = await sendPush(env, s.endpoint);
+    if (r.gone) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
+  }
+}
+
+// Clave pública VAPID para que el cliente se suscriba.
+app.get("/api/push/key", (c) => c.json({ publicKey: c.env.VAPID_PUBLIC ?? null }));
+
+// Guarda (upsert) la suscripción de push del usuario actual (tutor o niño).
+app.post("/api/push/subscribe", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ endpoint?: string; keys?: { p256dh?: string; auth?: string } }>();
+  if (!body?.endpoint || !body.keys?.p256dh || !body.keys?.auth) return c.json({ error: "invalid" }, 400);
+  const kid = await currentChildId(c, db);
+  let ownerType: string;
+  let ownerId: string;
+  if (kid) {
+    ownerType = "child";
+    ownerId = kid;
+  } else {
+    const p = await requireParent(c, db);
+    if (typeof p !== "string") return p;
+    ownerType = "parent";
+    ownerId = p;
+  }
+  const now = new Date().toISOString();
+  await db
+    .insert(pushSubscriptions)
+    .values({ id: crypto.randomUUID(), ownerType, ownerId, endpoint: body.endpoint, p256dh: body.keys.p256dh, auth: body.keys.auth, createdAt: now })
+    .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { ownerType, ownerId, p256dh: body.keys.p256dh, auth: body.keys.auth } });
+  return c.json({ ok: true });
+});
+
+// Borra una suscripción de push (al desactivar en el dispositivo).
+app.post("/api/push/unsubscribe", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ endpoint?: string }>();
+  if (!body?.endpoint) return c.json({ error: "invalid" }, 400);
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, body.endpoint));
+  return c.json({ ok: true });
+});
+
+/* ================= Passkeys (WebAuthn) — login biométrico del tutor ================= */
+
+const WEBAUTHN_RP_NAME = "Smartkids";
+const FLOW_TTL_MS = 5 * 60 * 1000;
+
+// rpID = hostname del origen del navegador; origin = ese origen completo (deben cuadrar con la página).
+function rpFromReq(c: Ctx): { rpID: string; origin: string } {
+  const origin = c.req.header("origin") ?? new URL(c.req.url).origin;
+  return { rpID: new URL(origin).hostname, origin };
+}
+function b64urlToBytes(s: string): Uint8Array<ArrayBuffer> {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+function bytesToB64url(b: Uint8Array): string {
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function saveFlow(db: DB, kind: string, userId: string | null, challenge: string): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.insert(webauthnFlows).values({ id, kind, userId, challenge, expiresAt: new Date(Date.now() + FLOW_TTL_MS).toISOString() });
+  return id;
+}
+async function takeFlow(db: DB, id: string, kind: string): Promise<{ userId: string | null; challenge: string } | null> {
+  const [f] = await db.select().from(webauthnFlows).where(eq(webauthnFlows.id, id)).limit(1);
+  await db.delete(webauthnFlows).where(eq(webauthnFlows.id, id)); // un solo uso
+  if (!f || f.kind !== kind || new Date(f.expiresAt).getTime() < Date.now()) return null;
+  return { userId: f.userId, challenge: f.challenge };
+}
+
+// Registro (tutor logueado): opciones.
+app.post("/api/auth/passkey/register/options", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const [parent] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, a)).limit(1);
+  if (!parent) return c.json({ error: "not_found" }, 404);
+  const existing = await db.select({ id: webauthnCredentials.id }).from(webauthnCredentials).where(eq(webauthnCredentials.parentId, a));
+  const { rpID } = rpFromReq(c);
+  const options = await generateRegistrationOptions({
+    rpName: WEBAUTHN_RP_NAME,
+    rpID,
+    userName: parent.email,
+    userID: new TextEncoder().encode(a) as Uint8Array<ArrayBuffer>,
+    attestationType: "none",
+    excludeCredentials: existing.map((e) => ({ id: e.id })),
+    authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+  });
+  const flowId = await saveFlow(db, "reg", a, options.challenge);
+  return c.json({ options, flowId });
+});
+
+// Registro: verifica y guarda la credencial.
+app.post("/api/auth/passkey/register/verify", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const body = await c.req.json<{ flowId: string; response: RegistrationResponseJSON }>();
+  const flow = await takeFlow(db, body.flowId, "reg");
+  if (!flow || flow.userId !== a) return c.json({ error: "flow_expired" }, 400);
+  const { rpID, origin } = rpFromReq(c);
+  let verification;
+  try {
+    verification = await verifyRegistrationResponse({ response: body.response, expectedChallenge: flow.challenge, expectedOrigin: origin, expectedRPID: rpID });
+  } catch {
+    return c.json({ error: "verify_failed" }, 400);
+  }
+  if (!verification.verified || !verification.registrationInfo) return c.json({ error: "not_verified" }, 400);
+  const { credential } = verification.registrationInfo;
+  const pk = bytesToB64url(credential.publicKey);
+  await db
+    .insert(webauthnCredentials)
+    .values({ id: credential.id, parentId: a, publicKey: pk, counter: credential.counter, transports: JSON.stringify(credential.transports ?? []), createdAt: new Date().toISOString() })
+    .onConflictDoUpdate({ target: webauthnCredentials.id, set: { publicKey: pk, counter: credential.counter } });
+  return c.json({ ok: true });
+});
+
+// Login (sin sesión): opciones usernameless (passkeys descubribles).
+app.post("/api/auth/passkey/login/options", async (c) => {
+  const db = getDb(c.env.DB);
+  const { rpID } = rpFromReq(c);
+  const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });
+  const flowId = await saveFlow(db, "auth", null, options.challenge);
+  return c.json({ options, flowId });
+});
+
+// Login: verifica la aserción, actualiza el contador y abre sesión.
+app.post("/api/auth/passkey/login/verify", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ flowId: string; response: AuthenticationResponseJSON }>();
+  const flow = await takeFlow(db, body.flowId, "auth");
+  if (!flow) return c.json({ error: "flow_expired" }, 400);
+  const [cred] = await db.select().from(webauthnCredentials).where(eq(webauthnCredentials.id, body.response.id)).limit(1);
+  if (!cred) return c.json({ error: "unknown_credential" }, 400);
+  const { rpID, origin } = rpFromReq(c);
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: body.response,
+      expectedChallenge: flow.challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      credential: { id: cred.id, publicKey: b64urlToBytes(cred.publicKey), counter: cred.counter, transports: JSON.parse(cred.transports ?? "[]") },
+    });
+  } catch {
+    return c.json({ error: "verify_failed" }, 400);
+  }
+  if (!verification.verified) return c.json({ error: "not_verified" }, 400);
+  await db.update(webauthnCredentials).set({ counter: verification.authenticationInfo.newCounter }).where(eq(webauthnCredentials.id, cred.id));
+  const [parent] = await db.select().from(parentAccounts).where(eq(parentAccounts.id, cred.parentId)).limit(1);
+  if (!parent) return c.json({ error: "not_found" }, 404);
+  const token = await createSession(db, parent.id);
+  setSessionCookie(c, token);
+  return c.json({ parent: { id: parent.id, email: parent.email, role: parent.role, emailVerified: Boolean(parent.emailVerified) } });
+});
+
+// ¿Cuántas passkeys tiene el tutor actual? (para la UI de ajustes)
+app.get("/api/auth/passkey/list", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const [row] = await db.select({ n: sql<number>`count(*)` }).from(webauthnCredentials).where(eq(webauthnCredentials.parentId, a));
+  return c.json({ count: row?.n ?? 0 });
+});
+
+// Borra todas las passkeys del tutor actual.
+app.delete("/api/auth/passkey", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  await db.delete(webauthnCredentials).where(eq(webauthnCredentials.parentId, a));
+  return c.json({ ok: true });
+});
+
 /* ================= Datos de juego ================= */
 
 app.get("/api/skills", async (c) => {
@@ -1179,6 +1383,7 @@ app.post("/api/admin/content/import", async (c) => {
         );
         await db.update(contentRequests).set({ notifiedAt: new Date().toISOString() }).where(eq(contentRequests.id, body.requestId));
       }
+      await notifyOwner(c.env, db, req.ownerId); // push al tutor: "contenido listo"
     }
   }
 
@@ -1786,6 +1991,7 @@ app.post("/api/rewards/:id/redeem", async (c) => {
     const earned = await earnedSince(db, profileId, periodStartIso(reward.period));
     if (earned < reward.cost) return c.json({ error: "goal_not_reached", message: "Aún no has alcanzado el objetivo.", earned, target: reward.cost }, 400);
     await db.insert(redemptions).values({ id: crypto.randomUUID(), profileId, rewardId, status, ts: now });
+    if (status === "pending") for (const pid of household) await notifyOwner(c.env, db, pid); // push: "canje pendiente"
     const [w] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, profileId)).limit(1);
     return c.json({ ok: true, balance: w?.balance ?? 0, status, reward: slim });
   }
@@ -1799,6 +2005,7 @@ app.post("/api/rewards/:id/redeem", async (c) => {
   const newBalance = updated[0]!.balance;
   await db.insert(walletLedger).values({ id: crypto.randomUUID(), profileId, delta: -reward.cost, reason: `redeem:${rewardId}`, ts: now });
   await db.insert(redemptions).values({ id: crypto.randomUUID(), profileId, rewardId, status, ts: now });
+  if (status === "pending") for (const pid of household) await notifyOwner(c.env, db, pid); // push: "canje pendiente"
   return c.json({ ok: true, balance: newBalance, status, reward: slim });
 });
 
