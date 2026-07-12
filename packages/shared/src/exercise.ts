@@ -52,8 +52,9 @@ export type TextNormalize = z.infer<typeof TextNormalizeSchema>;
  * Ilustración opcional del ejercicio: un documento SVG en línea (autocontenido,
  * SIN <script> ni recursos externos) que se muestra sobre el enunciado para
  * presentar la información de forma visual (figuras geométricas, diagramas...).
- * El cliente lo renderiza como imagen (data URI), así que nunca ejecuta scripts.
- * Debe empezar por "<svg".
+ * El cliente lo SANEA (allowlist de elementos/atributos) y lo pinta inline, por
+ * lo que hereda el color del tema: debe pintar con `currentColor`, no colores
+ * fijos. Debe empezar por "<svg".
  */
 export const FigureSchema = z
   .string()

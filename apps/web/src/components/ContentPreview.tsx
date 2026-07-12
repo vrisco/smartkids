@@ -1,7 +1,7 @@
 // Preview del tutor: navega por TODOS los ejercicios de un skill privado (uno a uno,
-// con botones adelante/atrás), muestra la solución y permite ocultar/mostrar cada uno.
-// Es solo lectura: no se responde.
-import { useEffect, useState } from "react";
+// con flechas de teclado, swipe y una tira de miniaturas), muestra la solución y
+// permite ocultar/mostrar cada uno. Es solo lectura: no se responde.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type FullExercise, type PreviewExercise } from "../api";
 import { ExerciseFigure } from "./ExerciseFigure";
@@ -14,6 +14,7 @@ export function ContentPreview({ skillId, title, onClose }: { skillId: string; t
   const [idx, setIdx] = useState(0);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const swipeX = useRef<number | null>(null);
 
   useEffect(() => {
     api
@@ -25,6 +26,32 @@ export function ContentPreview({ skillId, title, onClose }: { skillId: string; t
   const total = items?.length ?? 0;
   const pos = Math.min(idx, Math.max(0, total - 1));
   const cur = items && total > 0 ? items[pos] : null;
+
+  const go = useCallback(
+    (delta: number) => setIdx((i) => Math.min(Math.max(0, total - 1), Math.max(0, i + delta))),
+    [total],
+  );
+
+  // Teclado: flechas para navegar, Escape para cerrar.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "ArrowRight") go(1);
+      else if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go, onClose]);
+
+  function onPointerDown(e: React.PointerEvent) {
+    swipeX.current = e.clientX;
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    if (swipeX.current == null) return;
+    const dx = e.clientX - swipeX.current;
+    swipeX.current = null;
+    if (Math.abs(dx) > 45) go(dx < 0 ? 1 : -1);
+  }
 
   async function toggleHidden() {
     if (!cur || !items) return;
@@ -62,7 +89,13 @@ export function ContentPreview({ skillId, title, onClose }: { skillId: string; t
           <p className="muted screen-pad">{t("content.noExercises")}</p>
         ) : (
           <>
-            <div className={"preview-body" + (cur.hidden ? " is-hidden" : "")}>
+            <div className={"preview-body" + (cur.hidden ? " is-hidden" : "")} onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
+              <div className="preview-body-top">
+                <span className="preview-type">{t(`content.type_${cur.exercise.type}`)}</span>
+                <button className={"preview-hide-btn" + (cur.hidden ? " is-hidden" : "")} disabled={busy} onClick={toggleHidden}>
+                  <Icon name={cur.hidden ? "eye" : "eyeOff"} size={15} /> {cur.hidden ? t("content.show") : t("content.hide")}
+                </button>
+              </div>
               {cur.hidden && (
                 <div className="preview-hidden-badge">
                   <Icon name="eyeOff" size={14} /> {t("content.hiddenTag")}
@@ -72,22 +105,31 @@ export function ContentPreview({ skillId, title, onClose }: { skillId: string; t
               <PreviewExerciseView ex={cur.exercise} />
             </div>
 
-            <div className="preview-actions">
-              <button className={"btn-ghost sm" + (cur.hidden ? "" : " danger")} disabled={busy} onClick={toggleHidden}>
-                <Icon name={cur.hidden ? "eye" : "eyeOff"} size={16} /> {cur.hidden ? t("content.show") : t("content.hide")}
-              </button>
-            </div>
-
             <div className="preview-nav">
-              <button className="btn-ghost sm" disabled={pos <= 0} onClick={() => setIdx(pos - 1)}>
-                <Icon name="chevronLeft" size={16} /> {t("content.prev")}
+              <button className="icon-btn" disabled={pos <= 0} onClick={() => go(-1)} aria-label={t("content.prev")}>
+                <Icon name="chevronLeft" size={18} />
               </button>
               <span className="preview-count">
                 {pos + 1} / {total}
               </span>
-              <button className="btn-ghost sm" disabled={pos >= total - 1} onClick={() => setIdx(pos + 1)}>
-                {t("content.next")} <Icon name="chevronRight" size={16} />
+              <button className="icon-btn" disabled={pos >= total - 1} onClick={() => go(1)} aria-label={t("content.next")}>
+                <Icon name="chevronRight" size={18} />
               </button>
+            </div>
+
+            <div className="preview-strip" role="tablist" aria-label={title}>
+              {items.map((it, i) => (
+                <button
+                  key={it.templateId}
+                  className={"preview-thumb" + (i === pos ? " on" : "") + (it.hidden ? " hidden" : "")}
+                  onClick={() => setIdx(i)}
+                  role="tab"
+                  aria-selected={i === pos}
+                  title={it.hidden ? t("content.hiddenTag") : `${i + 1}`}
+                >
+                  {it.hidden ? <Icon name="eyeOff" size={12} /> : i + 1}
+                </button>
+              ))}
             </div>
           </>
         )}
@@ -101,7 +143,6 @@ function PreviewExerciseView({ ex }: { ex: FullExercise }) {
   const { t } = useTranslation();
   return (
     <div className="preview-ex">
-      <div className="preview-type">{t(`content.type_${ex.type}`)}</div>
       <div className="preview-stem">
         <MathText text={ex.stem} />
       </div>

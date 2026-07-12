@@ -55,11 +55,13 @@ Este skill es **autónomo una vez invocado** y **siempre opera contra PRODUCCIÓ
   (geometría: polígonos, triángulos, círculos con radio/diámetro marcados, ejes; diagramas; rectas numéricas;
   fracciones como porciones). Reglas del SVG:
   - Autocontenido: empieza por `<svg ... xmlns="http://www.w3.org/2000/svg" viewBox="0 0 W H">`, **sin** `<script>`,
-    sin `<image>` ni URLs externas, sin fuentes externas. Se renderiza como imagen (data URI), así que cualquier
-    script se ignora; mantenlo simple.
-  - Legibilidad: se pinta sobre fondo claro. Usa trazos/textos **oscuros** (p. ej. `stroke="#1f2937"`,
-    `fill="#1f2937"` para etiquetas) y rellenos suaves; grosor de línea visible (`stroke-width="2"`). Tamaño
-    contenido (viewBox ~ 200–360 de ancho; se limita a 240px de alto en la UI).
+    sin `<image>`, `<foreignObject>`, `<use>` ni URLs externas, sin fuentes externas, sin `on*` ni `style` con
+    `url()`. La app **sanea** el SVG (allowlist de elementos/atributos) y lo pinta inline; mantenlo simple.
+  - **Color por `currentColor` (theme-aware).** La figura hereda el color del tema, así que **NO** uses colores
+    fijos (nada de `#1f2937`, `#000`, etc.): usa `stroke="currentColor"` y `fill="currentColor"`. Para rellenos
+    suaves, `fill="currentColor"` con `fill-opacity="0.12"` (o `fill="none"`). Textos/etiquetas con
+    `fill="currentColor"`. Grosor de línea visible (`stroke-width="2"`). Así se ve bien en claro y en oscuro.
+  - Tamaño contenido (viewBox ~ 200–360 de ancho; en la UI se limita a 320px de ancho / 240px de alto).
   - La figura ILUSTRA; la respuesta sigue saliendo del `stem` + los campos del tipo. No metas la solución en la
     figura de forma que se pueda "copiar" trivialmente si no quieres regalarla.
   - Sigue siendo auto-contenido: si pones medidas en la figura, que el enunciado no dependa de ver el PDF original.

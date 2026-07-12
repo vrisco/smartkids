@@ -932,21 +932,38 @@ button:focus-visible {
   }
 }
 
-/* ---------- Ilustración del ejercicio (SVG) ---------- */
+/* ---------- Ilustración del ejercicio (SVG inline, theme-aware) ---------- */
+/* La figura hereda currentColor de --text: trazos claros sobre superficie oscura
+   en tema oscuro y viceversa. La skill debe pintar con currentColor. */
 .ex-figure {
   display: flex;
   justify-content: center;
   margin: var(--sp-3) 0;
+  color: var(--text);
 }
-.ex-figure img {
-  max-width: 100%;
+.ex-figure svg {
+  width: 100%;
+  max-width: 320px;
   max-height: 240px;
-  width: auto;
   height: auto;
-  background: #ffffff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
   padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-1, 0 1px 2px rgba(0, 0, 0, 0.08));
+  box-sizing: border-box;
+  animation: figure-in 0.25s ease;
+}
+@keyframes figure-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+/* En la preview del tutor la figura va sobre --surface-2 (preview-body): dale
+   un fondo un punto distinto para que se despegue del panel. */
+.preview-body .ex-figure svg {
+  background: var(--surface);
 }
 
 /* ---------- Solicitudes antiguas (plegable) ---------- */
@@ -1003,12 +1020,40 @@ button:focus-visible {
   color: var(--coral);
   margin-bottom: var(--sp-2);
 }
+.preview-body-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
 .preview-type {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-faint);
-  margin-bottom: var(--sp-2);
+}
+.preview-hide-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 4px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.preview-hide-btn.is-hidden {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.preview-hide-btn:not(.is-hidden):hover {
+  border-color: var(--coral);
+  color: var(--coral);
 }
 .preview-stem {
   font-size: 1.05rem;
@@ -1089,19 +1134,48 @@ button:focus-visible {
   display: block;
   margin-bottom: var(--sp-1);
 }
-.preview-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: var(--sp-3);
-}
 .preview-nav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
+  justify-content: center;
+  gap: var(--sp-4);
   margin-top: var(--sp-3);
 }
 .preview-count {
   font-weight: 600;
   color: var(--text-dim);
+  min-width: 3.5em;
+  text-align: center;
+}
+/* Tira de miniaturas: un vistazo a todos los ejercicios y cuáles están ocultos. */
+.preview-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  justify-content: center;
+  margin-top: var(--sp-3);
+}
+.preview-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.preview-thumb.on {
+  border-color: var(--violet);
+  color: var(--violet);
+  box-shadow: 0 0 0 1px var(--violet) inset;
+}
+.preview-thumb.hidden {
+  opacity: 0.55;
+  border-style: dashed;
 }
