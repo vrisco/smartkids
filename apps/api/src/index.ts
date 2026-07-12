@@ -760,14 +760,15 @@ app.get("/api/child/me", async (c) => {
   const crs = await childCoursesOf(db, kid);
   // Contenido a medida (skills PRIVADOS asignados): se ofrecen como "cursos" independientes jugables directamente.
   const privRows = await db
-    .select({ id: skills.id, nameI18n: skills.nameI18n })
+    .select({ id: skills.id, nameI18n: skills.nameI18n, pathId: skills.pathId, pathName: skills.pathName, moduleIndex: skills.moduleIndex })
     .from(childSkills)
     .innerJoin(skills, eq(skills.id, childSkills.skillId))
-    .where(and(eq(childSkills.childId, kid), isNotNull(skills.ownerId)));
-  const customContent: Array<{ skillId: string; nameI18n: unknown; exercises: number }> = [];
+    .where(and(eq(childSkills.childId, kid), isNotNull(skills.ownerId)))
+    .orderBy(asc(skills.moduleIndex));
+  const customContent: Array<{ skillId: string; nameI18n: unknown; exercises: number; pathId: string | null; pathName: unknown; moduleIndex: number }> = [];
   for (const s of privRows) {
     const [cnt] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, s.id));
-    customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0 });
+    customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0, pathId: s.pathId, pathName: s.pathName, moduleIndex: s.moduleIndex });
   }
   return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, courses: crs, customContent });
 });
@@ -833,7 +834,19 @@ app.post("/api/admin/content/import", async (c) => {
 
   const body = await c.req.json<{
     subject?: { id: string; nameI18n: LocaleTextIn };
-    skill?: { id: string; subjectId: string; gradeBand: string; nameI18n: LocaleTextIn; ownerId?: string | null; difficultyBase?: number; position?: number };
+    skill?: {
+      id: string;
+      subjectId: string;
+      gradeBand: string;
+      nameI18n: LocaleTextIn;
+      ownerId?: string | null;
+      difficultyBase?: number;
+      position?: number;
+      coinsPerCorrect?: number | null;
+      pathId?: string | null;
+      pathName?: LocaleTextIn | null;
+      moduleIndex?: number;
+    };
     package: { id: string; subjectId: string; gradeBand?: string | null; version: string; ownerId?: string | null };
     exercises: unknown[];
     assign?: { childIds: string[] };
@@ -868,8 +881,21 @@ app.post("/api/admin/content/import", async (c) => {
         difficultyBase: body.skill.difficultyBase ?? 0.4,
         position: body.skill.position ?? 0,
         ownerId: body.skill.ownerId ?? null,
+        coinsPerCorrect: body.skill.coinsPerCorrect ?? null,
+        pathId: body.skill.pathId ?? null,
+        pathName: body.skill.pathName ?? null,
+        moduleIndex: body.skill.moduleIndex ?? 0,
       })
-      .onConflictDoUpdate({ target: skills.id, set: { nameI18n: body.skill.nameI18n } });
+      .onConflictDoUpdate({
+        target: skills.id,
+        set: {
+          nameI18n: body.skill.nameI18n,
+          coinsPerCorrect: body.skill.coinsPerCorrect ?? null,
+          pathId: body.skill.pathId ?? null,
+          pathName: body.skill.pathName ?? null,
+          moduleIndex: body.skill.moduleIndex ?? 0,
+        },
+      });
   }
 
   // Upsert del paquete (idempotente): reemplaza sus plantillas.
@@ -1062,6 +1088,13 @@ app.post("/api/tutor/content-requests", async (c) => {
   const childId = form["childId"] ? String(form["childId"]) : null;
   const subjectId = form["subjectId"] ? String(form["subjectId"]) : null;
   const gradeBand = form["gradeBand"] ? String(form["gradeBand"]) : null;
+  const clampInt = (v: unknown, lo: number, hi: number, def: number): number => {
+    const n = parseInt(String(v ?? ""), 10);
+    return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
+  };
+  const numQuestions = form["numQuestions"] ? clampInt(form["numQuestions"], 5, 40, 20) : null;
+  const pointsPerCorrect = form["pointsPerCorrect"] ? clampInt(form["pointsPerCorrect"], 1, 50, 10) : null;
+  const modules = form["modules"] ? clampInt(form["modules"], 1, 6, 1) : null;
   if (!title) return c.json({ error: "title_required" }, 400);
 
   const household = await householdIds(db, a);
@@ -1081,7 +1114,7 @@ app.post("/api/tutor/content-requests", async (c) => {
 
   const requestId = `creq_${crypto.randomUUID()}`;
   const now = new Date().toISOString();
-  await db.insert(contentRequests).values({ id: requestId, ownerId: a, childId, subjectId, gradeBand, title, instructions, status: "uploaded", createdAt: now });
+  await db.insert(contentRequests).values({ id: requestId, ownerId: a, childId, subjectId, gradeBand, title, instructions, numQuestions, pointsPerCorrect, modules, status: "uploaded", createdAt: now });
 
   const stored: Array<{ id: string; filename: string; kind: string }> = [];
   for (const file of files) {
@@ -1292,7 +1325,8 @@ app.post("/api/session/attempt", async (c) => {
       set: { masteryScore: newMastery, consecutiveCorrect: consecutive, totalAttempts: total, status },
     });
 
-  const coins = correct && !alreadyEarned ? COINS_PER_CORRECT : 0;
+  const [skRow] = await db.select({ coins: skills.coinsPerCorrect }).from(skills).where(eq(skills.id, skillId)).limit(1);
+  const coins = correct && !alreadyEarned ? (skRow?.coins ?? COINS_PER_CORRECT) : 0;
   if (coins > 0) {
     await db
       .insert(wallets)

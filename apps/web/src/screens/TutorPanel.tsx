@@ -789,6 +789,9 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
   const [instructions, setInstructions] = useState("");
   const [childId, setChildId] = useState(kids[0]?.id ?? "");
   const [files, setFiles] = useState<FileList | null>(null);
+  const [numQuestions, setNumQuestions] = useState("20");
+  const [points, setPoints] = useState("10");
+  const [modules, setModules] = useState("1");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -801,6 +804,9 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
       form.set("title", title.trim());
       form.set("instructions", instructions.trim());
       if (childId) form.set("childId", childId);
+      form.set("numQuestions", numQuestions);
+      form.set("pointsPerCorrect", points);
+      form.set("modules", modules);
       for (const f of Array.from(files)) form.append("files", f);
       await api.createContentRequest(form);
       onDone();
@@ -824,6 +830,24 @@ function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () =
               {ch.displayName}
             </option>
           ))}
+        </select>
+        <div className="course-label">{t("content.numQuestions")}</div>
+        <select className="field" value={numQuestions} onChange={(e) => setNumQuestions(e.target.value)}>
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+        </select>
+        <div className="course-label">{t("content.pointsPerCorrect")}</div>
+        <select className="field" value={points} onChange={(e) => setPoints(e.target.value)}>
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="20">20</option>
+        </select>
+        <div className="course-label">{t("content.structure")}</div>
+        <select className="field" value={modules} onChange={(e) => setModules(e.target.value)}>
+          <option value="1">{t("content.single")}</option>
+          <option value="2">{t("content.path2")}</option>
+          <option value="3">{t("content.path3")}</option>
         </select>
         <div className="course-label">{t("content.files")}</div>
         <input className="field" type="file" multiple accept="image/*,application/pdf,text/plain,.md" onChange={(e) => setFiles(e.target.files)} />

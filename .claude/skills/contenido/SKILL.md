@@ -37,14 +37,17 @@ Generador de contenido de smartkids. Convierte una petición (o el material subi
 
 1. **Lista las solicitudes pendientes**: `GET /api/admin/content-requests?status=uploaded` con cabecera `Authorization: Bearer $CONTENT_IMPORT_TOKEN` (o consulta la tabla `content_requests`). Cada solicitud trae `ownerId` (tutor), `childId` (destino), `title`, `instructions`, `subjectId`/`gradeBand` (pistas) y sus `assets`.
 2. **Descarga los assets** (imágenes y/o documentos): `GET /api/admin/content-requests/:id/assets/:assetId` (mismo Bearer) devuelve el binario. Guarda cada uno; anota su `contentType`/`kind`.
-3. **Genera multimodal con Claude** (`claude-opus-4-8`, salida estructurada con `ExerciseSchema`): monta el mensaje con bloques `image` para las fotos y bloques `document` para los PDF, más las `instructions` del tutor. Pide ejercicios de los tipos adecuados al material.
-4. **Valida** cada ejercicio con `ExerciseSchema` + `validateExercise` (igual que el pipeline).
-5. **Publica como contenido privado** vía `POST /api/admin/content/import` (Bearer) con:
+   La solicitud trae además su **config**: `numQuestions` (cuántas preguntas, por defecto 20), `pointsPerCorrect` (puntos por acierto) y `modules` (1 = ficha única; >1 = path con N módulos).
+3. **Genera** `numQuestions` ejercicios en total de los tipos adecuados al material, con las `instructions` del tutor. Si hay `ANTHROPIC_API_KEY`, usa Claude multimodal (`claude-opus-4-8`, salida `ExerciseSchema`, bloques `image` para fotos y `document` para PDF). Si NO hay key ni forma de rasterizar, extrae el texto (p. ej. Node `pdf-parse`) y redáctalos tú.
+4. **Valida** cada ejercicio con `ExerciseSchema` + `validateExercise`. Decide la **estructura**: si `modules` = 1, un solo skill; si `modules` > 1, reparte los ejercicios en N skills-módulo que forman un **path** (comparten `pathId` = `path_<requestId>` y `pathName` = el `title`; cada uno con `moduleIndex` 0..N-1 y su propio `skill.id`, p. ej. `PRIV.<algo>.M1`, `.M2`...).
+5. **Publica** cada skill vía `POST /api/admin/content/import` (Bearer):
    - `package.ownerId` = `skill.ownerId` = el `ownerId` de la solicitud (privado del hogar).
-   - `skill` nuevo y privado (p. ej. `PRIV.<tutorCorto>.<tema>`), `subjectId`/`gradeBand` alineados con un curso del niño.
+   - `skill.coinsPerCorrect` = `pointsPerCorrect` de la solicitud.
+   - `skill.subjectId`/`gradeBand` alineados con un curso del niño (para que se vea en su galaxia/inicio).
+   - Para un path: pon `skill.pathId`, `skill.pathName` y `skill.moduleIndex` en cada módulo.
    - `assign.childIds` = `[childId]` de la solicitud.
-   - `requestId` = id de la solicitud → el servidor marca `published` y **envía el email de aviso al tutor**.
-6. Confirma al usuario el resultado (nº de ejercicios, a qué niño se asignó, email enviado).
+   - `requestId` = id de la solicitud **solo en la ÚLTIMA llamada** (marca `published` y envía UN email de aviso al tutor).
+6. Confirma al usuario el resultado (nº de ejercicios, módulos/path, a qué niño se asignó, email enviado).
 
 ## Reglas (no las saltes)
 

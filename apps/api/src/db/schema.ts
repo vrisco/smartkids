@@ -48,6 +48,10 @@ export const skills = sqliteTable("skills", {
   difficultyBase: real("difficulty_base").notNull().default(0.4),
   position: integer("position").notNull().default(0),
   ownerId: text("owner_id"), // null = skill global (catálogo); set = skill privado del hogar del tutor
+  coinsPerCorrect: integer("coins_per_correct"), // puntos por acierto (null = valor global por defecto)
+  pathId: text("path_id"), // agrupa módulos de un mismo "path"; null = ficha suelta
+  pathName: text("path_name", { mode: "json" }).$type<LocaleText>(), // nombre del path (si es módulo de uno)
+  moduleIndex: integer("module_index").notNull().default(0), // orden del módulo dentro del path
 });
 
 export const skillPrerequisites = sqliteTable(
@@ -278,6 +282,9 @@ export const contentRequests = sqliteTable("content_requests", {
   gradeBand: text("grade_band"), // pista opcional de nivel
   title: text("title").notNull(),
   instructions: text("instructions").notNull().default(""), // qué quiere generar el tutor
+  numQuestions: integer("num_questions"), // preguntas a generar (null = por defecto)
+  pointsPerCorrect: integer("points_per_correct"), // puntos por acierto
+  modules: integer("modules"), // 1 = ficha única; >1 = path con N módulos
   status: text("status").notNull().default("uploaded"), // uploaded | processing | published | failed
   note: text("note"), // nota/error del procesado
   skillId: text("skill_id"), // skill privado publicado al terminar

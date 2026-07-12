@@ -56,6 +56,9 @@ export interface CustomContent {
   skillId: string;
   nameI18n: LocaleText;
   exercises: number;
+  pathId?: string | null;
+  pathName?: LocaleText | null;
+  moduleIndex?: number;
 }
 
 export interface ChildMe {
@@ -270,5 +273,5 @@ export const api = {
   deleteContentRequest: (id: string) => j<{ ok: boolean }>(`/api/tutor/content-requests/${id}`, { method: "DELETE" }),
 };
 
-export const tx = (m: LocaleText | undefined, locale: string = i18n.language): string =>
+export const tx = (m: LocaleText | null | undefined, locale: string = i18n.language): string =>
   (m && (m[locale] ?? Object.values(m)[0])) ?? "";

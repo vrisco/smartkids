@@ -8,19 +8,38 @@ import { Session } from "./Session";
 import { RewardShop } from "./RewardShop";
 
 type View = "map" | "session" | "reward";
+type PathGroup = { pathId: string; pathName: CustomContent["pathName"]; modules: CustomContent[] };
 
 export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void }) {
   const { t } = useTranslation();
   const custom = data.customContent ?? [];
+  const singles = custom.filter((c) => !c.pathId);
+  const paths: PathGroup[] = [];
+  {
+    const byPath = new Map<string, CustomContent[]>();
+    for (const c of custom) {
+      if (!c.pathId) continue;
+      const arr = byPath.get(c.pathId) ?? [];
+      arr.push(c);
+      byPath.set(c.pathId, arr);
+    }
+    for (const [pid, mods] of byPath) {
+      mods.sort((a, b) => (a.moduleIndex ?? 0) - (b.moduleIndex ?? 0));
+      paths.push({ pathId: pid, pathName: mods[0]?.pathName ?? null, modules: mods });
+    }
+  }
+  const hasCustom = custom.length > 0;
+
   const [course, setCourse] = useState<Course | null>(
-    data.courses.length === 1 && custom.length === 0 ? data.courses[0]! : null,
+    data.courses.length === 1 && !hasCustom ? data.courses[0]! : null,
   );
+  const [openPath, setOpenPath] = useState<PathGroup | null>(null);
   const [customSkill, setCustomSkill] = useState<CustomContent | null>(null);
   const [view, setView] = useState<View>("map");
   const [skillId, setSkillId] = useState<string | null>(null);
   const [balance, setBalance] = useState(data.balance);
 
-  // Ficha (contenido a medida): se juega directamente, sin galaxia intermedia.
+  // Ficha o módulo: se juega directamente, sin galaxia intermedia.
   if (customSkill) {
     return (
       <div className="app-shell">
@@ -31,7 +50,39 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
     );
   }
 
-  if (data.courses.length === 0 && custom.length === 0) {
+  // Módulos de un path.
+  if (openPath) {
+    return (
+      <div className="app-shell">
+        <Hud profile={data.child} balance={balance} onExit={onLogout} />
+        <div className="app-body">
+          <button className="btn-ghost sm" type="button" onClick={() => setOpenPath(null)} style={{ alignSelf: "flex-start", marginTop: "0.8rem" }}>
+            <Icon name="back" size={14} /> {t("common.back")}
+          </button>
+          <h2 className="screen-title">{tx(openPath.pathName)}</h2>
+          <div className="course-grid">
+            {openPath.modules.map((m, i) => (
+              <button className="course-card custom" key={m.skillId} type="button" onClick={() => setCustomSkill(m)}>
+                <span className="course-emoji">
+                  <Icon name="star" size={22} />
+                </span>
+                <span className="course-text">
+                  <b>
+                    {t("kid.module")} {i + 1}
+                  </b>
+                  <span className="course-sub">
+                    {m.exercises} {t("content.exercises")}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.courses.length === 0 && !hasCustom) {
     return (
       <div className="app-shell">
         <Hud profile={data.child} balance={balance} onExit={onLogout} />
@@ -45,7 +96,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
     );
   }
 
-  // Inicio: cursos + fichas (contenido a medida) como tarjetas independientes.
+  // Inicio: cursos + fichas/paths (contenido a medida) como tarjetas independientes.
   if (!course) {
     return (
       <div className="app-shell">
@@ -77,13 +128,13 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
               </div>
             </>
           )}
-          {custom.length > 0 && (
+          {hasCustom && (
             <>
               <div className="screen-kicker" style={{ paddingTop: "1.4rem" }}>
                 {t("kid.worksheets")}
               </div>
               <div className="course-grid">
-                {custom.map((cc) => (
+                {singles.map((cc) => (
                   <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
                     <span className="course-emoji">
                       <Icon name="star" size={22} />
@@ -92,6 +143,19 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                       <b>{tx(cc.nameI18n)}</b>
                       <span className="course-sub">
                         {cc.exercises} {t("content.exercises")}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+                {paths.map((p) => (
+                  <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
+                    <span className="course-emoji">
+                      <Icon name="satellite" size={22} />
+                    </span>
+                    <span className="course-text">
+                      <b>{tx(p.pathName)}</b>
+                      <span className="course-sub">
+                        {p.modules.length} {t("kid.modules")}
                       </span>
                     </span>
                   </button>
@@ -117,7 +181,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
               setSkillId(s);
               setView("session");
             }}
-            onBack={data.courses.length > 1 || custom.length > 0 ? () => setCourse(null) : undefined}
+            onBack={data.courses.length > 1 || hasCustom ? () => setCourse(null) : undefined}
           />
         )}
         {view === "session" && skillId && (
