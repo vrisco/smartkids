@@ -1,11 +1,6 @@
 # CLAUDE.md — guía para Claude Code
 
 Guía operativa del monorepo **smartkids** («Órbita»). Léela entera antes de tocar código.
-Para el detalle profundo hay dos referencias en `docs/`:
-
-- `docs/ARCHITECTURE.md` — modelo de datos completo (20 tablas), jerarquía de usuarios,
-  economía de recompensas, flujos de auth, ciclo de vida de una petición, pipeline de contenido.
-- `docs/API.md` — catálogo de todos los endpoints agrupados por rol y su guard de autorización.
 
 Convenciones de escritura de este repo: **todo en español**, **sin emojis** en la UI ni en textos
 (preferencia fija del usuario y política del propio proyecto). Mantén esa norma también en la doc.
@@ -75,7 +70,7 @@ Monorepo pnpm (`apps/*`, `packages/*`, `tools/*`):
 
 ```
 apps/web/          SPA React 19 + Vite 6 + PWA  ·  paquete @smartkids/web
-apps/api/          Hono en Cloudflare Workers   ·  paquete @smartkids/api  ·  ver apps/api/CLAUDE.md
+apps/api/          Hono en Cloudflare Workers   ·  paquete @smartkids/api
 packages/shared/   tipos + esquemas Zod (Zod)   ·  @smartkids/shared  (source-only, sin build)
 tools/content-gen/ pipeline offline de contenido ·  @smartkids/content-gen
 ```
@@ -90,7 +85,7 @@ tools/content-gen/ pipeline offline de contenido ·  @smartkids/content-gen
 Consecuencia clave: **el binding `ASSETS` apunta a `apps/web/dist`**. En un clon nuevo o antes del primer
 `wrangler dev`/`deploy`, ejecuta `pnpm --filter @smartkids/web run build` o falla.
 
-## 5. Modelo de datos (resumen — detalle en `docs/ARCHITECTURE.md`)
+## 5. Modelo de datos
 
 Drizzle sobre D1/SQLite, **20 tablas**, esquema en `apps/api/src/db/schema.ts`. La frontera está marcada con
 comentarios de sección en el propio schema:
@@ -118,7 +113,7 @@ El `reason` del ledger distingue por prefijo: `exercise:`, `redeem:`, `refund:`.
 
 ## 6. Backend (`apps/api`) — lo esencial
 
-Detalle y gotchas en `apps/api/CLAUDE.md`. Reglas que hay que respetar siempre:
+Reglas que hay que respetar siempre:
 
 - **No hay middleware global de auth: cada handler llama a los guards a mano.** Patrón repetido:
   el guard devuelve `string` (el id) o un `Response`, y el handler hace `if (typeof x !== "string") return x;`.
@@ -139,7 +134,7 @@ Detalle y gotchas en `apps/api/CLAUDE.md`. Reglas que hay que respetar siempre:
 
 ## 7. Frontend (`apps/web`) — lo esencial
 
-Detalle y gotchas en `apps/web/CLAUDE.md`. Reglas que hay que respetar siempre:
+Reglas que hay que respetar siempre:
 
 - **No hay router.** Solo `/`, `/verify` y `/reset` son rutas físicas; el resto es render condicional por
   **rol/estado** en `apps/web/src/App.tsx` (prioridad: sesión de niño > admin > tutor > login). La navegación
@@ -211,7 +206,7 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 
 | Necesitas… | Mira en |
 |---|---|
-| Rutas de la API y lógica de negocio | `apps/api/src/index.ts` (+ `docs/API.md`) |
+| Rutas de la API y lógica de negocio | `apps/api/src/index.ts` |
 | Sesiones, PBKDF2, tokens, rate-limit | `apps/api/src/auth.ts` |
 | Email (Resend + mock + layout) | `apps/api/src/email.ts` |
 | Esquema de la BD (tablas Drizzle) | `apps/api/src/db/schema.ts` |
