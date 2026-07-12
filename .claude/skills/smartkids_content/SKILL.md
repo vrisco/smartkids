@@ -24,9 +24,11 @@ Este skill es **autónomo una vez invocado** y **siempre opera contra PRODUCCIÓ
   diálogos de "¿publico?" ni pasos de validación local intermedios: haz el ciclo completo de punta a punta y
   reporta el resultado al final.
 - **Base de producción:** la API vive en `https://app.smart-kids.uk`. Todas las llamadas de máquina van ahí.
-- **Token de máquina:** léelo de `apps/api/.dev.vars` (`CONTENT_IMPORT_TOKEN=...`). Ese mismo token **autentica
-  contra producción** (los endpoints `/api/admin/content-requests*` e `/api/admin/content/import` lo aceptan como
-  `Authorization: Bearer <token>`). No lo escribas en ficheros versionados ni lo muestres al usuario.
+- **Token de máquina:** léelo de `apps/api/.dev.vars` (`CONTENT_IMPORT_TOKEN=...`). Ese token **debe coincidir con
+  el secreto `CONTENT_IMPORT_TOKEN` de producción** para que los endpoints `/api/admin/content-requests*` e
+  `/api/admin/content/import` lo acepten como `Authorization: Bearer <token>`. Si el import responde `401`/`403`,
+  el token local NO coincide con el de prod: para y avisa al usuario (hay que sincronizarlos con
+  `wrangler secret put CONTENT_IMPORT_TOKEN`). No escribas el token en ficheros versionados ni lo muestres.
 - **No necesitas `ANTHROPIC_API_KEY` ni el pipeline `content-gen`.** En la Vía B eres TÚ quien lee el material y
   redacta los ejercicios directamente. El endpoint `/api/admin/content/import` valida cada ejercicio en servidor
   (`ExerciseSchema` + `validateExercise`) y rechaza el lote entero con `400` si alguno es inválido: esa es tu red
@@ -34,6 +36,20 @@ Este skill es **autónomo una vez invocado** y **siempre opera contra PRODUCCIÓ
 - La única razón para **parar y preguntar** es que falte un dato imprescindible que no puedas inferir de la
   solicitud ni del material (p. ej. la Vía A con una descripción demasiado vaga). En la Vía B no preguntes: toda
   la config viene en la solicitud.
+
+### Requisitos del entorno (se configuran UNA vez; sin ellos el skill no puede ir solo)
+
+El harness bloquea por seguridad el acceso a producción y la auto-edición de permisos, así que estos dos ajustes
+los deja el usuario una sola vez. Si al ejecutar te sale un prompt de permiso o un bloqueo del clasificador tocando
+`https://app.smart-kids.uk`, es que falta esto:
+
+1. **Permiso de red a producción.** Debe existir en `.claude/settings.local.json` una regla que permita las
+   llamadas de máquina, p. ej. `"Bash(curl:*)"` en `permissions.allow`. (El propio skill no puede añadirla: el
+   clasificador bloquea que se auto-conceda permisos.)
+2. **Token de prod sincronizado.** El `CONTENT_IMPORT_TOKEN` de `apps/api/.dev.vars` debe ser el MISMO que el
+   secreto de producción (`wrangler secret put CONTENT_IMPORT_TOKEN`). Si no coinciden, todo import da `401`/`403`.
+
+Con esos dos en su sitio, el ciclo completo (listar → descargar → generar → publicar) corre sin más intervención.
 
 ## Contexto imprescindible
 
@@ -93,9 +109,10 @@ Autónomo de principio a fin. Para CADA solicitud pendiente:
 2. **Descarga los assets si los hay:** `GET .../content-requests/:id/assets/:assetId` (Bearer) devuelve el binario.
    Guárdalo y léelo (el Read tool lee PDFs e imágenes directamente). Una solicitud puede NO tener assets (petición
    solo de texto): entonces genera a partir de `title` + `instructions`.
-3. **Comprueba el destino:** confirma que el `childId` pertenece al `ownerId` (o a su hogar) y consulta su curso
-   (`subjectId`/`gradeBand`) para alinear el skill. (Puedes leer la D1 de prod con
-   `pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote --json --command "SELECT ..."`.)
+3. **Alinea con el curso del niño (sin leer la D1):** un skill privado SOLO aparece en la galaxia del niño si su
+   `subjectId` y `gradeBand` coinciden con un curso suyo — `GET /api/skills` filtra por AMBOS. Usa las pistas
+   `subjectId`/`gradeBand` de la solicitud; si vienen `null`, en el MVP **todo niño está en `math` / `ESO-5`**, así
+   que usa exactamente esos valores. No hace falta ninguna lectura de D1 remota para esto.
 4. **Genera `numQuestions` ejercicios** auto-contenidos, de tipos variados, cubriendo el temario del material.
    **Nombre del skill/path:** usa `title`; si viene vacío O es claramente un placeholder de prueba (p. ej.
    "aaaa", "test", "asdf"), genera tú un nombre corto y claro a partir del contenido/`instructions`.
