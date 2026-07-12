@@ -1,0 +1,164 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.ROOT.SQ",
+    "name": { "es": "Raíces cuadradas", "en": "Square roots" },
+    "difficultyBase": 0.45,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "numeric",
+      "stem": "Calcula la raíz cuadrada: √81",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "answer": { "value": 9 },
+      "feedback": {
+        "correct": "Bien: 9 · 9 = 81.",
+        "incorrect": "Busca el número que multiplicado por sí mismo da 81.",
+        "solution": "√81 = 9 porque 9^2 = 81."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: √144",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 12 },
+      "feedback": {
+        "correct": "Correcto: 12^2 = 144.",
+        "incorrect": "Prueba: 11^2 = 121 y 12^2 = 144.",
+        "solution": "√144 = 12 porque 12^2 = 144."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: √100",
+      "difficulty": { "level": "easy", "numeric": 0.25 },
+      "answer": { "value": 10 },
+      "feedback": {
+        "correct": "Bien.",
+        "incorrect": "10 · 10 = 100.",
+        "solution": "√100 = 10."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "La raíz √50 no es exacta. ¿Entre qué dos enteros está?",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "options": [
+        { "id": "a", "text": "Entre 7 y 8", "isCorrect": true },
+        { "id": "b", "text": "Entre 6 y 7", "isCorrect": false },
+        { "id": "c", "text": "Entre 8 y 9", "isCorrect": false },
+        { "id": "d", "text": "Entre 24 y 26", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: 7^2 = 49 y 8^2 = 64, y 50 está entre ambos.",
+        "incorrect": "Busca los cuadrados perfectos que rodean a 50: 49 y 64.",
+        "solution": "49 < 50 < 64, luego 7 < √50 < 8."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es cierto que √64 = 8?",
+      "difficulty": { "level": "easy", "numeric": 0.25 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Sí: 8^2 = 64.",
+        "incorrect": "8 · 8 = 64, así que la igualdad es cierta.",
+        "solution": "√64 = 8."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es cierto que √(9 + 16) = √9 + √16?",
+      "difficulty": { "level": "hard", "numeric": 0.65 },
+      "answer": { "value": false },
+      "feedback": {
+        "correct": "Muy bien: la raíz NO se reparte sobre una suma.",
+        "incorrect": "Calcula cada lado: √25 = 5, pero 3 + 4 = 7. No son iguales.",
+        "solution": "√(9+16) = √25 = 5; √9 + √16 = 3 + 4 = 7. 5 ≠ 7, es FALSO."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Calcula: √25 · √4 = {{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "blanks": [{ "accept": ["10"], "placeholder": "resultado" }],
+      "feedback": {
+        "correct": "Bien: cada raíz por separado y luego el producto.",
+        "incorrect": "√25 = 5 y √4 = 2; multiplica los dos.",
+        "solution": "√25 · √4 = 5 · 2 = 10."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "¿Cuál de estos números es un cuadrado perfecto?",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "options": [
+        { "id": "a", "text": "36", "isCorrect": true },
+        { "id": "b", "text": "40", "isCorrect": false },
+        { "id": "c", "text": "50", "isCorrect": false },
+        { "id": "d", "text": "45", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: 36 = 6^2.",
+        "incorrect": "Un cuadrado perfecto tiene raíz entera. 36 = 6^2.",
+        "solution": "36 = 6^2; los demás no tienen raíz entera."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula: 3 · √16",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 12 },
+      "feedback": {
+        "correct": "Bien: primero la raíz y luego el producto.",
+        "incorrect": "√16 = 4, y después multiplicas por 3.",
+        "solution": "3 · √16 = 3 · 4 = 12."
+      }
+    },
+    {
+      "type": "ordering",
+      "stem": "Ordena estas raíces de MENOR a mayor por su valor.",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "items": [
+        { "id": "a", "text": "√9" },
+        { "id": "b", "text": "√1" },
+        { "id": "c", "text": "√16" },
+        { "id": "d", "text": "√4" }
+      ],
+      "correctOrder": ["b", "d", "a", "c"],
+      "feedback": {
+        "correct": "Bien: sus valores son 1, 2, 3 y 4.",
+        "incorrect": "Calcula cada raíz: √1=1, √4=2, √9=3, √16=4.",
+        "solution": "√1 < √4 < √9 < √16 (1 < 2 < 3 < 4)."
+      }
+    },
+    {
+      "type": "matching",
+      "stem": "Empareja cada raíz con su valor.",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "left": [
+        { "id": "l1", "text": "√36" },
+        { "id": "l2", "text": "√121" },
+        { "id": "l3", "text": "√169" },
+        { "id": "l4", "text": "√225" }
+      ],
+      "right": [
+        { "id": "r1", "text": "6" },
+        { "id": "r2", "text": "11" },
+        { "id": "r3", "text": "13" },
+        { "id": "r4", "text": "15" }
+      ],
+      "correctPairs": [
+        { "leftId": "l1", "rightId": "r1" },
+        { "leftId": "l2", "rightId": "r2" },
+        { "leftId": "l3", "rightId": "r3" },
+        { "leftId": "l4", "rightId": "r4" }
+      ],
+      "feedback": {
+        "correct": "Perfecto: reconoces los cuadrados perfectos.",
+        "incorrect": "6^2=36, 11^2=121, 13^2=169, 15^2=225.",
+        "solution": "√36=6; √121=11; √169=13; √225=15."
+      }
+    }
+  ]
+}

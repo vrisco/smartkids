@@ -1,0 +1,149 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.EQ.QUAD",
+    "name": { "es": "Introducción a las ecuaciones de segundo grado", "en": "Intro to quadratic equations" },
+    "difficultyBase": 0.6,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "numeric",
+      "stem": "Resuelve x^2 = 25 y escribe su solución POSITIVA.",
+      "difficulty": { "level": "easy", "numeric": 0.4 },
+      "answer": { "value": 5 },
+      "feedback": {
+        "correct": "Bien: 5^2 = 25.",
+        "incorrect": "Busca el número que al elevarlo al cuadrado da 25.",
+        "solution": "x^2 = 25 → x = √25 = 5 (también -5)."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve x^2 = 49 y escribe su solución POSITIVA.",
+      "difficulty": { "level": "easy", "numeric": 0.4 },
+      "answer": { "value": 7 },
+      "feedback": {
+        "correct": "Correcto: 7^2 = 49.",
+        "incorrect": "¿Qué número al cuadrado da 49?",
+        "solution": "x^2 = 49 → x = 7 (también -7)."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "¿Cuáles son TODAS las soluciones de x^2 = 9?",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "x = 3 y x = -3", "isCorrect": true },
+        { "id": "b", "text": "x = 3", "isCorrect": false },
+        { "id": "c", "text": "x = 9", "isCorrect": false },
+        { "id": "d", "text": "x = -9", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Muy bien: una ecuación así tiene dos soluciones, una positiva y otra negativa.",
+        "incorrect": "Recuerda: (-3)^2 también da 9, así que hay dos soluciones.",
+        "solution": "x^2 = 9 → x = 3 o x = -3."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve x^2 = 100 y escribe su solución POSITIVA.",
+      "difficulty": { "level": "easy", "numeric": 0.4 },
+      "answer": { "value": 10 },
+      "feedback": {
+        "correct": "Bien.",
+        "incorrect": "10^2 = 100.",
+        "solution": "x^2 = 100 → x = 10 (también -10)."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es cierto que x^2 = 16 tiene dos soluciones: 4 y -4?",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Sí: tanto 4 como -4 al cuadrado dan 16.",
+        "incorrect": "4^2 = 16 y (-4)^2 = 16, así que hay dos soluciones.",
+        "solution": "x^2 = 16 → x = 4 o x = -4."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Resuelve la ecuación incompleta: x^2 - 4 = 0",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "options": [
+        { "id": "a", "text": "x = 2 y x = -2", "isCorrect": true },
+        { "id": "b", "text": "x = 4", "isCorrect": false },
+        { "id": "c", "text": "x = 2", "isCorrect": false },
+        { "id": "d", "text": "x = 16 y x = -16", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: pasas el 4 y sacas la raíz.",
+        "incorrect": "Primero deja x^2 = 4, y luego saca la raíz (con los dos signos).",
+        "solution": "x^2 - 4 = 0 → x^2 = 4 → x = 2 o x = -2."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve la ecuación x^2 = 0.",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 0 },
+      "feedback": {
+        "correct": "Bien: es el único caso con una sola solución.",
+        "incorrect": "El único número cuyo cuadrado es 0 es el propio 0.",
+        "solution": "x^2 = 0 → x = 0."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es cierto que la ecuación x^2 = -4 no tiene solución con números reales?",
+      "difficulty": { "level": "hard", "numeric": 0.65 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Muy bien: ningún número real al cuadrado da un resultado negativo.",
+        "incorrect": "Un cuadrado nunca es negativo, así que no hay solución real.",
+        "solution": "Cualquier número real al cuadrado es positivo o cero, nunca -4."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Usa la propiedad del producto nulo: x · (x - 5) = 0",
+      "difficulty": { "level": "hard", "numeric": 0.65 },
+      "options": [
+        { "id": "a", "text": "x = 0 y x = 5", "isCorrect": true },
+        { "id": "b", "text": "x = 5", "isCorrect": false },
+        { "id": "c", "text": "x = 0", "isCorrect": false },
+        { "id": "d", "text": "x = -5", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Perfecto: si un producto es 0, uno de los factores es 0.",
+        "incorrect": "Un producto vale 0 cuando x = 0 o cuando x - 5 = 0.",
+        "solution": "x·(x - 5) = 0 → x = 0 o x - 5 = 0 → x = 0 o x = 5."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Escribe la solución POSITIVA de x^2 = 81.",
+      "difficulty": { "level": "easy", "numeric": 0.4 },
+      "answer": { "value": 9 },
+      "feedback": {
+        "correct": "Bien: 9^2 = 81.",
+        "incorrect": "¿Qué número al cuadrado da 81?",
+        "solution": "x^2 = 81 → x = 9 (también -9)."
+      }
+    },
+    {
+      "type": "step_problem",
+      "stem": "Resuelve paso a paso la ecuación x^2 - 9 = 0.",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "steps": [
+        { "id": "s1", "prompt": "Pasa el 9 al otro lado: x^2 = ?", "kind": "numeric", "answer": { "value": 9 } },
+        { "id": "s2", "prompt": "Escribe la solución POSITIVA: x = ?", "kind": "numeric", "answer": { "value": 3 } }
+      ],
+      "feedback": {
+        "correct": "Excelente: x = 3 y x = -3.",
+        "incorrect": "Deja x^2 = 9 y luego saca la raíz cuadrada.",
+        "solution": "x^2 - 9 = 0 → x^2 = 9 → x = 3 o x = -3."
+      }
+    }
+  ]
+}

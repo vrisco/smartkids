@@ -1,0 +1,174 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.POW.PROP",
+    "name": { "es": "Potencias y sus propiedades", "en": "Powers and their properties" },
+    "difficultyBase": 0.45,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "numeric",
+      "stem": "Calcula el valor de 2^5",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "answer": { "value": 32 },
+      "feedback": {
+        "correct": "Bien: 2 multiplicado por sí mismo 5 veces.",
+        "incorrect": "2^5 no es 2·5; es 2·2·2·2·2.",
+        "solution": "2^5 = 2·2·2·2·2 = 32."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Aplica la propiedad del producto: 2^4 · 2^3 = 2^{{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "blanks": [{ "accept": ["7"], "placeholder": "exponente" }],
+      "feedback": {
+        "correct": "Correcto: misma base, se SUMAN los exponentes.",
+        "incorrect": "Con la misma base, el producto suma exponentes: 4 + 3.",
+        "solution": "2^4 · 2^3 = 2^(4+3) = 2^7."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Aplica la propiedad del cociente: 5^8 : 5^3 = 5^{{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "blanks": [{ "accept": ["5"], "placeholder": "exponente" }],
+      "feedback": {
+        "correct": "Bien: misma base, se RESTAN los exponentes.",
+        "incorrect": "En el cociente con igual base se restan exponentes: 8 - 3.",
+        "solution": "5^8 : 5^3 = 5^(8-3) = 5^5."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Aplica la potencia de una potencia: (3^2)^4 = 3^{{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "blanks": [{ "accept": ["8"], "placeholder": "exponente" }],
+      "feedback": {
+        "correct": "Correcto: se MULTIPLICAN los exponentes.",
+        "incorrect": "Potencia de otra potencia: se multiplican los exponentes, 2 · 4.",
+        "solution": "(3^2)^4 = 3^(2·4) = 3^8."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "¿Cuánto vale 10^0?",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "answer": { "value": 1 },
+      "feedback": {
+        "correct": "Bien: todo número distinto de 0 elevado a 0 vale 1.",
+        "incorrect": "Cualquier base (no nula) elevada a 0 da 1, no 0.",
+        "solution": "10^0 = 1."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "¿A qué es igual 2^(-3)?",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "options": [
+        { "id": "a", "text": "1/8", "isCorrect": true },
+        { "id": "b", "text": "-8", "isCorrect": false },
+        { "id": "c", "text": "-6", "isCorrect": false },
+        { "id": "d", "text": "8", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: exponente negativo es la inversa de la potencia.",
+        "incorrect": "Un exponente negativo NO da un número negativo: es 1 entre la potencia.",
+        "solution": "2^(-3) = 1 / 2^3 = 1/8."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Completa: 10^(-2) = 1/{{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "blanks": [{ "accept": ["100"], "placeholder": "número" }],
+      "feedback": {
+        "correct": "Bien: 10^(-2) es 1 entre 10^2.",
+        "incorrect": "10^(-2) = 1 / 10^2 y 10^2 = 100.",
+        "solution": "10^(-2) = 1 / 10^2 = 1/100."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula (2 · 3)^2",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 36 },
+      "feedback": {
+        "correct": "Bien: resuelves el paréntesis y luego elevas.",
+        "incorrect": "Primero el paréntesis: 2·3 = 6, y después al cuadrado.",
+        "solution": "(2 · 3)^2 = 6^2 = 36."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Simplifica usando propiedades: a^5 · a^2",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "a^7", "isCorrect": true },
+        { "id": "b", "text": "a^10", "isCorrect": false },
+        { "id": "c", "text": "a^3", "isCorrect": false },
+        { "id": "d", "text": "a^25", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: misma base, exponentes sumados.",
+        "incorrect": "No multipliques los exponentes en un producto: se suman.",
+        "solution": "a^5 · a^2 = a^(5+2) = a^7."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Simplifica: (a^3)^2",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "a^6", "isCorrect": true },
+        { "id": "b", "text": "a^5", "isCorrect": false },
+        { "id": "c", "text": "a^9", "isCorrect": false },
+        { "id": "d", "text": "a^8", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: potencia de potencia multiplica exponentes.",
+        "incorrect": "Aquí NO se suman: se multiplican los exponentes, 3 · 2.",
+        "solution": "(a^3)^2 = a^(3·2) = a^6."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Calcula respetando la jerarquía: 4^2 - 2^3",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "answer": { "value": 8 },
+      "feedback": {
+        "correct": "Bien: primero las potencias y luego la resta.",
+        "incorrect": "Calcula 4^2 y 2^3 por separado antes de restar.",
+        "solution": "4^2 - 2^3 = 16 - 8 = 8."
+      }
+    },
+    {
+      "type": "matching",
+      "stem": "Empareja cada potencia con su valor.",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "left": [
+        { "id": "l1", "text": "2^3" },
+        { "id": "l2", "text": "3^2" },
+        { "id": "l3", "text": "5^2" },
+        { "id": "l4", "text": "10^3" }
+      ],
+      "right": [
+        { "id": "r1", "text": "8" },
+        { "id": "r2", "text": "9" },
+        { "id": "r3", "text": "25" },
+        { "id": "r4", "text": "1000" }
+      ],
+      "correctPairs": [
+        { "leftId": "l1", "rightId": "r1" },
+        { "leftId": "l2", "rightId": "r2" },
+        { "leftId": "l3", "rightId": "r3" },
+        { "leftId": "l4", "rightId": "r4" }
+      ],
+      "feedback": {
+        "correct": "Perfecto: no confundes la base con el exponente.",
+        "incorrect": "Recuerda: 2^3 = 8 (no 6) y 3^2 = 9 (no 6).",
+        "solution": "2^3=8; 3^2=9; 5^2=25; 10^3=1000."
+      }
+    }
+  ]
+}

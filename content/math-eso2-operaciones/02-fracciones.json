@@ -1,0 +1,186 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.FRAC.OPS",
+    "name": { "es": "Operaciones con fracciones", "en": "Operations with fractions" },
+    "difficultyBase": 0.4,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "multiple_choice",
+      "stem": "Calcula: 1/2 + 1/3",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "options": [
+        { "id": "a", "text": "5/6", "isCorrect": true },
+        { "id": "b", "text": "2/5", "isCorrect": false },
+        { "id": "c", "text": "1/6", "isCorrect": false },
+        { "id": "d", "text": "2/6", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: pusiste denominador común 6 antes de sumar.",
+        "incorrect": "No sumes numeradores y denominadores por separado; busca denominador común.",
+        "solution": "1/2 + 1/3 = 3/6 + 2/6 = 5/6."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Calcula: 5/6 - 1/3",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "1/2", "isCorrect": true },
+        { "id": "b", "text": "4/3", "isCorrect": false },
+        { "id": "c", "text": "2/3", "isCorrect": false },
+        { "id": "d", "text": "1/6", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto, y además simplificaste 3/6 a 1/2.",
+        "incorrect": "Iguala denominadores a 6 y resta los numeradores.",
+        "solution": "5/6 - 1/3 = 5/6 - 2/6 = 3/6 = 1/2."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Calcula: 2/3 · 3/5",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "options": [
+        { "id": "a", "text": "2/5", "isCorrect": true },
+        { "id": "b", "text": "5/8", "isCorrect": false },
+        { "id": "c", "text": "4/15", "isCorrect": false },
+        { "id": "d", "text": "6/8", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: multiplicas en línea y simplificas.",
+        "incorrect": "En el producto se multiplican numeradores entre sí y denominadores entre sí.",
+        "solution": "2/3 · 3/5 = 6/15 = 2/5."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Calcula: 3/4 : 2/5",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "options": [
+        { "id": "a", "text": "15/8", "isCorrect": true },
+        { "id": "b", "text": "3/10", "isCorrect": false },
+        { "id": "c", "text": "8/15", "isCorrect": false },
+        { "id": "d", "text": "5/6", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Perfecto: dividir es multiplicar por la inversa.",
+        "incorrect": "Para dividir, invierte la segunda fracción y multiplica.",
+        "solution": "3/4 : 2/5 = 3/4 · 5/2 = 15/8."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Simplifica al máximo la fracción 6/8. Resultado: {{1}}",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "blanks": [{ "accept": ["3/4", "3 / 4"], "placeholder": "a/b" }],
+      "feedback": {
+        "correct": "Bien: dividiste numerador y denominador entre 2.",
+        "incorrect": "Divide arriba y abajo por el mismo número (el 2).",
+        "solution": "6/8 = (6:2)/(8:2) = 3/4."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "¿Cuánto es 2/5 de 30?",
+      "difficulty": { "level": "medium", "numeric": 0.4 },
+      "answer": { "value": 12 },
+      "feedback": {
+        "correct": "Correcto: divides entre 5 y multiplicas por 2.",
+        "incorrect": "Calcula 30 : 5 y multiplica el resultado por 2.",
+        "solution": "2/5 de 30 = (30 : 5) · 2 = 6 · 2 = 12."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "¿Cuánto es 3/4 de 20?",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 15 },
+      "feedback": {
+        "correct": "Bien resuelto.",
+        "incorrect": "Divide 20 entre 4 y multiplica por 3.",
+        "solution": "3/4 de 20 = (20 : 4) · 3 = 5 · 3 = 15."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es cierto que 3/5 es mayor que 2/5?",
+      "difficulty": { "level": "easy", "numeric": 0.25 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Sí: con el mismo denominador, mayor numerador es mayor fracción.",
+        "incorrect": "Mismo denominador: gana la de numerador más grande.",
+        "solution": "3/5 > 2/5 porque 3 > 2."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Son equivalentes las fracciones 1/2 y 3/6?",
+      "difficulty": { "level": "easy", "numeric": 0.3 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Correcto: 3/6 se simplifica a 1/2.",
+        "incorrect": "Simplifica 3/6 dividiendo entre 3: da 1/2.",
+        "solution": "3/6 = (3:3)/(6:3) = 1/2, así que son equivalentes."
+      }
+    },
+    {
+      "type": "ordering",
+      "stem": "Ordena estas fracciones de MENOR a mayor.",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "items": [
+        { "id": "a", "text": "3/4" },
+        { "id": "b", "text": "1/4" },
+        { "id": "c", "text": "5/4" },
+        { "id": "d", "text": "1/2" }
+      ],
+      "correctOrder": ["b", "d", "a", "c"],
+      "feedback": {
+        "correct": "Bien: con denominador 4, 1/2 equivale a 2/4.",
+        "incorrect": "Pásalas todas a cuartos: 1/4, 2/4, 3/4, 5/4.",
+        "solution": "1/4 < 1/2 (=2/4) < 3/4 < 5/4."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Calcula: 1/2 + 1/4",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "options": [
+        { "id": "a", "text": "3/4", "isCorrect": true },
+        { "id": "b", "text": "2/6", "isCorrect": false },
+        { "id": "c", "text": "1/6", "isCorrect": false },
+        { "id": "d", "text": "2/3", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: 1/2 son 2/4.",
+        "incorrect": "Convierte 1/2 en 2/4 y suma.",
+        "solution": "1/2 + 1/4 = 2/4 + 1/4 = 3/4."
+      }
+    },
+    {
+      "type": "step_problem",
+      "stem": "Una pizza tiene 8 porciones. Ana come 3 y Luis come 2.",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "steps": [
+        {
+          "id": "s1",
+          "prompt": "¿Cuántas porciones se comen entre los dos?",
+          "kind": "numeric",
+          "answer": { "value": 5 }
+        },
+        {
+          "id": "s2",
+          "prompt": "¿Qué fracción de la pizza QUEDA sin comer? (escríbela como a/b)",
+          "kind": "short_text",
+          "accept": ["3/8", "3 / 8"]
+        }
+      ],
+      "feedback": {
+        "correct": "Muy bien: quedan 3 de las 8 porciones.",
+        "incorrect": "Suma lo que comen, réstalo de 8 y escribe la fracción sobre 8.",
+        "solution": "Comen 3 + 2 = 5. Quedan 8 - 5 = 3 porciones, es decir 3/8."
+      }
+    }
+  ]
+}

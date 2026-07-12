@@ -1,0 +1,169 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.SCI.NOT",
+    "name": { "es": "Notación científica", "en": "Scientific notation" },
+    "difficultyBase": 0.5,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "multiple_choice",
+      "stem": "Escribe 5000 en notación científica.",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "options": [
+        { "id": "a", "text": "5 · 10^3", "isCorrect": true },
+        { "id": "b", "text": "5 · 10^4", "isCorrect": false },
+        { "id": "c", "text": "50 · 10^2", "isCorrect": false },
+        { "id": "d", "text": "5 · 10^(-3)", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: cuentas 3 ceros, así que el exponente es 3.",
+        "incorrect": "Cuenta cuántos lugares mueves la coma: 5000 son 3 posiciones.",
+        "solution": "5000 = 5 · 10^3."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Escribe 0,0007 en notación científica.",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "options": [
+        { "id": "a", "text": "7 · 10^(-4)", "isCorrect": true },
+        { "id": "b", "text": "7 · 10^4", "isCorrect": false },
+        { "id": "c", "text": "7 · 10^(-3)", "isCorrect": false },
+        { "id": "d", "text": "0,7 · 10^(-3)", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: para números pequeños el exponente es negativo.",
+        "incorrect": "Mueve la coma hasta el 7: son 4 posiciones a la derecha, exponente -4.",
+        "solution": "0,0007 = 7 · 10^(-4)."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Escribe 3 · 10^4 como número normal (sin potencias).",
+      "difficulty": { "level": "medium", "numeric": 0.4 },
+      "answer": { "value": 30000 },
+      "feedback": {
+        "correct": "Bien: añades 4 ceros al 3.",
+        "incorrect": "10^4 = 10000, y 3 · 10000 = 30000.",
+        "solution": "3 · 10^4 = 3 · 10000 = 30000."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Escribe 2,5 · 10^3 como número normal.",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 2500 },
+      "feedback": {
+        "correct": "Correcto: mueves la coma 3 lugares a la derecha.",
+        "incorrect": "2,5 · 1000 = 2500.",
+        "solution": "2,5 · 10^3 = 2,5 · 1000 = 2500."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Completa: 250000 = 2,5 · 10^{{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "blanks": [{ "accept": ["5"], "placeholder": "exponente" }],
+      "feedback": {
+        "correct": "Bien contado.",
+        "incorrect": "Desde 2,5 hasta 250000 la coma se mueve 5 lugares.",
+        "solution": "250000 = 2,5 · 10^5."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Está 3,4 · 10^5 correctamente escrito en notación científica?",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Sí: el primer factor (3,4) está entre 1 y 10.",
+        "incorrect": "La regla pide que el primer número esté entre 1 y 10; 3,4 lo cumple.",
+        "solution": "3,4 está entre 1 y 10, así que es correcto."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Está 12 · 10^4 correctamente escrito en notación científica?",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": false },
+      "feedback": {
+        "correct": "Muy bien: 12 no está entre 1 y 10.",
+        "incorrect": "El primer factor debe ser mayor o igual que 1 y menor que 10; 12 no lo es.",
+        "solution": "12 · 10^4 = 1,2 · 10^5 sería la forma correcta."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "¿Cuál de estas expresiones está bien escrita en notación científica?",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "options": [
+        { "id": "a", "text": "4,1 · 10^6", "isCorrect": true },
+        { "id": "b", "text": "41 · 10^5", "isCorrect": false },
+        { "id": "c", "text": "0,4 · 10^7", "isCorrect": false },
+        { "id": "d", "text": "410 · 10^4", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: el primer factor está entre 1 y 10.",
+        "incorrect": "Solo es válida si el primer número está entre 1 y 10.",
+        "solution": "4,1 está entre 1 y 10; los demás no cumplen la regla."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Escribe 8 · 10^(-2) como número decimal.",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "answer": { "value": 0.08 },
+      "feedback": {
+        "correct": "Bien: exponente -2 mueve la coma dos lugares a la izquierda.",
+        "incorrect": "10^(-2) = 0,01, y 8 · 0,01 = 0,08.",
+        "solution": "8 · 10^(-2) = 8 · 0,01 = 0,08."
+      }
+    },
+    {
+      "type": "ordering",
+      "stem": "Ordena estas potencias de 10 de MENOR a mayor.",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "items": [
+        { "id": "a", "text": "10^1" },
+        { "id": "b", "text": "10^(-2)" },
+        { "id": "c", "text": "10^0" },
+        { "id": "d", "text": "10^3" }
+      ],
+      "correctOrder": ["b", "c", "a", "d"],
+      "feedback": {
+        "correct": "Bien: sus valores son 0,01, 1, 10 y 1000.",
+        "incorrect": "Cuanto mayor el exponente, mayor la potencia; los negativos son menores que 1.",
+        "solution": "10^(-2) < 10^0 < 10^1 < 10^3."
+      }
+    },
+    {
+      "type": "matching",
+      "stem": "Empareja cada número con su notación científica.",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "left": [
+        { "id": "l1", "text": "300" },
+        { "id": "l2", "text": "45000" },
+        { "id": "l3", "text": "0,006" },
+        { "id": "l4", "text": "0,09" }
+      ],
+      "right": [
+        { "id": "r1", "text": "3 · 10^2" },
+        { "id": "r2", "text": "4,5 · 10^4" },
+        { "id": "r3", "text": "6 · 10^(-3)" },
+        { "id": "r4", "text": "9 · 10^(-2)" }
+      ],
+      "correctPairs": [
+        { "leftId": "l1", "rightId": "r1" },
+        { "leftId": "l2", "rightId": "r2" },
+        { "leftId": "l3", "rightId": "r3" },
+        { "leftId": "l4", "rightId": "r4" }
+      ],
+      "feedback": {
+        "correct": "Perfecto: dominas los exponentes positivos y negativos.",
+        "incorrect": "Números grandes: exponente positivo. Números pequeños: exponente negativo.",
+        "solution": "300=3·10^2; 45000=4,5·10^4; 0,006=6·10^(-3); 0,09=9·10^(-2)."
+      }
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.POLY.OPS",
+    "name": { "es": "Polinomios: suma, resta y producto", "en": "Polynomials: add, subtract, multiply" },
+    "difficultyBase": 0.55,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "multiple_choice",
+      "stem": "Suma los polinomios: (2x + 3) + (x + 4)",
+      "difficulty": { "level": "easy", "numeric": 0.4 },
+      "options": [
+        { "id": "a", "text": "3x + 7", "isCorrect": true },
+        { "id": "b", "text": "3x + 12", "isCorrect": false },
+        { "id": "c", "text": "2x + 7", "isCorrect": false },
+        { "id": "d", "text": "3x^2 + 7", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: agrupas los términos semejantes.",
+        "incorrect": "Suma las x con las x y los números con los números.",
+        "solution": "(2x + 3) + (x + 4) = (2x + x) + (3 + 4) = 3x + 7."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Resta: (5x + 6) - (2x + 1)",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "options": [
+        { "id": "a", "text": "3x + 5", "isCorrect": true },
+        { "id": "b", "text": "3x + 7", "isCorrect": false },
+        { "id": "c", "text": "7x + 5", "isCorrect": false },
+        { "id": "d", "text": "3x - 5", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto.",
+        "incorrect": "Resta término a término: 5x - 2x y 6 - 1.",
+        "solution": "(5x + 6) - (2x + 1) = 3x + 5."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Resta con cuidado con los signos: (4x - 2) - (x - 5)",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "options": [
+        { "id": "a", "text": "3x + 3", "isCorrect": true },
+        { "id": "b", "text": "3x - 7", "isCorrect": false },
+        { "id": "c", "text": "3x - 3", "isCorrect": false },
+        { "id": "d", "text": "5x + 3", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Muy bien: el signo menos cambia TODOS los signos del segundo paréntesis.",
+        "incorrect": "Al quitar el paréntesis con un menos delante: -(x - 5) = -x + 5.",
+        "solution": "(4x - 2) - (x - 5) = 4x - 2 - x + 5 = 3x + 3."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Multiplica por el monomio: 2x · (x + 3) = 2x^2 + {{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.5 },
+      "blanks": [{ "accept": ["6x", "6·x", "6*x"], "placeholder": "término" }],
+      "feedback": {
+        "correct": "Bien: aplicas la propiedad distributiva.",
+        "incorrect": "2x multiplica a cada término: 2x·x = 2x^2 y 2x·3 = 6x.",
+        "solution": "2x · (x + 3) = 2x^2 + 6x."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Aplica la propiedad distributiva: 3 · (x + 2)",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "options": [
+        { "id": "a", "text": "3x + 6", "isCorrect": true },
+        { "id": "b", "text": "3x + 2", "isCorrect": false },
+        { "id": "c", "text": "x + 6", "isCorrect": false },
+        { "id": "d", "text": "3x + 5", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Correcto: el 3 multiplica a los dos términos.",
+        "incorrect": "El 3 multiplica tanto a la x como al 2.",
+        "solution": "3 · (x + 2) = 3x + 6."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Multiplica el monomio por el polinomio: 3x · (2x^2 - x)",
+      "difficulty": { "level": "hard", "numeric": 0.65 },
+      "options": [
+        { "id": "a", "text": "6x^3 - 3x^2", "isCorrect": true },
+        { "id": "b", "text": "6x^2 - 3x", "isCorrect": false },
+        { "id": "c", "text": "6x^3 - 3x", "isCorrect": false },
+        { "id": "d", "text": "5x^3 - 3x^2", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: multiplicas coeficientes y sumas exponentes.",
+        "incorrect": "3x·2x^2 = 6x^3 y 3x·(-x) = -3x^2.",
+        "solution": "3x · (2x^2 - x) = 6x^3 - 3x^2."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Multiplica los dos polinomios: (x + 2)(x + 3)",
+      "difficulty": { "level": "hard", "numeric": 0.7 },
+      "options": [
+        { "id": "a", "text": "x^2 + 5x + 6", "isCorrect": true },
+        { "id": "b", "text": "x^2 + 6", "isCorrect": false },
+        { "id": "c", "text": "x^2 + 6x + 5", "isCorrect": false },
+        { "id": "d", "text": "x^2 + 5x + 5", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Perfecto: multiplicas cada término del primero por cada término del segundo.",
+        "incorrect": "Haz x·x, x·3, 2·x, 2·3 y agrupa: da x^2 + 5x + 6.",
+        "solution": "(x + 2)(x + 3) = x^2 + 3x + 2x + 6 = x^2 + 5x + 6."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "Suma: (x^2 + 2x) + (3x^2 - x)",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "options": [
+        { "id": "a", "text": "4x^2 + x", "isCorrect": true },
+        { "id": "b", "text": "4x^2 + 3x", "isCorrect": false },
+        { "id": "c", "text": "3x^2 + x", "isCorrect": false },
+        { "id": "d", "text": "4x^4 + x", "isCorrect": false }
+      ],
+      "feedback": {
+        "correct": "Bien: agrupas x^2 con x^2 y x con x.",
+        "incorrect": "Solo se suman términos semejantes: x^2 con x^2, x con x.",
+        "solution": "(x^2 + 2x) + (3x^2 - x) = 4x^2 + x."
+      }
+    },
+    {
+      "type": "fill_in_blank",
+      "stem": "Reduce los términos semejantes: 5x^2 - 2x^2 = {{1}}",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "blanks": [{ "accept": ["3x^2", "3x2"], "placeholder": "monomio" }],
+      "feedback": {
+        "correct": "Correcto.",
+        "incorrect": "Resta los coeficientes (5 - 2) y mantén x^2.",
+        "solution": "5x^2 - 2x^2 = 3x^2."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "¿Cuál es el grado del polinomio 4x^3 + 2x - 7?",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 3 },
+      "feedback": {
+        "correct": "Bien: el grado es el mayor exponente.",
+        "incorrect": "El grado de un polinomio es el exponente más alto que aparece.",
+        "solution": "El mayor exponente es 3 (en 4x^3), así que el grado es 3."
+      }
+    },
+    {
+      "type": "step_problem",
+      "stem": "Dado el polinomio P(x) = x^2 + 2x, calcula su valor numérico en varios puntos.",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "steps": [
+        { "id": "s1", "prompt": "P(1) = ?", "kind": "numeric", "answer": { "value": 3 } },
+        { "id": "s2", "prompt": "P(0) = ?", "kind": "numeric", "answer": { "value": 0 } },
+        { "id": "s3", "prompt": "P(2) = ?", "kind": "numeric", "answer": { "value": 8 } }
+      ],
+      "feedback": {
+        "correct": "Muy bien: sustituyes la x por cada valor y operas.",
+        "incorrect": "Sustituye x por el número en x^2 + 2x y calcula.",
+        "solution": "P(1)=1+2=3; P(0)=0+0=0; P(2)=4+4=8."
+      }
+    }
+  ]
+}

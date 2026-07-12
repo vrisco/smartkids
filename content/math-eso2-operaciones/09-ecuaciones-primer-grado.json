@@ -1,0 +1,156 @@
+{
+  "skill": {
+    "id": "MATH.ESO2.EQ.LINEAR",
+    "name": { "es": "Ecuaciones de primer grado", "en": "Linear equations" },
+    "difficultyBase": 0.55,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "numeric",
+      "stem": "Resuelve la ecuación y escribe el valor de x: x + 5 = 12",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 7 },
+      "feedback": {
+        "correct": "Bien: pasas el 5 restando.",
+        "incorrect": "Resta 5 en los dos lados: x = 12 - 5.",
+        "solution": "x + 5 = 12 → x = 12 - 5 = 7."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve: x - 4 = 10",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 14 },
+      "feedback": {
+        "correct": "Correcto.",
+        "incorrect": "El -4 pasa al otro lado sumando: x = 10 + 4.",
+        "solution": "x - 4 = 10 → x = 10 + 4 = 14."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve: 3x = 21",
+      "difficulty": { "level": "easy", "numeric": 0.35 },
+      "answer": { "value": 7 },
+      "feedback": {
+        "correct": "Bien: divides entre 3.",
+        "incorrect": "El 3 está multiplicando, así que pasa dividiendo: x = 21 : 3.",
+        "solution": "3x = 21 → x = 21 : 3 = 7."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve: x/2 = 6",
+      "difficulty": { "level": "medium", "numeric": 0.4 },
+      "answer": { "value": 12 },
+      "feedback": {
+        "correct": "Correcto: el 2 pasa multiplicando.",
+        "incorrect": "El 2 está dividiendo; pasa al otro lado multiplicando: x = 6 · 2.",
+        "solution": "x/2 = 6 → x = 6 · 2 = 12."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve: 2x + 3 = 11",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 4 },
+      "feedback": {
+        "correct": "Bien: primero quitas el 3, luego divides entre 2.",
+        "incorrect": "Pasa el 3 restando y después divide entre 2.",
+        "solution": "2x + 3 = 11 → 2x = 8 → x = 4."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve: 5x - 2 = 13",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 3 },
+      "feedback": {
+        "correct": "Correcto.",
+        "incorrect": "Suma 2 a los dos lados y luego divide entre 5.",
+        "solution": "5x - 2 = 13 → 5x = 15 → x = 3."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve (incógnitas en los dos lados): 3x + 4 = x + 10",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "answer": { "value": 3 },
+      "feedback": {
+        "correct": "Muy bien: agrupas las x a un lado y los números al otro.",
+        "incorrect": "Pasa la x del segundo miembro restando y el 4 al otro lado.",
+        "solution": "3x + 4 = x + 10 → 3x - x = 10 - 4 → 2x = 6 → x = 3."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve quitando el paréntesis: 2(x + 3) = 14",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "answer": { "value": 4 },
+      "feedback": {
+        "correct": "Bien: puedes dividir entre 2 o desarrollar el paréntesis.",
+        "incorrect": "Reparte el 2: 2x + 6 = 14, luego despeja.",
+        "solution": "2(x + 3) = 14 → 2x + 6 = 14 → 2x = 8 → x = 4."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve: 4x - 1 = 2x + 7",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "answer": { "value": 4 },
+      "feedback": {
+        "correct": "Correcto.",
+        "incorrect": "Junta las x (4x - 2x) y los números (7 + 1).",
+        "solution": "4x - 1 = 2x + 7 → 2x = 8 → x = 4."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve: 10 - x = 4",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": 6 },
+      "feedback": {
+        "correct": "Bien despejado.",
+        "incorrect": "Pasa la x sumando y el 4 al otro lado: 10 - 4 = x.",
+        "solution": "10 - x = 4 → 10 - 4 = x → x = 6."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "Resuelve con denominador: x/3 + 1 = 4",
+      "difficulty": { "level": "hard", "numeric": 0.6 },
+      "answer": { "value": 9 },
+      "feedback": {
+        "correct": "Muy bien: primero quitas el 1 y luego el 3 pasa multiplicando.",
+        "incorrect": "Resta 1 (queda x/3 = 3) y multiplica por 3.",
+        "solution": "x/3 + 1 = 4 → x/3 = 3 → x = 9."
+      }
+    },
+    {
+      "type": "true_false",
+      "stem": "¿Es x = 3 la solución de la ecuación 2x + 1 = 7?",
+      "difficulty": { "level": "medium", "numeric": 0.45 },
+      "answer": { "value": true },
+      "feedback": {
+        "correct": "Sí: sustituyendo, 2·3 + 1 = 7.",
+        "incorrect": "Comprueba sustituyendo x por 3: 2·3 + 1 = 7, así que es correcta.",
+        "solution": "2·3 + 1 = 6 + 1 = 7. Cumple la ecuación, es solución."
+      }
+    },
+    {
+      "type": "step_problem",
+      "stem": "Piensa un número, lo multiplicas por 2 y le sumas 5. El resultado es 17. Encuentra el número.",
+      "difficulty": { "level": "medium", "numeric": 0.55 },
+      "steps": [
+        { "id": "s1", "prompt": "Quita el 5 del resultado: 17 - 5 = ?", "kind": "numeric", "answer": { "value": 12 } },
+        { "id": "s2", "prompt": "Deshaz el 'por 2': divide el resultado anterior entre 2. x = ?", "kind": "numeric", "answer": { "value": 6 } }
+      ],
+      "feedback": {
+        "correct": "Excelente: el número es 6, porque 2·6 + 5 = 17.",
+        "incorrect": "La ecuación es 2x + 5 = 17. Resta 5 y divide entre 2.",
+        "solution": "2x + 5 = 17 → 2x = 12 → x = 6."
+      }
+    }
+  ]
+}
