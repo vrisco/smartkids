@@ -1,18 +1,18 @@
 ---
-name: contenido
+name: smartkids_contenido
 description: "Genera contenido educativo (ejercicios de los 7 tipos) para smartkids, en dos vías: (A) desde una descripción en lenguaje natural del usuario, y (B) desde material que un tutor sube por la app (fotos, PDF, texto). Úsala cuando el usuario pida 'generar contenido', 'crear ejercicios de <asignatura/nivel>', o 'procesar las solicitudes de contenido de los tutores'."
-trigger: /contenido
+trigger: /smartkids_contenido
 ---
 
-# /contenido
+# /smartkids_contenido
 
 Generador de contenido de smartkids. Convierte una petición (o el material subido por un tutor) en ejercicios validados y los publica en la D1, listos para jugar.
 
 ## Uso
 
 ```
-/contenido <descripción>       # Vía A: "genera 30 ejercicios de mates 5º ESO sobre fracciones"
-/contenido pendientes          # Vía B: procesa las solicitudes de contenido subidas por tutores
+/smartkids_contenido <descripción>   # Vía A: "genera 30 ejercicios de mates 5º ESO sobre fracciones"
+/smartkids_contenido pendientes      # Vía B: procesa las solicitudes de contenido subidas por tutores
 ```
 
 ## Contexto imprescindible (léelo antes de actuar)
