@@ -5,6 +5,11 @@ Guía operativa del monorepo **smartkids** («Órbita»). Léela entera antes de
 Convenciones de escritura de este repo: **todo en español**, **sin emojis** en la UI ni en textos
 (preferencia fija del usuario y política del propio proyecto). Mantén esa norma también en la doc.
 
+**Documentación relacionada** (más detalle): `docs/ARCHITECTURE.md` (modelo de datos de 20 tablas, jerarquía de
+usuarios, economía de recompensas, flujos de auth, pipeline de contenido) y `docs/API.md` (catálogo de endpoints
+por rol). Hay además `CLAUDE.md` anidados en `apps/api/` y `apps/web/` con las convenciones y gotchas de cada
+subsistema (se auto-cargan al trabajar en esas carpetas).
+
 ---
 
 ## 1. Qué es
@@ -223,3 +228,7 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 | Modelo del ejercicio (Zod) | `packages/shared/src/exercise.ts` |
 | Pipeline de contenido | `tools/content-gen/src/generate.ts` |
 | Cómo desplegar | `DEPLOY.md` |
+| Modelo de datos a fondo (20 tablas, auth, economía) | `docs/ARCHITECTURE.md` |
+| Catálogo de endpoints por rol | `docs/API.md` |
+| Convenciones y gotchas del backend | `apps/api/CLAUDE.md` |
+| Convenciones y gotchas del frontend | `apps/web/CLAUDE.md` |
