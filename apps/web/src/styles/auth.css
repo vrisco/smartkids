@@ -234,6 +234,11 @@ select.field option {
   max-height: calc(100dvh - 2.4rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
 }
+/* Los hijos no se encogen: en un modal alto scrollea el modal entero, en vez de
+   comprimir una sección (p.ej. la vista previa) y que su contenido se solape con el pie. */
+.modal > * {
+  flex-shrink: 0;
+}
 .modal h3 {
   margin: 0;
 }
