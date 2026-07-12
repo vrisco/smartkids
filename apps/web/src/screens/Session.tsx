@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, type Exercise } from "../api";
+import { api, type Answer, type AttemptResult, type Exercise } from "../api";
+import { ExerciseInput, FillBlanks, correctAnswerString } from "../components/ExerciseInput";
 import { Icon } from "../components/Icon";
 import { MathText } from "../components/MathText";
 import { Orbi } from "../components/Orbi";
 
 const QUESTIONS_PER_SESSION = 5;
+const REVIEW_EXTRA = 3; // margen de reintentos sobre el nº de fallos, para no frustrar
 
 export function Session({
   profileId,
@@ -20,17 +22,23 @@ export function Session({
 }) {
   const { t } = useTranslation();
   const [exercise, setExercise] = useState<Exercise | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [result, setResult] = useState<{ correct: boolean; coins: number; msg: string } | null>(null);
-  const [done, setDone] = useState(0);
+  const [answer, setAnswer] = useState<Answer | null>(null);
+  const [result, setResult] = useState<AttemptResult | null>(null);
+  const [phase, setPhase] = useState<"main" | "review">("main");
+  const [mainDone, setMainDone] = useState(0);
+  const [wrong, setWrong] = useState(0);
+  const [reviewLeft, setReviewLeft] = useState(0);
+  const [reviewBudget, setReviewBudget] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [error, setError] = useState(false);
+  const served = useRef<string[]>([]);
 
   const load = useCallback(() => {
-    setSelected(null);
+    setAnswer(null);
     setResult(null);
+    setExercise(null);
     api
-      .nextExercise(skillId, profileId)
+      .nextExercise(skillId, profileId, served.current)
       .then((ex) => {
         setExercise(ex);
         setStartedAt(Date.now());
@@ -42,45 +50,76 @@ export function Session({
     load();
   }, [load]);
 
-  async function choose(optId: string) {
-    if (!exercise || result) return;
-    const opt = exercise.payload.options?.find((o) => o.id === optId);
-    if (!opt) return;
-    setSelected(optId);
-    const correct = Boolean(opt.isCorrect);
+  async function submit() {
+    if (!exercise || !answer || result) return;
     try {
-      const res = await api.attempt({
-        profileId,
-        skillId,
-        exerciseTemplateId: exercise.id,
-        contentVersion: exercise.contentVersion,
-        correct,
-        responseTimeMs: Date.now() - startedAt,
-      });
+      const res = await api.attempt({ profileId, exerciseTemplateId: exercise.id, answer, responseTimeMs: Date.now() - startedAt });
       onBalance(res.balance);
-      const msg = correct
-        ? exercise.payload.feedback?.correct ?? t("session.correct")
-        : exercise.payload.feedback?.incorrect ?? t("session.almost");
-      setResult({ correct, coins: res.coinsAwarded, msg });
+      served.current = [...served.current, exercise.id];
+      setResult(res);
     } catch {
       setError(true);
     }
   }
 
-  function next() {
-    const n = done + 1;
-    setDone(n);
-    if (n >= QUESTIONS_PER_SESSION) {
-      onExit();
-      return;
+  function advance() {
+    if (!result) return;
+    const ok = result.correct;
+    if (phase === "main") {
+      const nd = mainDone + 1;
+      const totalWrong = wrong + (ok ? 0 : 1);
+      setMainDone(nd);
+      setWrong(totalWrong);
+      if (nd >= QUESTIONS_PER_SESSION) {
+        if (totalWrong > 0) {
+          setPhase("review");
+          setReviewLeft(totalWrong);
+          setReviewBudget(totalWrong + REVIEW_EXTRA);
+          load();
+        } else {
+          onExit();
+        }
+        return;
+      }
+      load();
+    } else {
+      const nl = reviewLeft - (ok ? 1 : 0);
+      const nb = reviewBudget - 1;
+      if (nl <= 0 || nb <= 0) {
+        onExit();
+        return;
+      }
+      setReviewLeft(nl);
+      setReviewBudget(nb);
+      load();
     }
-    load();
   }
 
   if (error) return <p className="screen-pad muted">{t("session.connError")}</p>;
   if (!exercise) return <p className="screen-pad muted">{t("session.loadingMission")}</p>;
 
-  const options = exercise.payload.options ?? [];
+  const render = exercise.render;
+  const qk =
+    render.type === "true_false"
+      ? t("session.trueOrFalse")
+      : render.type === "ordering"
+        ? t("session.order")
+        : render.type === "matching"
+          ? t("session.match")
+          : render.type === "fill_in_blank"
+            ? t("session.complete")
+            : t("session.solve");
+
+  const showCorrectText =
+    Boolean(result && !result.correct && result.correctAnswer) &&
+    render.type !== "multiple_choice" &&
+    render.type !== "true_false";
+
+  const willFinish = Boolean(
+    result &&
+      ((phase === "main" && mainDone + 1 >= QUESTIONS_PER_SESSION && wrong + (result.correct ? 0 : 1) === 0) ||
+        (phase === "review" && (reviewLeft - (result.correct ? 1 : 0) <= 0 || reviewBudget - 1 <= 0))),
+  );
 
   return (
     <div className="session-screen">
@@ -88,36 +127,33 @@ export function Session({
         <button className="icon-btn" onClick={onExit} aria-label={t("session.exitMission")}>
           <Icon name="close" size={16} />
         </button>
-        <div className="dots">
-          {Array.from({ length: QUESTIONS_PER_SESSION }, (_, i) => (
-            <i key={i} className={i < done ? "on" : i === done ? "cur" : ""} />
-          ))}
-        </div>
+        {phase === "main" ? (
+          <div className="dots">
+            {Array.from({ length: QUESTIONS_PER_SESSION }, (_, i) => (
+              <i key={i} className={i < mainDone ? "on" : i === mainDone ? "cur" : ""} />
+            ))}
+          </div>
+        ) : (
+          <div className="review-badge">
+            <Icon name="target" size={14} /> {t("session.reviewLeft", { count: reviewLeft })}
+          </div>
+        )}
       </div>
 
       <div className="q-card">
-        <div className="qk">{t("session.solve")}</div>
+        <div className="qk">{qk}</div>
         <div className="q-eq">
-          <MathText text={exercise.stem} />
+          {render.type === "fill_in_blank" ? (
+            <FillBlanks key={exercise.id} stem={exercise.stem} render={render} onChange={setAnswer} result={result} />
+          ) : (
+            <MathText text={exercise.stem} />
+          )}
         </div>
       </div>
 
-      <div className="opts">
-        {options.map((o) => {
-          let cls = "opt";
-          if (result) {
-            if (o.isCorrect) cls += " correct";
-            else if (o.id === selected) cls += " wrong";
-          } else if (o.id === selected) {
-            cls += " sel";
-          }
-          return (
-            <button key={o.id} className={cls} disabled={Boolean(result)} onClick={() => choose(o.id)}>
-              <MathText text={o.text} />
-            </button>
-          );
-        })}
-      </div>
+      {render.type !== "fill_in_blank" && (
+        <ExerciseInput key={exercise.id} render={render} answer={answer} onChange={setAnswer} result={result} />
+      )}
 
       <div className="ex-foot">
         <Orbi className="foot-orbi" />
@@ -126,13 +162,19 @@ export function Session({
             <b>
               {result.correct ? (
                 <>
-                  +{result.coins} <Icon name="coin" size={14} />
+                  +{result.coinsAwarded} <Icon name="coin" size={14} />
                 </>
               ) : (
                 t("session.oops")
               )}
             </b>{" "}
-            {result.msg}
+            {result.feedback ?? (result.correct ? t("session.correct") : t("session.almost"))}
+            {showCorrectText && result.correctAnswer && (
+              <div className="correct-line">
+                {t("session.correctAnswer")}: <MathText text={correctAnswerString(render, result.correctAnswer)} />
+              </div>
+            )}
+            {result.solution && <div className="solution-line">{result.solution}</div>}
           </div>
         ) : (
           <div className="bubble">
@@ -141,9 +183,13 @@ export function Session({
         )}
       </div>
 
-      {result && (
-        <button className="btn-primary session-next" onClick={next}>
-          {done + 1 >= QUESTIONS_PER_SESSION ? (
+      {!result ? (
+        <button className="btn-primary session-next" disabled={!answer} onClick={submit}>
+          {t("session.check")}
+        </button>
+      ) : (
+        <button className="btn-primary session-next" onClick={advance}>
+          {willFinish ? (
             t("session.finishMission")
           ) : (
             <>

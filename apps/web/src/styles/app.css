@@ -390,6 +390,207 @@ code {
   width: 100%;
 }
 
+/* ---------- Inputs de ejercicio (7 tipos) + repaso ---------- */
+.review-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  font-family: var(--hud);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--violet);
+}
+.answer-field {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  font-size: 1.15rem;
+  color: inherit;
+  text-align: center;
+}
+.answer-field:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+.answer-field:disabled {
+  opacity: 0.85;
+}
+.num-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.num-input .unit {
+  font-size: 1rem;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+.fill-stem {
+  display: inline;
+  line-height: 2.2;
+}
+.blank-input {
+  display: inline-block;
+  border: none;
+  border-bottom: 2px solid var(--cyan);
+  background: var(--surface-2);
+  border-radius: 6px 6px 0 0;
+  padding: 0.15rem 0.4rem;
+  margin: 0 0.15rem;
+  font-size: 1.1rem;
+  color: inherit;
+  text-align: center;
+}
+.blank-input:focus {
+  outline: none;
+  background: rgba(78, 205, 224, 0.12);
+}
+.blank-input.correct {
+  border-bottom-color: var(--green);
+  color: var(--green);
+}
+.blank-input.wrong {
+  border-bottom-color: var(--coral);
+  color: var(--coral);
+}
+.order-list,
+.match-list,
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border: 1.5px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+}
+.order-pos {
+  font-family: var(--hud);
+  color: var(--cyan);
+  font-size: 0.85rem;
+  width: 1.3rem;
+  flex: 0 0 auto;
+}
+.order-text {
+  flex: 1;
+  font-size: 1.05rem;
+}
+.order-ctrls {
+  display: flex;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+.order-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.order-btn:disabled {
+  opacity: 0.35;
+}
+.match-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.match-left {
+  flex: 1;
+  border: 1.5px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  font-size: 1.02rem;
+}
+.match-select {
+  flex: 1;
+  border: 1.5px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
+  font-size: 1rem;
+  color: inherit;
+}
+.match-select.correct {
+  border-color: var(--green);
+  color: var(--green);
+}
+.match-select.wrong {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+.step-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.step-prompt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+}
+.step-n {
+  font-family: var(--hud);
+  color: var(--violet);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  flex: 0 0 auto;
+}
+.step-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.step-mark.ok {
+  color: var(--green);
+}
+.step-mark.bad {
+  color: var(--coral);
+}
+.correct-line {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--green);
+}
+.solution-line {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+/* ---------- Contenido a medida (tutor) ---------- */
+.list-row.col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+textarea.field {
+  resize: vertical;
+  font: inherit;
+  min-height: 3.2rem;
+}
+
 /* ---------- Reward shop ---------- */
 .shop-screen {
   padding-bottom: 1rem;

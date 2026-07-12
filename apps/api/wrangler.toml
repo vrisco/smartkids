@@ -25,3 +25,10 @@ binding = "DB"
 database_name = "smartkids"
 database_id = "a032dbc4-2172-4312-ac1f-01fe79da7b74"
 migrations_dir = "migrations"
+
+# Almacenamiento de objetos R2: material subido por los tutores (fotos, PDF, texto) para la Vía B.
+# En local, wrangler crea un R2 local en .wrangler/. Bucket creado con:
+#   wrangler r2 bucket create smartkids-uploads
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "smartkids-uploads"

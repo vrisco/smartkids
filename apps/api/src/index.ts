@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, eq, gte, inArray, isNull, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, like, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import {
   clearAttempts,
@@ -21,19 +21,34 @@ import {
   verifySecret,
 } from "./auth";
 import { devLinksEnabled, emailLayout, sendEmail } from "./email";
+import {
+  AnswerSchema,
+  ExerciseSchema,
+  exerciseFromRow,
+  grade,
+  redactForClient,
+  shuffleRender,
+  toStoredPayload,
+  validateExercise,
+  type Exercise,
+} from "@smartkids/shared";
 
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  UPLOADS?: R2Bucket;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   EMAIL_DEV_LINKS?: string;
+  CONTENT_IMPORT_TOKEN?: string; // token de máquina para el import de contenido (pipeline/skill)
 }
 
 const {
+  subjects,
   skills,
   skillProgress,
   exerciseTemplates,
+  contentPackages,
   parentAccounts,
   childProfiles,
   wallets,
@@ -44,6 +59,9 @@ const {
   courses,
   childCourses,
   childRewards,
+  childSkills,
+  contentRequests,
+  contentRequestAssets,
 } = schema;
 
 const COINS_PER_CORRECT = 10;
@@ -101,6 +119,37 @@ function childCoursesOf(db: DB, childId: string) {
     .from(childCourses)
     .innerJoin(courses, eq(courses.id, childCourses.courseId))
     .where(eq(childCourses.childId, childId));
+}
+
+/** ¿El niño puede practicar este skill? Debe tener un curso cuya asignatura+nivel coincida con la del skill. */
+async function childCanAttemptSkill(db: DB, childId: string, skillId: string): Promise<boolean> {
+  const [sk] = await db
+    .select({ subjectId: skills.subjectId, gradeBand: skills.gradeBand, ownerId: skills.ownerId })
+    .from(skills)
+    .where(eq(skills.id, skillId))
+    .limit(1);
+  if (!sk) return false;
+  if (sk.ownerId) {
+    // Skill PRIVADO: el dueño debe estar en el hogar del niño Y el niño tenerlo asignado.
+    const [child] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
+    if (!child) return false;
+    const household = await householdIds(db, child.parentId);
+    if (!household.includes(sk.ownerId)) return false;
+    const [grant] = await db
+      .select({ s: childSkills.skillId })
+      .from(childSkills)
+      .where(and(eq(childSkills.childId, childId), eq(childSkills.skillId, skillId)))
+      .limit(1);
+    return Boolean(grant);
+  }
+  // Skill GLOBAL: acceso por curso (asignatura+nivel).
+  const [row] = await db
+    .select({ c: childCourses.courseId })
+    .from(childCourses)
+    .innerJoin(courses, eq(courses.id, childCourses.courseId))
+    .where(and(eq(childCourses.childId, childId), eq(courses.subjectId, sk.subjectId), eq(courses.gradeBand, sk.gradeBand)))
+    .limit(1);
+  return Boolean(row);
 }
 
 /** Borra un niño y todo lo suyo (cursos, sesión, progreso, monedero, intentos, canjes). */
@@ -724,22 +773,306 @@ app.get("/api/skills", async (c) => {
   if (!(await hasCourse(db, profileId, courseId))) return c.json({ error: "no_course_access" }, 403);
   const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
   if (!course) return c.json({ error: "course not found" }, 404);
-  const rows = await db
-    .select({
-      id: skills.id,
-      position: skills.position,
-      nameI18n: skills.nameI18n,
-      gradeBand: skills.gradeBand,
-      difficultyBase: skills.difficultyBase,
-      status: skillProgress.status,
-      masteryScore: skillProgress.masteryScore,
-      totalAttempts: skillProgress.totalAttempts,
-    })
+  const proj = {
+    id: skills.id,
+    position: skills.position,
+    nameI18n: skills.nameI18n,
+    gradeBand: skills.gradeBand,
+    difficultyBase: skills.difficultyBase,
+    status: skillProgress.status,
+    masteryScore: skillProgress.masteryScore,
+    totalAttempts: skillProgress.totalAttempts,
+  };
+  // Skills GLOBALES del curso (asignatura+nivel). Nunca los privados de otro hogar (owner_id IS NULL).
+  const globalRows = await db
+    .select(proj)
     .from(skills)
     .leftJoin(skillProgress, and(eq(skillProgress.skillId, skills.id), eq(skillProgress.profileId, profileId)))
-    .where(and(eq(skills.subjectId, course.subjectId), eq(skills.gradeBand, course.gradeBand)))
+    .where(and(eq(skills.subjectId, course.subjectId), eq(skills.gradeBand, course.gradeBand), isNull(skills.ownerId)))
     .orderBy(asc(skills.position));
+  // Skills PRIVADOS del hogar asignados a este niño, en la misma asignatura+nivel.
+  const privateRows = await db
+    .select(proj)
+    .from(childSkills)
+    .innerJoin(skills, eq(skills.id, childSkills.skillId))
+    .leftJoin(skillProgress, and(eq(skillProgress.skillId, skills.id), eq(skillProgress.profileId, profileId)))
+    .where(and(eq(childSkills.childId, profileId), eq(skills.subjectId, course.subjectId), eq(skills.gradeBand, course.gradeBand)))
+    .orderBy(asc(skills.position));
+  return c.json([...globalRows, ...privateRows]);
+});
+
+/* ================= Contenido: import (máquina/admin) + privado del hogar ================= */
+
+type LocaleTextIn = Record<string, string>;
+
+/** Autoriza al pipeline/skill (token de máquina) o a un admin con sesión. */
+async function requireImporter(c: Ctx, db: DB): Promise<true | Response> {
+  const auth = c.req.header("authorization") ?? "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (c.env.CONTENT_IMPORT_TOKEN && token && token === c.env.CONTENT_IMPORT_TOKEN) return true;
+  const admin = await requireAdmin(c, db);
+  return typeof admin === "string" ? true : admin;
+}
+
+// Publica un paquete de contenido (global o privado) generado por el pipeline/skill.
+app.post("/api/admin/content/import", async (c) => {
+  const db = getDb(c.env.DB);
+  const gate = await requireImporter(c, db);
+  if (gate !== true) return gate;
+
+  const body = await c.req.json<{
+    subject?: { id: string; nameI18n: LocaleTextIn };
+    skill?: { id: string; subjectId: string; gradeBand: string; nameI18n: LocaleTextIn; ownerId?: string | null; difficultyBase?: number; position?: number };
+    package: { id: string; subjectId: string; gradeBand?: string | null; version: string; ownerId?: string | null };
+    exercises: unknown[];
+    assign?: { childIds: string[] };
+    requestId?: string;
+  }>();
+  if (!body?.package?.id || !Array.isArray(body?.exercises)) return c.json({ error: "invalid body" }, 400);
+
+  // Validación estricta de TODOS los ejercicios con el modelo unificado + self-check.
+  const parsed: Exercise[] = [];
+  for (const raw of body.exercises) {
+    const p = ExerciseSchema.safeParse(raw);
+    if (!p.success) return c.json({ error: "invalid_exercise", detail: p.error.issues[0]?.message ?? "?" }, 400);
+    const v = validateExercise(p.data);
+    if (!v.ok) return c.json({ error: "invalid_exercise", detail: v.reason }, 400);
+    parsed.push(p.data);
+  }
+  if (parsed.length === 0) return c.json({ error: "no_exercises" }, 400);
+
+  const now = new Date().toISOString();
+
+  if (body.subject) {
+    await db.insert(subjects).values({ id: body.subject.id, nameI18n: body.subject.nameI18n }).onConflictDoNothing();
+  }
+  if (body.skill) {
+    await db
+      .insert(skills)
+      .values({
+        id: body.skill.id,
+        subjectId: body.skill.subjectId,
+        gradeBand: body.skill.gradeBand,
+        nameI18n: body.skill.nameI18n,
+        difficultyBase: body.skill.difficultyBase ?? 0.4,
+        position: body.skill.position ?? 0,
+        ownerId: body.skill.ownerId ?? null,
+      })
+      .onConflictDoUpdate({ target: skills.id, set: { nameI18n: body.skill.nameI18n } });
+  }
+
+  // Upsert del paquete (idempotente): reemplaza sus plantillas.
+  await db.delete(exerciseTemplates).where(eq(exerciseTemplates.packageId, body.package.id));
+  await db
+    .insert(contentPackages)
+    .values({
+      id: body.package.id,
+      subjectId: body.package.subjectId,
+      gradeBand: body.package.gradeBand ?? null,
+      version: body.package.version,
+      status: "published",
+      ownerId: body.package.ownerId ?? null,
+      createdAt: now,
+    })
+    .onConflictDoUpdate({ target: contentPackages.id, set: { version: body.package.version, ownerId: body.package.ownerId ?? null } });
+
+  let i = 0;
+  for (const ex of parsed) {
+    i += 1;
+    await db.insert(exerciseTemplates).values({
+      id: `${body.package.id}_${i}`,
+      packageId: body.package.id,
+      skillId: ex.skillId,
+      type: ex.type,
+      language: ex.language,
+      contentVersion: body.package.version,
+      stem: ex.stem,
+      payload: toStoredPayload(ex),
+      difficultyNumeric: ex.difficulty.numeric,
+      difficultyLevel: ex.difficulty.level,
+    });
+  }
+
+  // Asignar el skill privado a los niños destino.
+  const assigned = body.assign?.childIds ?? [];
+  const targetSkillId = body.skill?.id;
+  if (targetSkillId && assigned.length > 0) {
+    for (const childId of assigned) {
+      await db.insert(childSkills).values({ childId, skillId: targetSkillId }).onConflictDoNothing();
+    }
+  }
+
+  // Cierre de la solicitud (Vía B): marcar publicada + avisar al tutor por email.
+  if (body.requestId) {
+    const [req] = await db.select().from(contentRequests).where(eq(contentRequests.id, body.requestId)).limit(1);
+    if (req) {
+      await db
+        .update(contentRequests)
+        .set({ status: "published", skillId: targetSkillId ?? null, packageId: body.package.id, exerciseCount: parsed.length, publishedAt: now })
+        .where(eq(contentRequests.id, body.requestId));
+      const [owner] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, req.ownerId)).limit(1);
+      if (owner) {
+        await sendEmail(
+          c.env,
+          owner.email,
+          "Tu contenido esta listo · smartkids",
+          emailLayout("Contenido listo", `Ya hemos generado "${req.title}" (${parsed.length} ejercicios). Entra para asignarlo o revisarlo.`, {
+            url: "https://app.smart-kids.uk",
+            label: "Abrir smartkids",
+          }),
+        );
+        await db.update(contentRequests).set({ notifiedAt: new Date().toISOString() }).where(eq(contentRequests.id, body.requestId));
+      }
+    }
+  }
+
+  return c.json({ ok: true, packageId: body.package.id, skillId: targetSkillId ?? null, exercises: parsed.length, assigned: assigned.length });
+});
+
+// Contenido privado del hogar: lista de skills propios con conteo y niños asignados.
+app.get("/api/tutor/content", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const household = await householdIds(db, a);
+  const rows = await db
+    .select({ id: skills.id, nameI18n: skills.nameI18n, subjectId: skills.subjectId, gradeBand: skills.gradeBand })
+    .from(skills)
+    .where(inArray(skills.ownerId, household));
+  const out: Array<{ id: string; nameI18n: unknown; subjectId: string; gradeBand: string; exercises: number; childIds: string[] }> = [];
+  for (const s of rows) {
+    const [cnt] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, s.id));
+    const kids = await db.select({ childId: childSkills.childId }).from(childSkills).where(eq(childSkills.skillId, s.id));
+    out.push({ ...s, exercises: cnt?.n ?? 0, childIds: kids.map((k) => k.childId) });
+  }
+  return c.json(out);
+});
+
+// Reasignar un skill privado del hogar a un conjunto de niños del hogar.
+app.post("/api/tutor/skills/:skillId/assign", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const skillId = c.req.param("skillId");
+  const { childIds } = await c.req.json<{ childIds: string[] }>();
+  const household = await householdIds(db, a);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
+  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const kids = await db.select({ id: childProfiles.id }).from(childProfiles).where(inArray(childProfiles.parentId, household));
+  const allowed = new Set(kids.map((k) => k.id));
+  const valid = (childIds ?? []).filter((id) => allowed.has(id));
+  await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
+  for (const childId of valid) await db.insert(childSkills).values({ childId, skillId }).onConflictDoNothing();
+  return c.json({ ok: true, childIds: valid });
+});
+
+// Solicitudes de contenido del hogar (Vía B) con su estado.
+app.get("/api/tutor/content-requests", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const household = await householdIds(db, a);
+  const rows = await db.select().from(contentRequests).where(inArray(contentRequests.ownerId, household)).orderBy(desc(contentRequests.createdAt));
   return c.json(rows);
+});
+
+/* ---------- Vía B: subida de material del tutor (R2) ---------- */
+
+const UPLOAD_MAX_FILES = 6;
+const UPLOAD_MAX_BYTES = 15 * 1024 * 1024; // 15 MB por fichero
+const UPLOAD_KINDS: Record<string, "image" | "document"> = {
+  "image/png": "image",
+  "image/jpeg": "image",
+  "image/webp": "image",
+  "image/gif": "image",
+  "application/pdf": "document",
+  "text/plain": "document",
+  "text/markdown": "document",
+};
+
+// El tutor sube material (fotos/PDF/texto) + instrucciones -> crea una solicitud de contenido.
+app.post("/api/tutor/content-requests", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  if (!c.env.UPLOADS) return c.json({ error: "uploads_unavailable" }, 503);
+
+  const form = await c.req.parseBody({ all: true });
+  const title = String(form["title"] ?? "").trim();
+  const instructions = String(form["instructions"] ?? "").trim();
+  const childId = form["childId"] ? String(form["childId"]) : null;
+  const subjectId = form["subjectId"] ? String(form["subjectId"]) : null;
+  const gradeBand = form["gradeBand"] ? String(form["gradeBand"]) : null;
+  if (!title) return c.json({ error: "title_required" }, 400);
+
+  const household = await householdIds(db, a);
+  if (childId) {
+    const [ch] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
+    if (!ch || !household.includes(ch.parentId)) return c.json({ error: "child_forbidden" }, 403);
+  }
+
+  const raw = form["files"];
+  const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File);
+  if (files.length === 0) return c.json({ error: "no_files" }, 400);
+  if (files.length > UPLOAD_MAX_FILES) return c.json({ error: "too_many_files" }, 400);
+  for (const f of files) {
+    if (!UPLOAD_KINDS[f.type]) return c.json({ error: "unsupported_type", detail: `${f.name}: ${f.type}` }, 400);
+    if (f.size > UPLOAD_MAX_BYTES) return c.json({ error: "file_too_large", detail: f.name }, 400);
+  }
+
+  const requestId = `creq_${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  await db.insert(contentRequests).values({ id: requestId, ownerId: a, childId, subjectId, gradeBand, title, instructions, status: "uploaded", createdAt: now });
+
+  const stored: Array<{ id: string; filename: string; kind: string }> = [];
+  for (const file of files) {
+    const kind = UPLOAD_KINDS[file.type]!;
+    const assetId = `asset_${crypto.randomUUID()}`;
+    const key = `requests/${requestId}/${assetId}`;
+    await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
+    await db.insert(contentRequestAssets).values({ id: assetId, requestId, r2Key: key, filename: file.name, contentType: file.type, kind, size: file.size, createdAt: now });
+    stored.push({ id: assetId, filename: file.name, kind });
+  }
+  return c.json({ ok: true, requestId, assets: stored });
+});
+
+// Máquina (skill/pipeline): lista de solicitudes con sus assets, filtrable por estado.
+app.get("/api/admin/content-requests", async (c) => {
+  const db = getDb(c.env.DB);
+  const gate = await requireImporter(c, db);
+  if (gate !== true) return gate;
+  const status = c.req.query("status");
+  const reqs = status
+    ? await db.select().from(contentRequests).where(eq(contentRequests.status, status)).orderBy(desc(contentRequests.createdAt))
+    : await db.select().from(contentRequests).orderBy(desc(contentRequests.createdAt));
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of reqs) {
+    const assets = await db
+      .select({ id: contentRequestAssets.id, filename: contentRequestAssets.filename, contentType: contentRequestAssets.contentType, kind: contentRequestAssets.kind, size: contentRequestAssets.size })
+      .from(contentRequestAssets)
+      .where(eq(contentRequestAssets.requestId, r.id));
+    out.push({ ...r, assets });
+  }
+  return c.json(out);
+});
+
+// Máquina (skill/pipeline): descarga el binario de un asset desde R2.
+app.get("/api/admin/content-requests/:id/assets/:assetId", async (c) => {
+  const db = getDb(c.env.DB);
+  const gate = await requireImporter(c, db);
+  if (gate !== true) return gate;
+  if (!c.env.UPLOADS) return c.json({ error: "uploads_unavailable" }, 503);
+  const [asset] = await db
+    .select()
+    .from(contentRequestAssets)
+    .where(and(eq(contentRequestAssets.id, c.req.param("assetId")), eq(contentRequestAssets.requestId, c.req.param("id"))))
+    .limit(1);
+  if (!asset) return c.json({ error: "not_found" }, 404);
+  const obj = await c.env.UPLOADS.get(asset.r2Key);
+  if (!obj) return c.json({ error: "not_found" }, 404);
+  return new Response(obj.body, {
+    headers: { "content-type": asset.contentType, "content-disposition": `inline; filename="${asset.filename}"` },
+  });
 });
 
 app.get("/api/session/next", async (c) => {
@@ -749,70 +1082,179 @@ app.get("/api/session/next", async (c) => {
   const a = await childOrOwner(c, db, profileId);
   if (typeof a !== "string") return a;
   const skillId = c.req.query("skill") ?? "MATH.ESO5.FRAC.ADD";
-  const rows = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId)).limit(10);
+  // El niño solo puede practicar skills de un curso al que tiene acceso.
+  if (!(await childCanAttemptSkill(db, profileId, skillId))) return c.json({ error: "no_course_access" }, 403);
+
+  // Banco de plantillas del skill (con un tope de seguridad); ya no solo las 10 primeras.
+  const rows = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId)).limit(200);
   if (rows.length === 0) return c.json({ error: "no exercise found" }, 404);
-  return c.json(rows[Math.floor(Math.random() * rows.length)]!);
+
+  // Evitar repetición: excluye lo que pida el cliente (repaso / sesión en curso) y lo visto hace poco.
+  const excludeSet = new Set(
+    (c.req.query("exclude") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  );
+  const recent = await db
+    .select({ tid: attempts.exerciseTemplateId })
+    .from(attempts)
+    .where(and(eq(attempts.profileId, profileId), eq(attempts.skillId, skillId)))
+    .orderBy(desc(attempts.ts))
+    .limit(20);
+  const recentSet = new Set(recent.map((r) => r.tid));
+
+  const notExcluded = rows.filter((r) => !excludeSet.has(r.id));
+  let pool = notExcluded.filter((r) => !recentSet.has(r.id));
+  if (pool.length === 0) pool = notExcluded.length > 0 ? notExcluded : rows;
+
+  // Baraja el pool (Fisher-Yates) y sirve la primera plantilla que parsee al modelo unificado.
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+  }
+  for (const ex of pool) {
+    let exercise: Exercise;
+    try {
+      exercise = exerciseFromRow({
+        id: ex.id,
+        packageId: ex.packageId,
+        skillId: ex.skillId,
+        type: ex.type,
+        language: ex.language,
+        contentVersion: ex.contentVersion,
+        stem: ex.stem,
+        payload: ex.payload,
+        difficultyNumeric: ex.difficultyNumeric,
+        difficultyLevel: ex.difficultyLevel,
+      });
+    } catch {
+      continue; // payload no conforme al esquema: se salta esta plantilla.
+    }
+    // Redacción anti-cheat: el cliente nunca recibe la solución; barajamos la presentación.
+    const render = shuffleRender(redactForClient(exercise));
+    return c.json({
+      id: ex.id,
+      skillId: ex.skillId,
+      type: exercise.type,
+      stem: exercise.stem,
+      contentVersion: ex.contentVersion,
+      render,
+    });
+  }
+  return c.json({ error: "no exercise found" }, 404);
 });
 
 app.post("/api/session/attempt", async (c) => {
   const db = getDb(c.env.DB);
   const body = await c.req.json<{
     profileId: string;
-    skillId: string;
     exerciseTemplateId: string;
-    contentVersion?: string;
-    correct: boolean;
+    answer?: unknown;
+    selectedOptionId?: string; // compat: cliente antiguo (solo opción múltiple)
     responseTimeMs?: number;
-    difficultyServed?: number;
   }>();
-  if (!body?.profileId || !body?.skillId || !body?.exerciseTemplateId || typeof body?.correct !== "boolean")
-    return c.json({ error: "invalid body" }, 400);
+  if (!body?.profileId || !body?.exerciseTemplateId) return c.json({ error: "invalid body" }, 400);
   const a = await childOrOwner(c, db, body.profileId);
   if (typeof a !== "string") return a;
 
+  // Fuente de verdad: la plantilla del ejercicio. El skill se DERIVA de ella (no se confía en el cliente).
+  const [tpl] = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.id, body.exerciseTemplateId)).limit(1);
+  if (!tpl) return c.json({ error: "exercise not found" }, 404);
+  const skillId = tpl.skillId;
+  if (!(await childCanAttemptSkill(db, body.profileId, skillId))) return c.json({ error: "no_course_access" }, 403);
+
+  // El acierto lo decide el SERVIDOR: reconstruye el ejercicio (con solución) y corrige con el modelo unificado.
+  let exercise: Exercise;
+  try {
+    exercise = exerciseFromRow({
+      id: tpl.id,
+      packageId: tpl.packageId,
+      skillId: tpl.skillId,
+      type: tpl.type,
+      language: tpl.language,
+      contentVersion: tpl.contentVersion,
+      stem: tpl.stem,
+      payload: tpl.payload,
+      difficultyNumeric: tpl.difficultyNumeric,
+      difficultyLevel: tpl.difficultyLevel,
+    });
+  } catch {
+    return c.json({ error: "invalid_template" }, 500);
+  }
+
+  // Compat: un cliente antiguo envía selectedOptionId (solo opción múltiple).
+  const answerRaw =
+    body.answer ??
+    (typeof body.selectedOptionId === "string" ? { type: "multiple_choice", optionId: body.selectedOptionId } : undefined);
+  const parsedAns = AnswerSchema.safeParse(answerRaw);
+  if (!parsedAns.success) return c.json({ error: "invalid_answer" }, 400);
+
+  const result = grade(exercise, parsedAns.data);
+  const correct = result.correct;
+
   const now = new Date().toISOString();
+  // Anti-farm: las monedas solo se conceden la PRIMERA vez que se acierta un ejercicio concreto.
+  let alreadyEarned = false;
+  if (correct) {
+    const [prior] = await db
+      .select({ id: attempts.id })
+      .from(attempts)
+      .where(and(eq(attempts.profileId, body.profileId), eq(attempts.exerciseTemplateId, body.exerciseTemplateId), eq(attempts.correct, true)))
+      .limit(1);
+    alreadyEarned = Boolean(prior);
+  }
+
   await db.insert(attempts).values({
     id: crypto.randomUUID(),
     profileId: body.profileId,
-    skillId: body.skillId,
+    skillId,
     exerciseTemplateId: body.exerciseTemplateId,
-    contentVersion: body.contentVersion ?? "1.0.0",
-    correct: body.correct,
+    contentVersion: tpl.contentVersion,
+    correct,
     responseTimeMs: body.responseTimeMs ?? null,
-    difficultyServed: body.difficultyServed ?? null,
+    difficultyServed: tpl.difficultyNumeric ?? null,
     ts: now,
   });
 
   const [prev] = await db
     .select()
     .from(skillProgress)
-    .where(and(eq(skillProgress.profileId, body.profileId), eq(skillProgress.skillId, body.skillId)))
+    .where(and(eq(skillProgress.profileId, body.profileId), eq(skillProgress.skillId, skillId)))
     .limit(1);
   const oldMastery = prev?.masteryScore ?? 0;
-  const newMastery = body.correct ? Math.min(1, oldMastery + 0.12 * (1 - oldMastery)) : Math.max(0, oldMastery - 0.08);
-  const consecutive = body.correct ? (prev?.consecutiveCorrect ?? 0) + 1 : 0;
+  const newMastery = correct ? Math.min(1, oldMastery + 0.12 * (1 - oldMastery)) : Math.max(0, oldMastery - 0.08);
+  const consecutive = correct ? (prev?.consecutiveCorrect ?? 0) + 1 : 0;
   const total = (prev?.totalAttempts ?? 0) + 1;
   const status = newMastery >= 0.85 ? "mastered" : "inProgress";
 
   await db
     .insert(skillProgress)
-    .values({ profileId: body.profileId, skillId: body.skillId, masteryScore: newMastery, consecutiveCorrect: consecutive, totalAttempts: total, status })
+    .values({ profileId: body.profileId, skillId, masteryScore: newMastery, consecutiveCorrect: consecutive, totalAttempts: total, status })
     .onConflictDoUpdate({
       target: [skillProgress.profileId, skillProgress.skillId],
       set: { masteryScore: newMastery, consecutiveCorrect: consecutive, totalAttempts: total, status },
     });
 
-  const coins = body.correct ? COINS_PER_CORRECT : 0;
+  const coins = correct && !alreadyEarned ? COINS_PER_CORRECT : 0;
   if (coins > 0) {
     await db
       .insert(wallets)
       .values({ profileId: body.profileId, balance: coins })
       .onConflictDoUpdate({ target: wallets.profileId, set: { balance: sql`${wallets.balance} + ${coins}` } });
-    await db.insert(walletLedger).values({ id: crypto.randomUUID(), profileId: body.profileId, delta: coins, reason: `exercise:${body.skillId}`, ts: now });
+    await db.insert(walletLedger).values({ id: crypto.randomUUID(), profileId: body.profileId, delta: coins, reason: `exercise:${skillId}`, ts: now });
   }
 
   const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, body.profileId)).limit(1);
-  return c.json({ correct: body.correct, coinsAwarded: coins, balance: wallet?.balance ?? 0, masteryScore: newMastery, consecutiveCorrect: consecutive, status });
+  return c.json({
+    correct,
+    correctAnswer: result.correctAnswer,
+    parts: result.parts ?? null,
+    feedback: correct ? (exercise.feedback?.correct ?? null) : (exercise.feedback?.incorrect ?? null),
+    solution: exercise.feedback?.solution ?? null,
+    coinsAwarded: coins,
+    balance: wallet?.balance ?? 0,
+    masteryScore: newMastery,
+    consecutiveCorrect: consecutive,
+    status,
+  });
 });
 
 app.get("/api/rewards", async (c) => {

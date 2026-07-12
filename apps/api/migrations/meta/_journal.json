@@ -57,6 +57,13 @@
       "when": 1783843259420,
       "tag": "0007_reward_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783850440524,
+      "tag": "0008_worried_maggott",
+      "breakpoints": true
     }
   ]
 }

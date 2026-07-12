@@ -1,4 +1,8 @@
 import i18n from "./i18n";
+import type { Answer, RenderPayload } from "@smartkids/shared";
+
+// Re-export de los tipos del modelo unificado para el resto de la web.
+export type { Answer, RenderPayload };
 
 export type LocaleText = Record<string, string>;
 
@@ -61,21 +65,20 @@ export interface Tutor {
   createdAt: string;
 }
 
-export interface Option {
-  id: string;
-  text: string;
-  isCorrect: boolean;
-}
 export interface Exercise {
   id: string;
   skillId: string;
   type: string;
   stem: string;
   contentVersion: string;
-  payload: { options?: Option[]; feedback?: { correct?: string; incorrect?: string } };
+  render: RenderPayload;
 }
 export interface AttemptResult {
   correct: boolean;
+  correctAnswer?: Answer | null;
+  parts?: boolean[] | null;
+  feedback?: string | null;
+  solution?: string | null;
   coinsAwarded: number;
   balance: number;
   masteryScore: number;
@@ -128,6 +131,29 @@ export interface Redemption {
   kind: string;
   cost: number;
   ts: string;
+}
+
+export interface ContentRequest {
+  id: string;
+  title: string;
+  instructions: string;
+  status: string; // uploaded | processing | published | failed
+  childId?: string | null;
+  subjectId?: string | null;
+  gradeBand?: string | null;
+  exerciseCount?: number | null;
+  skillId?: string | null;
+  createdAt: string;
+  publishedAt?: string | null;
+}
+
+export interface PrivateSkill {
+  id: string;
+  nameI18n: LocaleText;
+  subjectId: string;
+  gradeBand: string;
+  exercises: number;
+  childIds: string[];
 }
 
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
@@ -192,8 +218,12 @@ export const api = {
 
   // Juego
   skills: (profileId: string, courseId: string) => j<SkillNode[]>(`/api/skills?profile=${profileId}&course=${courseId}`),
-  nextExercise: (skillId: string, profileId: string) => j<Exercise>(`/api/session/next?skill=${skillId}&profile=${profileId}`),
-  attempt: (body: { profileId: string; skillId: string; exerciseTemplateId: string; contentVersion?: string; correct: boolean; responseTimeMs?: number }) =>
+  nextExercise: (skillId: string, profileId: string, exclude: string[] = []) =>
+    j<Exercise>(
+      `/api/session/next?skill=${encodeURIComponent(skillId)}&profile=${encodeURIComponent(profileId)}` +
+        (exclude.length ? `&exclude=${encodeURIComponent(exclude.join(","))}` : ""),
+    ),
+  attempt: (body: { profileId: string; exerciseTemplateId: string; answer: Answer; responseTimeMs?: number }) =>
     j<AttemptResult>(`/api/session/attempt`, post(body)),
   rewards: () => j<Reward[]>(`/api/rewards`),
   redeem: (rewardId: string, profileId: string) => j<{ ok: boolean; balance: number; status: string }>(`/api/rewards/${rewardId}/redeem`, post({ profileId })),
@@ -209,6 +239,26 @@ export const api = {
   tutorRedemptions: () => j<Redemption[]>(`/api/tutor/redemptions`),
   grantRedemption: (id: string) => j<{ ok: boolean }>(`/api/tutor/redemptions/${id}/grant`, { method: "POST" }),
   rejectRedemption: (id: string) => j<{ ok: boolean }>(`/api/tutor/redemptions/${id}/reject`, { method: "POST" }),
+
+  // Contenido a medida (Vía B): solicitudes con subida de material + contenido privado del hogar
+  contentRequests: () => j<ContentRequest[]>(`/api/tutor/content-requests`),
+  createContentRequest: async (form: FormData): Promise<{ ok: boolean; requestId: string }> => {
+    const res = await fetch(`/api/tutor/content-requests`, { method: "POST", body: form });
+    if (!res.ok) {
+      let m = `${res.status}`;
+      try {
+        const b = (await res.json()) as { detail?: string; error?: string };
+        m = b.detail ?? b.error ?? m;
+      } catch {
+        /* sin cuerpo */
+      }
+      throw new Error(m);
+    }
+    return (await res.json()) as { ok: boolean; requestId: string };
+  },
+  tutorContent: () => j<PrivateSkill[]>(`/api/tutor/content`),
+  assignSkill: (skillId: string, childIds: string[]) =>
+    j<{ ok: boolean; childIds: string[] }>(`/api/tutor/skills/${skillId}/assign`, post({ childIds })),
 };
 
 export const tx = (m: LocaleText | undefined, locale: string = i18n.language): string =>

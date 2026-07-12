@@ -25,7 +25,9 @@ export type IconName =
   | "sun"
   | "moon"
   | "gift"
-  | "target";
+  | "target"
+  | "chevronUp"
+  | "chevronDown";
 
 const STROKE: Partial<Record<IconName, ReactElement>> = {
   lock: (
@@ -36,6 +38,8 @@ const STROKE: Partial<Record<IconName, ReactElement>> = {
   ),
   check: <path d="M4 12.5l5 5L20 6" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
+  chevronUp: <path d="M6 15l6-6 6 6" />,
+  chevronDown: <path d="M6 9l6 6 6-6" />,
   play: <path d="M8 5l11 7-11 7z" />,
   back: <path d="M15 5l-7 7 7 7" />,
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />,

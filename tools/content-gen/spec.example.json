@@ -1,0 +1,14 @@
+{
+  "subjectId": "math",
+  "subjectName": { "es": "Matemáticas", "en": "Maths" },
+  "gradeBand": "ESO-5",
+  "skillId": "MATH.ESO5.FRAC.MUL",
+  "skillName": { "es": "Multiplicar fracciones", "en": "Multiplying fractions" },
+  "language": "es",
+  "types": ["multiple_choice", "numeric", "fill_in_blank"],
+  "count": 24,
+  "packageId": "pkg_math_eso5_fracmul_v1",
+  "version": "1.0.0",
+  "ownerId": null,
+  "instructions": "Nivel 5º ESO. Práctica de multiplicación de fracciones, con simplificación. Distractores basados en errores típicos (multiplicar en cruz, sumar numeradores)."
+}

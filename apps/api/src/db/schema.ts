@@ -47,6 +47,7 @@ export const skills = sqliteTable("skills", {
   nameI18n: text("name_i18n", { mode: "json" }).$type<LocaleText>().notNull(),
   difficultyBase: real("difficulty_base").notNull().default(0.4),
   position: integer("position").notNull().default(0),
+  ownerId: text("owner_id"), // null = skill global (catálogo); set = skill privado del hogar del tutor
 });
 
 export const skillPrerequisites = sqliteTable(
@@ -70,6 +71,7 @@ export const contentPackages = sqliteTable("content_packages", {
   gradeBand: text("grade_band"),
   version: text("version").notNull(),
   status: text("status").notNull().default("published"),
+  ownerId: text("owner_id"), // null = paquete global (catálogo); set = privado del hogar del tutor
   createdAt: text("created_at").notNull(),
 });
 
@@ -248,3 +250,54 @@ export const childRewards = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.childId, t.rewardId] })],
 );
+
+/* ---------- Contenido privado del hogar + solicitudes de generación (Vía B) ---------- */
+
+/** Acceso de un niño a un skill PRIVADO (contenido generado para su hogar). */
+export const childSkills = sqliteTable(
+  "child_skills",
+  {
+    childId: text("child_id")
+      .notNull()
+      .references(() => childProfiles.id),
+    skillId: text("skill_id")
+      .notNull()
+      .references(() => skills.id),
+  },
+  (t) => [primaryKey({ columns: [t.childId, t.skillId] })],
+);
+
+/** Solicitud de contenido a partir de material subido por el tutor (fotos, PDF, texto). */
+export const contentRequests = sqliteTable("content_requests", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => parentAccounts.id), // tutor que crea la solicitud
+  childId: text("child_id").references(() => childProfiles.id), // niño destino (a quién se asignará)
+  subjectId: text("subject_id"), // pista opcional de asignatura
+  gradeBand: text("grade_band"), // pista opcional de nivel
+  title: text("title").notNull(),
+  instructions: text("instructions").notNull().default(""), // qué quiere generar el tutor
+  status: text("status").notNull().default("uploaded"), // uploaded | processing | published | failed
+  note: text("note"), // nota/error del procesado
+  skillId: text("skill_id"), // skill privado publicado al terminar
+  packageId: text("package_id"), // paquete publicado
+  exerciseCount: integer("exercise_count"),
+  createdAt: text("created_at").notNull(),
+  publishedAt: text("published_at"),
+  notifiedAt: text("notified_at"),
+});
+
+/** Fichero subido para una solicitud (imagen o documento). El binario vive en R2. */
+export const contentRequestAssets = sqliteTable("content_request_assets", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id")
+    .notNull()
+    .references(() => contentRequests.id),
+  r2Key: text("r2_key").notNull(),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(), // image/png, application/pdf, text/plain, ...
+  kind: text("kind").notNull(), // 'image' | 'document'
+  size: integer("size").notNull(),
+  createdAt: text("created_at").notNull(),
+});

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type Course, type Me, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ContentRequest, type Course, type Me, type PrivateSkill, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
@@ -78,6 +78,8 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
         <SpouseSection me={me} onRefresh={onRefresh} />
 
         <RewardsSection me={me} />
+
+        <ContentSection me={me} />
 
         <button className="btn-ghost panel-pw" type="button" onClick={() => setChangingPw(true)}>
           {t("tutor.changeMyPw")}
@@ -662,6 +664,150 @@ function PendingRedemptions() {
             </button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ContentSection({ me }: { me: Me }) {
+  const { t } = useTranslation();
+  const [reqs, setReqs] = useState<ContentRequest[] | null>(null);
+  const [content, setContent] = useState<PrivateSkill[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  function load() {
+    api.contentRequests().then(setReqs).catch(() => setReqs([]));
+    api.tutorContent().then(setContent).catch(() => setContent([]));
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function assign(skillId: string, childId: string, on: boolean, current: string[]) {
+    const next = on ? [...current, childId] : current.filter((x) => x !== childId);
+    try {
+      await api.assignSkill(skillId, next);
+      load();
+    } catch {
+      /* noop */
+    }
+  }
+
+  return (
+    <div className="panel-section">
+      <div className="panel-head">
+        <h2 className="screen-title">{t("content.section")}</h2>
+        {me.children.length > 0 && (
+          <button className="btn-primary sm" type="button" onClick={() => setUploading(true)}>
+            {t("content.upload")}
+          </button>
+        )}
+      </div>
+      {me.children.length === 0 ? (
+        <p className="muted screen-pad">{t("content.noKids")}</p>
+      ) : (
+        <>
+          <p className="reward-hint">{t("content.hint")}</p>
+          {(reqs ?? []).length > 0 && (
+            <div className="list">
+              {(reqs ?? []).map((r) => (
+                <div className="list-row" key={r.id}>
+                  <div className="shop-ic sm">
+                    <Icon name="book" size={20} />
+                  </div>
+                  <div className="list-main">
+                    <b>{r.title}</b>
+                    <span>
+                      {t(`content.status_${r.status}`)}
+                      {r.exerciseCount ? ` · ${r.exerciseCount}` : ""}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {(content ?? []).length > 0 && (
+            <div className="list">
+              {(content ?? []).map((s) => (
+                <div className="list-row col" key={s.id}>
+                  <div className="list-main">
+                    <b>{tx(s.nameI18n)}</b>
+                    <span>
+                      {s.exercises} {t("content.exercises")}
+                    </span>
+                  </div>
+                  <div className="course-checks">
+                    {me.children.map((ch) => (
+                      <label className={"course-check" + (s.childIds.includes(ch.id) ? " on" : "")} key={ch.id}>
+                        <input type="checkbox" checked={s.childIds.includes(ch.id)} onChange={(e) => assign(s.id, ch.id, e.target.checked, s.childIds)} />
+                        {ch.displayName}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {uploading && <UploadContent kids={me.children} onClose={() => setUploading(false)} onDone={() => { setUploading(false); load(); }} />}
+    </div>
+  );
+}
+
+function UploadContent({ kids, onClose, onDone }: { kids: Child[]; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation();
+  const [title, setTitle] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [childId, setChildId] = useState(kids[0]?.id ?? "");
+  const [files, setFiles] = useState<FileList | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!title.trim() || !files || files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("title", title.trim());
+      form.set("instructions", instructions.trim());
+      if (childId) form.set("childId", childId);
+      for (const f of Array.from(files)) form.append("files", f);
+      await api.createContentRequest(form);
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{t("content.uploadTitle")}</h3>
+        <p className="muted">{t("content.uploadHint")}</p>
+        <input className="field" placeholder={t("content.titlePh")} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <textarea className="field" rows={3} placeholder={t("content.instructionsPh")} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
+        <div className="course-label">{t("content.forChild")}</div>
+        <select className="field" value={childId} onChange={(e) => setChildId(e.target.value)}>
+          {kids.map((ch) => (
+            <option key={ch.id} value={ch.id}>
+              {ch.displayName}
+            </option>
+          ))}
+        </select>
+        <div className="course-label">{t("content.files")}</div>
+        <input className="field" type="file" multiple accept="image/*,application/pdf,text/plain,.md" onChange={(e) => setFiles(e.target.files)} />
+        {error && <div className="auth-error">{error}</div>}
+        <div className="modal-actions">
+          <button className="btn-ghost" type="button" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button className="btn-primary" type="button" onClick={save} disabled={busy || !title.trim() || !files || files.length === 0}>
+            {busy ? "…" : t("content.send")}
+          </button>
+        </div>
       </div>
     </div>
   );
