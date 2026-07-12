@@ -121,6 +121,15 @@ export interface RewardInput {
   limitPeriod?: string;
 }
 
+export interface Redemption {
+  id: string;
+  childName: string;
+  rewardName: LocaleText;
+  kind: string;
+  cost: number;
+  ts: string;
+}
+
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, opts);
   if (!res.ok) {
@@ -195,6 +204,11 @@ export const api = {
   updateReward: (id: string, data: Partial<RewardInput>) =>
     j<{ ok: boolean }>(`/api/tutor/rewards/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }),
   deleteReward: (id: string) => j<{ ok: boolean }>(`/api/tutor/rewards/${id}`, { method: "DELETE" }),
+
+  // Canjes pendientes de conceder (bandeja del tutor)
+  tutorRedemptions: () => j<Redemption[]>(`/api/tutor/redemptions`),
+  grantRedemption: (id: string) => j<{ ok: boolean }>(`/api/tutor/redemptions/${id}/grant`, { method: "POST" }),
+  rejectRedemption: (id: string) => j<{ ok: boolean }>(`/api/tutor/redemptions/${id}/reject`, { method: "POST" }),
 };
 
 export const tx = (m: LocaleText | undefined, locale: string = i18n.language): string =>

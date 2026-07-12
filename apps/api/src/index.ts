@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, like, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import {
   clearAttempts,
@@ -139,12 +139,12 @@ function periodStartIso(period: string | null | undefined): string {
   return new Date(0).toISOString();
 }
 
-/** Puntos GANADOS (deltas positivos del ledger) por el niño desde una fecha. */
+/** Puntos GANADOS EN EJERCICIOS por el niño desde una fecha (no cuentan reembolsos ni otros ajustes). */
 async function earnedSince(db: DB, profileId: string, sinceIso: string): Promise<number> {
   const [row] = await db
-    .select({ s: sql<number>`coalesce(sum(case when ${walletLedger.delta} > 0 then ${walletLedger.delta} else 0 end), 0)` })
+    .select({ s: sql<number>`coalesce(sum(${walletLedger.delta}), 0)` })
     .from(walletLedger)
-    .where(and(eq(walletLedger.profileId, profileId), gte(walletLedger.ts, sinceIso)));
+    .where(and(eq(walletLedger.profileId, profileId), gte(walletLedger.ts, sinceIso), like(walletLedger.reason, "exercise:%")));
   return Number(row?.s ?? 0);
 }
 
@@ -996,6 +996,57 @@ app.delete("/api/tutor/rewards/:id", async (c) => {
   const [r] = await db.select({ ownerId: rewards.ownerId }).from(rewards).where(eq(rewards.id, id)).limit(1);
   if (!r || !r.ownerId || !ids.includes(r.ownerId)) return c.json({ error: "not_found" }, 404);
   await deleteRewardCascade(db, id);
+  return c.json({ ok: true });
+});
+
+/* ================= Tutor: canjes pendientes de conceder ================= */
+
+app.get("/api/tutor/redemptions", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const ids = await householdIds(db, parentId);
+  const kidRows = await db.select({ id: childProfiles.id, name: childProfiles.displayName }).from(childProfiles).where(inArray(childProfiles.parentId, ids));
+  if (!kidRows.length) return c.json([]);
+  const kidIds = kidRows.map((k) => k.id);
+  const nameById = new Map(kidRows.map((k) => [k.id, k.name]));
+  const rows = await db
+    .select({ id: redemptions.id, profileId: redemptions.profileId, ts: redemptions.ts, rewardName: rewards.nameI18n, kind: rewards.kind, cost: rewards.cost })
+    .from(redemptions)
+    .innerJoin(rewards, eq(rewards.id, redemptions.rewardId))
+    .where(and(inArray(redemptions.profileId, kidIds), eq(redemptions.status, "pending")))
+    .orderBy(asc(redemptions.ts));
+  return c.json(rows.map((r) => ({ id: r.id, childName: nameById.get(r.profileId) ?? "", rewardName: r.rewardName, kind: r.kind, cost: r.cost, ts: r.ts })));
+});
+
+app.post("/api/tutor/redemptions/:id/grant", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const id = c.req.param("id");
+  const [r] = await db.select({ profileId: redemptions.profileId }).from(redemptions).where(eq(redemptions.id, id)).limit(1);
+  if (!r) return c.json({ error: "not_found" }, 404);
+  if (!(await ownsProfile(db, parentId, r.profileId))) return c.json({ error: "forbidden" }, 403);
+  await db.update(redemptions).set({ status: "granted" }).where(eq(redemptions.id, id));
+  return c.json({ ok: true });
+});
+
+app.post("/api/tutor/redemptions/:id/reject", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const id = c.req.param("id");
+  const [r] = await db.select({ profileId: redemptions.profileId, status: redemptions.status, rewardId: redemptions.rewardId }).from(redemptions).where(eq(redemptions.id, id)).limit(1);
+  if (!r) return c.json({ error: "not_found" }, 404);
+  if (!(await ownsProfile(db, parentId, r.profileId))) return c.json({ error: "forbidden" }, 403);
+  if (r.status !== "pending") return c.json({ ok: true });
+  // Si era una recompensa canjeable, se reembolsan los puntos gastados.
+  const [rw] = await db.select({ kind: rewards.kind, cost: rewards.cost }).from(rewards).where(eq(rewards.id, r.rewardId)).limit(1);
+  if (rw && rw.kind === "spend" && rw.cost > 0) {
+    await db.update(wallets).set({ balance: sql`${wallets.balance} + ${rw.cost}` }).where(eq(wallets.profileId, r.profileId));
+    await db.insert(walletLedger).values({ id: crypto.randomUUID(), profileId: r.profileId, delta: rw.cost, reason: `refund:${r.rewardId}`, ts: new Date().toISOString() });
+  }
+  await db.update(redemptions).set({ status: "rejected" }).where(eq(redemptions.id, id));
   return c.json({ ok: true });
 });
 

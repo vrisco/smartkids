@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type Course, type Me, type TutorReward } from "../api";
+import { api, tx, type Child, type Course, type Me, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
@@ -50,6 +50,8 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
           </div>
         )}
         {verifyMsg && <div className="auth-info panel-msg">{verifyMsg}</div>}
+
+        <PendingRedemptions />
 
         <div className="panel-head">
           <h2 className="screen-title">{t("tutor.myKids")}</h2>
@@ -608,6 +610,58 @@ function RewardForm({ reward, kids, onClose, onDone }: { reward?: TutorReward; k
             {t("common.save")}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PendingRedemptions() {
+  const { t } = useTranslation();
+  const [items, setItems] = useState<Redemption[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  function load() {
+    api.tutorRedemptions().then(setItems).catch(() => setItems([]));
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function act(id: string, grant: boolean) {
+    setBusy(id);
+    try {
+      await (grant ? api.grantRedemption(id) : api.rejectRedemption(id));
+      load();
+    } catch {
+      /* noop */
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="panel-section">
+      <div className="panel-head">
+        <h2 className="screen-title">{t("rewards.pending")}</h2>
+      </div>
+      <div className="list">
+        {items.map((r) => (
+          <div className="list-row" key={r.id}>
+            <div className="list-main">
+              <b>{tx(r.rewardName)}</b>
+              <span>
+                {r.childName} · {r.cost}
+              </span>
+            </div>
+            <button className="btn-primary sm" type="button" disabled={busy === r.id} onClick={() => act(r.id, true)}>
+              {t("rewards.grant")}
+            </button>
+            <button className="btn-ghost sm danger" type="button" disabled={busy === r.id} onClick={() => act(r.id, false)}>
+              {t("rewards.reject")}
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
