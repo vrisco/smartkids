@@ -1063,6 +1063,27 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
 
   const streak = await computeStreak(db, profileId, tz, false);
 
+  // Cobertura por curso asignado: skills GLOBALES del curso (asignatura+nivel) vs el progreso del niño.
+  // Muestra lo que FALTA (temas sin empezar), no solo lo hecho.
+  const courseList = await childCoursesOf(db, profileId);
+  const coverage: Array<{ courseId: string; name: unknown; total: number; started: number; mastered: number; notStarted: number }> = [];
+  for (const co of courseList) {
+    const courseSkills = await db
+      .select({ id: skills.id })
+      .from(skills)
+      .where(and(eq(skills.subjectId, co.subjectId), eq(skills.gradeBand, co.gradeBand), isNull(skills.ownerId)));
+    let started = 0;
+    let mastered = 0;
+    for (const s of courseSkills) {
+      const p = progById.get(s.id);
+      if (p) {
+        started++;
+        if (p.status === "mastered") mastered++;
+      }
+    }
+    coverage.push({ courseId: co.id, name: co.nameI18n, total: courseSkills.length, started, mastered, notStarted: courseSkills.length - started });
+  }
+
   return {
     overview: {
       attempts: total,
@@ -1081,6 +1102,7 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
     perSkill,
     sessions: sessions.slice(0, 30),
     activity,
+    coverage,
   };
 }
 
@@ -1190,6 +1212,68 @@ app.get("/api/tutor/children/:id/export", async (c) => {
       "content-disposition": `attachment; filename="smartkids-${safeName}.json"`,
     },
   });
+});
+
+// Panel de mando del tutor: una fila por niño del hogar con sus métricas clave, en pocas consultas
+// agregadas (no N modales). Convierte la lista muda de niños en un panel accionable.
+app.get("/api/tutor/summary", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const ids = await householdIds(db, parentId);
+  const kids = await db
+    .select({ id: childProfiles.id, displayName: childProfiles.displayName, avatar: childProfiles.avatar, username: childProfiles.username, tz: childProfiles.timezone })
+    .from(childProfiles)
+    .where(inArray(childProfiles.parentId, ids));
+  if (!kids.length) return c.json([]);
+  const kidIds = kids.map((k) => k.id);
+
+  const balRows = await db.select({ pid: wallets.profileId, balance: wallets.balance }).from(wallets).where(inArray(wallets.profileId, kidIds));
+  const balById = new Map(balRows.map((r) => [r.pid, r.balance]));
+  const attRows = await db
+    .select({
+      pid: attempts.profileId,
+      n: sql<number>`count(*)`,
+      ok: sql<number>`sum(case when ${attempts.correct} then 1 else 0 end)`,
+      last: sql<string>`max(${attempts.ts})`,
+    })
+    .from(attempts)
+    .where(inArray(attempts.profileId, kidIds))
+    .groupBy(attempts.profileId);
+  const attById = new Map(attRows.map((r) => [r.pid, r]));
+  const courseRows = await db.select({ pid: childCourses.childId, n: sql<number>`count(*)` }).from(childCourses).where(inArray(childCourses.childId, kidIds)).groupBy(childCourses.childId);
+  const courseById = new Map(courseRows.map((r) => [r.pid, Number(r.n)]));
+  const customRows = await db.select({ pid: childSkills.childId, n: sql<number>`count(*)` }).from(childSkills).where(inArray(childSkills.childId, kidIds)).groupBy(childSkills.childId);
+  const customById = new Map(customRows.map((r) => [r.pid, Number(r.n)]));
+  const pendRows = await db
+    .select({ pid: redemptions.profileId, n: sql<number>`count(*)` })
+    .from(redemptions)
+    .where(and(inArray(redemptions.profileId, kidIds), eq(redemptions.status, "pending")))
+    .groupBy(redemptions.profileId);
+  const pendById = new Map(pendRows.map((r) => [r.pid, Number(r.n)]));
+
+  const out = [];
+  for (const k of kids) {
+    const a = attById.get(k.id);
+    const n = a ? Number(a.n) : 0;
+    const ok = a ? Number(a.ok) : 0;
+    const streak = await computeStreak(db, k.id, safeTz(k.tz), false);
+    out.push({
+      id: k.id,
+      displayName: k.displayName,
+      avatar: k.avatar,
+      username: k.username,
+      balance: balById.get(k.id) ?? 0,
+      courseCount: courseById.get(k.id) ?? 0,
+      customCount: customById.get(k.id) ?? 0,
+      attempts: n,
+      accuracyPct: n ? Math.round((ok / n) * 100) : 0,
+      streak,
+      lastActivity: a?.last ?? null,
+      pendingRedemptions: pendById.get(k.id) ?? 0,
+    });
+  }
+  return c.json(out);
 });
 
 /* ================= Web Push ================= */
