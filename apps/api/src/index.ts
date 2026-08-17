@@ -80,12 +80,14 @@ const {
 } = schema;
 
 const COINS_PER_CORRECT = 10;
+const POLICY_VERSION = "2026-08-provisional"; // versión del aviso de privacidad aceptada al dar de alta un niño (RGPD)
 const GOAL_PERIODS = ["week", "month", "quarter", "semester", "year"]; // ventanas rodantes de objetivo
 const VERIFY_TTL = 24 * 60 * 60 * 1000;
 const RESET_TTL = 60 * 60 * 1000;
 const INVITE_TTL = 7 * 24 * 60 * 60 * 1000; // invitación de tutor: 7 días
 const ADMIN_RESET_TTL = 24 * 60 * 60 * 1000; // reset iniciado por admin: 24 h
 const USERNAME_RE = /^[a-z0-9._-]{3,}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Ctx = Context<{ Bindings: Env }>;
 type DB = ReturnType<typeof getDb>;
@@ -207,6 +209,13 @@ function clampInt(v: unknown, lo: number, hi: number, def: number): number {
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
 }
 
+/** Año de nacimiento válido (entre hace 100 años y este año) o null. */
+function parseBirthYear(v: unknown): number | null {
+  const n = parseInt(String(v ?? ""), 10);
+  const y = new Date().getUTCFullYear();
+  return Number.isFinite(n) && n >= y - 100 && n <= y ? n : null;
+}
+
 /** Inicio (ISO) de la ventana rodante: week=7d, month=30d, quarter=90d, semester=180d, year=365d; resto='all' (epoch). */
 function periodStartIso(period: string | null | undefined): string {
   const now = Date.now();
@@ -320,6 +329,7 @@ app.get("/api/auth/me", async (c) => {
       username: childProfiles.username,
       avatar: childProfiles.avatar,
       gradeBand: childProfiles.gradeBand,
+      birthYear: childProfiles.birthYear,
     })
     .from(childProfiles)
     .where(inArray(childProfiles.parentId, ids));
@@ -687,12 +697,15 @@ app.post("/api/profiles", async (c) => {
   const db = getDb(c.env.DB);
   const parentId = await requireParent(c, db);
   if (typeof parentId !== "string") return parentId;
-  const body = await c.req.json<{ displayName?: string; username?: string; avatar?: string; gradeBand?: string; pin?: string; courseIds?: string[] }>();
+  const body = await c.req.json<{ displayName?: string; username?: string; avatar?: string; gradeBand?: string; pin?: string; courseIds?: string[]; birthYear?: number; consent?: boolean }>();
   const displayName = body.displayName?.trim();
   const username = body.username?.trim().toLowerCase();
   const pin = String(body.pin ?? "");
   if (!displayName || !username || !USERNAME_RE.test(username) || pin.length < 4)
     return c.json({ error: "invalid", message: "Nombre, usuario (3+ car. a-z0-9._-) y PIN (4+ díg.) requeridos." }, 400);
+  // Consentimiento del tutor para tratar los datos del menor (RGPD): obligatorio al dar de alta.
+  if (body.consent !== true) return c.json({ error: "consent_required", message: "Debes confirmar el consentimiento para tratar los datos del menor." }, 400);
+  const birthYear = parseBirthYear(body.birthYear);
   const [ex] = await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.username, username)).limit(1);
   if (ex) return c.json({ error: "username_taken", message: "Ese usuario ya existe." }, 409);
   const id = `kid_${crypto.randomUUID()}`;
@@ -706,6 +719,9 @@ app.post("/api/profiles", async (c) => {
     username,
     preferredLocale: "es",
     region: "ES",
+    birthYear,
+    consentAt: new Date().toISOString(),
+    consentVersion: POLICY_VERSION,
   });
   await db.insert(wallets).values({ profileId: id, balance: 0 });
   const requested = (body.courseIds ?? []).filter(Boolean);
@@ -722,11 +738,15 @@ app.post("/api/profiles/:id/update", async (c) => {
   const parentId = await requireParent(c, db);
   if (typeof parentId !== "string") return parentId;
   if (!(await ownsProfile(db, parentId, id))) return c.json({ error: "forbidden" }, 403);
-  const body = await c.req.json<{ displayName?: string; avatar?: string; pin?: string; username?: string }>();
-  const patch: { displayName?: string; avatar?: string; loginPinHash?: string; username?: string } = {};
+  const body = await c.req.json<{ displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number }>();
+  const patch: { displayName?: string; avatar?: string; loginPinHash?: string; username?: string; birthYear?: number } = {};
   if (body.displayName?.trim()) patch.displayName = body.displayName.trim();
   if (body.avatar) patch.avatar = body.avatar;
   if (body.pin != null && String(body.pin).length >= 4) patch.loginPinHash = await hashSecret(String(body.pin));
+  if (body.birthYear !== undefined) {
+    const by = parseBirthYear(body.birthYear);
+    if (by !== null) patch.birthYear = by;
+  }
   if (body.username?.trim()) {
     const u = body.username.trim().toLowerCase();
     if (!USERNAME_RE.test(u)) return c.json({ error: "invalid", message: "Usuario inválido." }, 400);
@@ -818,6 +838,12 @@ app.get("/api/child/me", async (c) => {
   if (!kid) return c.json({ error: "unauthorized" }, 401);
   const [child] = await db.select().from(childProfiles).where(eq(childProfiles.id, kid)).limit(1);
   if (!child) return c.json({ error: "unauthorized" }, 401);
+  // Zona horaria del dispositivo: se persiste para que la racha "hoy" sea consistente también en la vista del tutor.
+  const tz = safeTz(c.req.query("tz"));
+  if (c.req.query("tz") && tz !== child.timezone) {
+    await db.update(childProfiles).set({ timezone: tz }).where(eq(childProfiles.id, kid));
+  }
+  const streak = await computeStreak(db, kid, tz, true);
   const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, kid)).limit(1);
   const crs = await childCoursesOf(db, kid);
   // Contenido a medida (skills PRIVADOS asignados): se ofrecen como "cursos" independientes jugables directamente.
@@ -834,16 +860,96 @@ app.get("/api/child/me", async (c) => {
     const [cnt] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, s.id));
     customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0, pathId: s.pathId, pathName: s.pathName, moduleIndex: s.moduleIndex });
   }
-  return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, courses: crs, customContent });
+  return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, streak, courses: crs, customContent });
 });
 
 /* ================= Estadísticas / seguimiento ================= */
 
 const SESSION_GAP_MS = 20 * 60 * 1000; // hueco que separa una "sesión" de la siguiente al reconstruirlas
+const DEFAULT_TZ = "Europe/Madrid"; // zona por defecto si el cliente no manda una válida
+
+/** yyyy-mm-dd del instante `ms` en la zona IANA `tz` (con horario de verano); cae a UTC si la zona no es válida. */
+function dayInTz(ms: number, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+}
+/** Día calendario anterior a un yyyy-mm-dd (decremento puro, sin husos). */
+function prevDay(day: string): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+}
+/** Valida (best-effort) una zona IANA; devuelve la zona o el defecto. */
+function safeTz(tz: string | null | undefined): string {
+  if (!tz) return DEFAULT_TZ;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+    return tz;
+  } catch {
+    return DEFAULT_TZ;
+  }
+}
+
+/**
+ * Racha actual = días consecutivos (en la zona del niño) con al menos un intento, hasta hoy.
+ * "Hoy" es de gracia: no haber practicado aún hoy no rompe la racha (se cuenta desde ayer).
+ * Un Escudo (streak_freeze canjeado y sin consumir) cubre automáticamente UN día perdido; al
+ * consumirse se fija `consumed_for` con el día cubierto, de modo que recalcular es estable.
+ * Con `consume=false` calcula sin persistir (para vistas de solo lectura).
+ */
+async function computeStreak(db: DB, profileId: string, tz: string, consume: boolean): Promise<number> {
+  const sinceIso = new Date(Date.now() - 420 * 86400000).toISOString();
+  const rows = await db
+    .select({ ts: attempts.ts })
+    .from(attempts)
+    .where(and(eq(attempts.profileId, profileId), gte(attempts.ts, sinceIso)))
+    .orderBy(desc(attempts.ts))
+    .limit(5000);
+  if (rows.length === 0) return 0;
+  const active = new Set(rows.map((r) => dayInTz(Date.parse(r.ts), tz)));
+
+  // Escudos del niño: los ya consumidos aportan su día cubierto; los libres pueden gastarse.
+  const freezeRows = await db
+    .select({ id: redemptions.id, consumedAt: redemptions.consumedAt, consumedFor: redemptions.consumedFor })
+    .from(redemptions)
+    .innerJoin(rewards, eq(rewards.id, redemptions.rewardId))
+    .where(and(eq(redemptions.profileId, profileId), eq(rewards.type, "streak_freeze"), eq(redemptions.status, "applied")));
+  const coveredDays = new Set(freezeRows.filter((f) => f.consumedFor).map((f) => f.consumedFor as string));
+  const availableFreezes = freezeRows.filter((f) => !f.consumedAt).map((f) => f.id);
+
+  const today = dayInTz(Date.now(), tz);
+  let day = active.has(today) || coveredDays.has(today) ? today : prevDay(today); // gracia para "hoy"
+  let streak = 0;
+  let used = 0;
+  const toConsume: Array<{ id: string; day: string }> = [];
+  while (true) {
+    if (active.has(day) || coveredDays.has(day)) {
+      streak++;
+    } else if (used < availableFreezes.length) {
+      toConsume.push({ id: availableFreezes[used]!, day });
+      used++;
+      streak++;
+    } else {
+      break;
+    }
+    day = prevDay(day);
+  }
+  if (consume && toConsume.length) {
+    const nowIso = new Date().toISOString();
+    for (const c of toConsume) {
+      await db
+        .update(redemptions)
+        .set({ consumedAt: nowIso, consumedFor: c.day })
+        .where(and(eq(redemptions.id, c.id), isNull(redemptions.consumedAt)));
+    }
+  }
+  return streak;
+}
 
 // Agrega el progreso de un perfil desde attempts + wallet_ledger + skill_progress.
 // No hay tabla de sesiones: se RECONSTRUYEN agrupando los intentos por huecos de tiempo.
-async function computeProfileStats(db: DB, profileId: string) {
+async function computeProfileStats(db: DB, profileId: string, tz: string) {
   const now = Date.now();
   const attemptRows = await db
     .select({ skillId: attempts.skillId, correct: attempts.correct, rt: attempts.responseTimeMs, ts: attempts.ts })
@@ -955,6 +1061,8 @@ async function computeProfileStats(db: DB, profileId: string) {
     activity.push({ date: k, attempts: g?.attempts ?? 0, correct: g?.correct ?? 0, points: pointsByDay.get(k) ?? 0 });
   }
 
+  const streak = await computeStreak(db, profileId, tz, false);
+
   return {
     overview: {
       attempts: total,
@@ -967,6 +1075,7 @@ async function computeProfileStats(db: DB, profileId: string) {
       earned7d: sumEarnedSince(now - 7 * 86400000),
       earned30d: sumEarnedSince(now - 30 * 86400000),
       activeDays,
+      streak,
       lastActivity: attemptRows.length ? attemptRows[attemptRows.length - 1]!.ts : null,
     },
     perSkill,
@@ -980,17 +1089,107 @@ app.get("/api/child/stats", async (c) => {
   const db = getDb(c.env.DB);
   const kid = await currentChildId(c, db);
   if (!kid) return c.json({ error: "unauthorized" }, 401);
-  return c.json(await computeProfileStats(db, kid));
+  const tz = safeTz(c.req.query("tz"));
+  return c.json(await computeProfileStats(db, kid, tz));
 });
 
-// El tutor ve las estadísticas de un niño de su hogar.
+// El tutor ve las estadísticas de un niño de su hogar (usa la zona horaria persistida del niño).
 app.get("/api/tutor/children/:id/stats", async (c) => {
   const db = getDb(c.env.DB);
   const a = await requireParent(c, db);
   if (typeof a !== "string") return a;
   const childId = c.req.param("id");
   if (!(await ownsProfile(db, a, childId))) return c.json({ error: "forbidden" }, 403);
-  return c.json(await computeProfileStats(db, childId));
+  const [ch] = await db.select({ tz: childProfiles.timezone }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
+  return c.json(await computeProfileStats(db, childId, safeTz(ch?.tz)));
+});
+
+// El tutor da o quita puntos del monedero de un niño de su hogar (premiar/corregir fuera de la app).
+// El movimiento se registra con reason "adjust:*" → NO cuenta como puntos ganados en ejercicios (no infla objetivos).
+app.post("/api/tutor/children/:id/wallet", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const childId = c.req.param("id");
+  if (!(await ownsProfile(db, parentId, childId))) return c.json({ error: "forbidden" }, 403);
+  const body = await c.req.json<{ delta?: number; reason?: string }>();
+  const delta = Math.trunc(Number(body?.delta ?? 0));
+  if (!Number.isFinite(delta) || delta === 0) return c.json({ error: "invalid", message: "Indica cuántos puntos dar o quitar." }, 400);
+  if (Math.abs(delta) > 100000) return c.json({ error: "invalid", message: "Cantidad fuera de rango." }, 400);
+  const now = new Date().toISOString();
+  await db.insert(wallets).values({ profileId: childId, balance: 0 }).onConflictDoNothing();
+  let applied = delta;
+  if (delta < 0) {
+    // Nunca por debajo de 0: se descuenta como mucho el saldo disponible.
+    const [w] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, childId)).limit(1);
+    applied = -Math.min(w?.balance ?? 0, -delta);
+  }
+  if (applied !== 0) {
+    await db.update(wallets).set({ balance: sql`${wallets.balance} + ${applied}` }).where(eq(wallets.profileId, childId));
+    const note = (body?.reason ?? "").trim().slice(0, 80);
+    await db.insert(walletLedger).values({ id: crypto.randomUUID(), profileId: childId, delta: applied, reason: `adjust:${note || "tutor"}`, ts: now });
+  }
+  const [w2] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, childId)).limit(1);
+  return c.json({ ok: true, balance: w2?.balance ?? 0, applied });
+});
+
+// Exportación RGPD (derecho de acceso/portabilidad, arts. 15/20): todos los datos del niño en un JSON descargable.
+// No incluye el hash del PIN. El binario del material subido vive en R2 (aquí van solo los metadatos).
+app.get("/api/tutor/children/:id/export", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const childId = c.req.param("id");
+  if (!(await ownsProfile(db, parentId, childId))) return c.json({ error: "forbidden" }, 403);
+  const [child] = await db.select().from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
+  if (!child) return c.json({ error: "not_found" }, 404);
+  const profile = {
+    id: child.id,
+    displayName: child.displayName,
+    username: child.username,
+    avatar: child.avatar,
+    gradeBand: child.gradeBand,
+    birthYear: child.birthYear,
+    preferredLocale: child.preferredLocale,
+    region: child.region,
+    timezone: child.timezone,
+    consentAt: child.consentAt,
+    consentVersion: child.consentVersion,
+  };
+  const crs = await childCoursesOf(db, childId);
+  const attemptRows = await db.select().from(attempts).where(eq(attempts.profileId, childId)).orderBy(asc(attempts.ts));
+  const progress = await db.select().from(skillProgress).where(eq(skillProgress.profileId, childId));
+  const [wallet] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, childId)).limit(1);
+  const ledger = await db.select().from(walletLedger).where(eq(walletLedger.profileId, childId)).orderBy(asc(walletLedger.ts));
+  const reds = await db
+    .select({ id: redemptions.id, rewardName: rewards.nameI18n, status: redemptions.status, ts: redemptions.ts })
+    .from(redemptions)
+    .innerJoin(rewards, eq(rewards.id, redemptions.rewardId))
+    .where(eq(redemptions.profileId, childId))
+    .orderBy(asc(redemptions.ts));
+  const customSkills = await db
+    .select({ id: skills.id, name: skills.nameI18n })
+    .from(childSkills)
+    .innerJoin(skills, eq(skills.id, childSkills.skillId))
+    .where(eq(childSkills.childId, childId));
+  const payload = {
+    schema: "smartkids-child-export/1",
+    exportedAt: new Date().toISOString(),
+    profile,
+    courses: crs,
+    customSkills,
+    wallet: { balance: wallet?.balance ?? 0, ledger },
+    progress,
+    attempts: attemptRows,
+    redemptions: reds,
+  };
+  const safeName = (child.username || childId).replace(/[^a-z0-9._-]/gi, "_");
+  return new Response(JSON.stringify(payload, null, 2), {
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "content-disposition": `attachment; filename="smartkids-${safeName}.json"`,
+    },
+  });
 });
 
 /* ================= Web Push ================= */
@@ -1003,6 +1202,21 @@ async function notifyOwner(env: Env, db: DB, ownerId: string): Promise<void> {
     const r = await sendPush(env, s.endpoint);
     if (r.gone) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
   }
+}
+
+/** Avisa a los tutores del hogar de un canje pendiente por DOS vías: push (si hay) y email (Resend).
+ *  El email cubre iOS, donde el push exige tener la PWA instalada; así el canje no queda colgado. */
+async function notifyPendingRedemption(env: Env, db: DB, household: string[], childName: string, rewardName: string): Promise<void> {
+  for (const pid of household) await notifyOwner(env, db, pid); // push (best-effort)
+  const parents = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(inArray(parentAccounts.id, household));
+  if (!parents.length) return;
+  const subject = `smartkids · ${childName} quiere canjear una recompensa`;
+  const html = emailLayout(
+    "Canje pendiente de aprobar",
+    `<b>${childName}</b> ha pedido canjear <b>${rewardName}</b>. Entra en smartkids para aprobarlo o rechazarlo.`,
+    { url: "https://app.smart-kids.uk", label: "Abrir smartkids" },
+  );
+  for (const p of parents) await sendEmail(env, p.email, subject, html);
 }
 
 // Clave pública VAPID para que el cliente se suscriba.
@@ -1804,6 +2018,7 @@ app.post("/api/session/attempt", async (c) => {
     answer?: unknown;
     selectedOptionId?: string; // compat: cliente antiguo (solo opción múltiple)
     responseTimeMs?: number;
+    clientAttemptId?: string; // idempotencia: mismo id = mismo intento (los reintentos de red no duplican)
   }>();
   if (!body?.profileId || !body?.exerciseTemplateId) return c.json({ error: "invalid body" }, 400);
   const a = await childOrOwner(c, db, body.profileId);
@@ -1843,11 +2058,57 @@ app.post("/api/session/attempt", async (c) => {
 
   const result = grade(exercise, parsedAns.data);
   const correct = result.correct;
-
   const now = new Date().toISOString();
-  // Anti-farm ATÓMICO: la PK compuesta de coin_awards concede monedas una sola vez por
-  // (niño, ejercicio). Sustituye al read-check anterior, que tenía una carrera (dos aciertos
-  // simultáneos leían "no ganado" y duplicaban monedas).
+
+  // Veredicto base: idéntico ante un reintento porque grade() es puro.
+  const baseResult = {
+    correct,
+    correctAnswer: result.correctAnswer,
+    parts: result.parts ?? null,
+    feedback: correct ? (exercise.feedback?.correct ?? null) : (exercise.feedback?.incorrect ?? null),
+    solution: exercise.feedback?.solution ?? null,
+  };
+
+  // Idempotencia: tras un microcorte de red el cliente puede reenviar el MISMO intento. Usamos
+  // clientAttemptId como PK del intento; si ya existía, devolvemos el mismo veredicto SIN volver a
+  // mutar progreso ni conceder monedas (el registro del intento es la barrera atómica).
+  const attemptId = body.clientAttemptId && UUID_RE.test(body.clientAttemptId) ? body.clientAttemptId : crypto.randomUUID();
+  const insertedAttempt = await db
+    .insert(attempts)
+    .values({
+      id: attemptId,
+      profileId: body.profileId,
+      skillId,
+      exerciseTemplateId: body.exerciseTemplateId,
+      contentVersion: tpl.contentVersion,
+      correct,
+      responseTimeMs: body.responseTimeMs ?? null,
+      difficultyServed: tpl.difficultyNumeric ?? null,
+      ts: now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: attempts.id });
+
+  if (insertedAttempt.length === 0) {
+    // Reenvío de un intento ya registrado: mismo veredicto, cero monedas nuevas, saldo/estado actuales.
+    const [prog] = await db
+      .select({ mastery: skillProgress.masteryScore, consecutive: skillProgress.consecutiveCorrect, status: skillProgress.status })
+      .from(skillProgress)
+      .where(and(eq(skillProgress.profileId, body.profileId), eq(skillProgress.skillId, skillId)))
+      .limit(1);
+    const [w] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, body.profileId)).limit(1);
+    return c.json({
+      ...baseResult,
+      coinsAwarded: 0,
+      balance: w?.balance ?? 0,
+      masteryScore: prog?.mastery ?? 0,
+      consecutiveCorrect: prog?.consecutive ?? 0,
+      status: prog?.status ?? "inProgress",
+      replay: true,
+    });
+  }
+
+  // Anti-farm ATÓMICO: la PK compuesta de coin_awards concede monedas una sola vez por (niño, ejercicio).
   let firstCorrect = false;
   if (correct) {
     const inserted = await db
@@ -1857,18 +2118,6 @@ app.post("/api/session/attempt", async (c) => {
       .returning({ p: coinAwards.profileId });
     firstCorrect = inserted.length > 0;
   }
-
-  await db.insert(attempts).values({
-    id: crypto.randomUUID(),
-    profileId: body.profileId,
-    skillId,
-    exerciseTemplateId: body.exerciseTemplateId,
-    contentVersion: tpl.contentVersion,
-    correct,
-    responseTimeMs: body.responseTimeMs ?? null,
-    difficultyServed: tpl.difficultyNumeric ?? null,
-    ts: now,
-  });
 
   const [prev] = await db
     .select()
@@ -1901,11 +2150,7 @@ app.post("/api/session/attempt", async (c) => {
 
   const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, body.profileId)).limit(1);
   return c.json({
-    correct,
-    correctAnswer: result.correctAnswer,
-    parts: result.parts ?? null,
-    feedback: correct ? (exercise.feedback?.correct ?? null) : (exercise.feedback?.incorrect ?? null),
-    solution: exercise.feedback?.solution ?? null,
+    ...baseResult,
     coinsAwarded: coins,
     balance: wallet?.balance ?? 0,
     masteryScore: newMastery,
@@ -1975,9 +2220,12 @@ app.post("/api/rewards/:id/redeem", async (c) => {
     .limit(1);
   if (!assigned) return c.json({ error: "forbidden" }, 403);
   // La recompensa debe pertenecer al HOGAR del niño (defensa ante asignaciones cruzadas, p.ej. tras desvincular cónyuge).
-  const [childRow] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, profileId)).limit(1);
+  const [childRow] = await db.select({ parentId: childProfiles.parentId, displayName: childProfiles.displayName }).from(childProfiles).where(eq(childProfiles.id, profileId)).limit(1);
   const household = childRow ? await householdIds(db, childRow.parentId) : [];
   if (!reward.ownerId || !household.includes(reward.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const childName = childRow?.displayName ?? "Tu hijo/a";
+  const rn = (reward.nameI18n ?? {}) as Record<string, string>;
+  const rewardName = rn.es ?? Object.values(rn)[0] ?? "una recompensa";
   // Límite de canjes en la ventana configurada (p.ej. una vez, o N al mes).
   if (reward.limitCount != null) {
     const cnt = await redemptionsSince(db, profileId, rewardId, periodStartIso(reward.limitPeriod));
@@ -1993,7 +2241,7 @@ app.post("/api/rewards/:id/redeem", async (c) => {
     const earned = await earnedSince(db, profileId, periodStartIso(reward.period));
     if (earned < reward.cost) return c.json({ error: "goal_not_reached", message: "Aún no has alcanzado el objetivo.", earned, target: reward.cost }, 400);
     await db.insert(redemptions).values({ id: crypto.randomUUID(), profileId, rewardId, status, ts: now });
-    if (status === "pending") for (const pid of household) await notifyOwner(c.env, db, pid); // push: "canje pendiente"
+    if (status === "pending") await notifyPendingRedemption(c.env, db, household, childName, rewardName); // push + email
     const [w] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, profileId)).limit(1);
     return c.json({ ok: true, balance: w?.balance ?? 0, status, reward: slim });
   }
