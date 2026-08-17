@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, type ChildMe, type Me } from "./api";
+import { api, ApiError, type ChildMe, type Me } from "./api";
 import { useScrollTop } from "./useScrollTop";
 import { Starfield } from "./components/Starfield";
 import { Auth } from "./components/Auth";
@@ -17,23 +17,37 @@ export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [kid, setKid] = useState<ChildMe | null>(null);
   const [ready, setReady] = useState(false);
+  const [offline, setOffline] = useState(false);
 
   const load = useCallback(async () => {
     setReady(false);
+    setOffline(false);
+    // 1) ¿Sesión de niño? Un fallo de RED no debe expulsar al login: la cookie sigue válida.
     try {
       const k = await api.childMe();
       setKid(k);
       setMe(null);
       setReady(true);
       return;
-    } catch {
-      /* no hay sesión de niño */
+    } catch (e) {
+      if (e instanceof ApiError && e.kind === "network") {
+        setOffline(true);
+        setReady(true);
+        return;
+      }
+      /* 401: no hay sesión de niño → probamos tutor/admin */
     }
+    // 2) ¿Sesión de tutor/admin?
     try {
       const m = await api.me();
       setMe(m);
       setKid(null);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError && e.kind === "network") {
+        setOffline(true);
+        setReady(true);
+        return;
+      }
       setMe(null);
       setKid(null);
     }
@@ -87,6 +101,20 @@ export function App() {
         <main className="hero">
           <h1 className="title">Órbita</h1>
           <p className="tagline">{t("common.loading")}</p>
+        </main>
+      </>
+    );
+
+  if (offline)
+    return (
+      <>
+        <Starfield />
+        <main className="hero">
+          <h1 className="title">Órbita</h1>
+          <p className="tagline">{t("common.offline")}</p>
+          <button className="btn-primary" type="button" onClick={() => void load()}>
+            {t("common.retry")}
+          </button>
         </main>
       </>
     );

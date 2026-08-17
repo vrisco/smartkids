@@ -3,7 +3,7 @@ import { initReactI18next } from "react-i18next";
 
 // i18n de la UI (ES/EN). El CONTENIDO de los ejercicios es multi-idioma en la BD (helper tx()).
 const es = {
-  common: { save: "Guardar", cancel: "Cancelar", close: "Cerrar", delete: "Eliminar", edit: "Editar", new: "Nuevo", done: "Hecho", loading: "Cargando…", logout: "Salir", back: "Volver" },
+  common: { save: "Guardar", cancel: "Cancelar", close: "Cerrar", delete: "Eliminar", edit: "Editar", new: "Nuevo", done: "Hecho", loading: "Cargando…", logout: "Salir", back: "Volver", offline: "Sin conexión. Reintenta cuando vuelvas a tener red.", retry: "Reintentar" },
   auth: {
     tutorTab: "Tutor / Profe",
     kidTab: "Niño",
@@ -96,6 +96,8 @@ const es = {
     changePwTitle: "Cambiar contraseña",
     currentPwPh: "Contraseña actual",
     pwChanged: "Contraseña cambiada.",
+    birthYearPh: "Año de nacimiento (opcional)",
+    consentLabel: "Confirmo que soy responsable legal del menor y consiento el tratamiento de sus datos.",
   },
   kid: {
     noCoursesTitle: "Sin cursos todavía",
@@ -129,6 +131,14 @@ const es = {
     sessions: "Sesiones",
     noSessions: "Aún no hay sesiones.",
     questions: "preguntas",
+    streak: "Racha",
+    exportData: "Descargar datos",
+    adjustWallet: "Ajustar monedero",
+    amountPh: "Puntos",
+    reasonPh: "Motivo (opcional)",
+    take: "Quitar",
+    give: "Dar",
+    walletDone: "Hecho. Nuevo saldo: {{balance}}",
   },
   install: {
     title: "Instala Smartkids",
@@ -176,6 +186,7 @@ const es = {
     youCan: "¡Tú puedes!",
     finishMission: "Terminar misión",
     next: "Siguiente",
+    checking: "Comprobando…",
   },
   shop: {
     voucherIssued: "Vale emitido: {{name}} — tu familia lo aplicará",
@@ -274,12 +285,12 @@ const es = {
     type_matching: "Emparejar",
     type_step_problem: "Por pasos",
   },
-  hud: { switchProfile: "Cambiar de perfil" },
+  hud: { switchProfile: "Cambiar de perfil", streak: "Racha de {{count}} días" },
   settings: { title: "Ajustes", appearance: "Apariencia", theme: "Tema", system: "Sistema", light: "Claro", dark: "Oscuro", language: "Idioma" },
 };
 
 const en: typeof es = {
-  common: { save: "Save", cancel: "Cancel", close: "Close", delete: "Delete", edit: "Edit", new: "New", done: "Done", loading: "Loading…", logout: "Log out", back: "Back" },
+  common: { save: "Save", cancel: "Cancel", close: "Close", delete: "Delete", edit: "Edit", new: "New", done: "Done", loading: "Loading…", logout: "Log out", back: "Back", offline: "No connection. Try again when you're back online.", retry: "Retry" },
   auth: {
     tutorTab: "Parent / Teacher",
     kidTab: "Kid",
@@ -372,6 +383,8 @@ const en: typeof es = {
     changePwTitle: "Change password",
     currentPwPh: "Current password",
     pwChanged: "Password changed.",
+    birthYearPh: "Birth year (optional)",
+    consentLabel: "I confirm I am the child's legal guardian and consent to the processing of their data.",
   },
   kid: {
     noCoursesTitle: "No courses yet",
@@ -405,6 +418,14 @@ const en: typeof es = {
     sessions: "Sessions",
     noSessions: "No sessions yet.",
     questions: "questions",
+    streak: "Streak",
+    exportData: "Download data",
+    adjustWallet: "Adjust wallet",
+    amountPh: "Points",
+    reasonPh: "Reason (optional)",
+    take: "Take",
+    give: "Give",
+    walletDone: "Done. New balance: {{balance}}",
   },
   install: {
     title: "Install Smartkids",
@@ -452,6 +473,7 @@ const en: typeof es = {
     youCan: "You can do it!",
     finishMission: "Finish mission",
     next: "Next",
+    checking: "Checking…",
   },
   shop: {
     voucherIssued: "Voucher issued: {{name}} — your family will apply it",
@@ -550,7 +572,7 @@ const en: typeof es = {
     type_matching: "Matching",
     type_step_problem: "Step by step",
   },
-  hud: { switchProfile: "Switch profile" },
+  hud: { switchProfile: "Switch profile", streak: "{{count}}-day streak" },
   settings: { title: "Settings", appearance: "Appearance", theme: "Theme", system: "System", light: "Light", dark: "Dark", language: "Language" },
 };
 

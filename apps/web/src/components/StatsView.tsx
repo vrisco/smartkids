@@ -81,7 +81,8 @@ export function StatsView({ stats }: { stats: ProfileStats }) {
         <Tile icon="clock" label={t("stats.avgTime")} value={fmtTime(o.avgTimeMs)} />
         <Tile icon="star" label={t("stats.earned")} value={`+${o.pointsEarned}`} />
         <Tile icon="gift" label={t("stats.spent")} value={`-${o.pointsSpent}`} />
-        <Tile icon="flame" label={t("stats.activeDays")} value={String(o.activeDays)} />
+        <Tile icon="flame" label={t("stats.streak")} value={String(o.streak)} tone="gold" />
+        <Tile icon="sun" label={t("stats.activeDays")} value={String(o.activeDays)} />
         <Tile icon="rocket" label={t("stats.earned7d")} value={`+${o.earned7d}`} />
       </div>
 

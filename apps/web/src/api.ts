@@ -35,6 +35,7 @@ export interface Child {
   username?: string | null;
   avatar: string;
   gradeBand: string;
+  birthYear?: number | null;
 }
 
 export interface Course {
@@ -70,6 +71,7 @@ export interface CustomContent {
 export interface ChildMe {
   child: { id: string; displayName: string; avatar: string; gradeBand: string };
   balance: number;
+  streak: number;
   courses: Course[];
   customContent?: CustomContent[];
 }
@@ -202,6 +204,7 @@ export interface StatsOverview {
   earned7d: number;
   earned30d: number;
   activeDays: number;
+  streak: number;
   lastActivity: string | null;
 }
 export interface SkillStat {
@@ -236,8 +239,26 @@ export interface ProfileStats {
   activity: ActivityDay[];
 }
 
+/** Error de API tipado: distingue un fallo de RED (sin conexión) de una respuesta HTTP de error. */
+export class ApiError extends Error {
+  kind: "network" | "http";
+  status: number;
+  constructor(message: string, kind: "network" | "http", status = 0) {
+    super(message);
+    this.name = "ApiError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
 async function j<T>(url: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(url, opts);
+  let res: Response;
+  try {
+    res = await fetch(url, opts);
+  } catch {
+    // fetch solo lanza por problemas de red (sin conexión, DNS, CORS…), nunca por status HTTP.
+    throw new ApiError("network", "network");
+  }
   if (!res.ok) {
     let msg = `${res.status}`;
     try {
@@ -246,7 +267,7 @@ async function j<T>(url: string, opts?: RequestInit): Promise<T> {
     } catch {
       /* sin cuerpo */
     }
-    throw new Error(msg);
+    throw new ApiError(msg, "http", res.status);
   }
   return (await res.json()) as T;
 }
@@ -256,6 +277,15 @@ const post = (body: unknown): RequestInit => ({
   headers: { "content-type": "application/json" },
   body: JSON.stringify(body),
 });
+
+/** Zona IANA del dispositivo; el servidor la usa para calcular "hoy" de la racha. */
+export function deviceTz(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+}
 
 export const api = {
   // Tutor / admin auth
@@ -277,10 +307,13 @@ export const api = {
 
   // Cursos + niños (tutor)
   courses: () => j<Course[]>(`/api/courses`),
-  createChild: (data: { displayName: string; username: string; avatar: string; gradeBand: string; pin: string; courseIds: string[] }) =>
+  createChild: (data: { displayName: string; username: string; avatar: string; gradeBand: string; pin: string; courseIds: string[]; birthYear?: number | null; consent: boolean }) =>
     j<{ profile: Child }>(`/api/profiles`, post(data)),
-  updateChild: (id: string, data: { displayName?: string; avatar?: string; pin?: string; username?: string }) =>
+  updateChild: (id: string, data: { displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number | null }) =>
     j<{ profile: Child }>(`/api/profiles/${id}/update`, post(data)),
+  adjustWallet: (childId: string, delta: number, reason: string) =>
+    j<{ ok: boolean; balance: number; applied: number }>(`/api/tutor/children/${encodeURIComponent(childId)}/wallet`, post({ delta, reason })),
+  exportChildUrl: (childId: string) => `/api/tutor/children/${encodeURIComponent(childId)}/export`,
   deleteChild: (id: string) => j<{ ok: boolean }>(`/api/profiles/${id}`, { method: "DELETE" }),
   setChildCourses: (id: string, courseIds: string[]) => j<{ ok: boolean; courseIds: string[] }>(`/api/profiles/${id}/courses`, post({ courseIds })),
   childCourses: (id: string) => j<Course[]>(`/api/profiles/${id}/courses`),
@@ -294,7 +327,7 @@ export const api = {
   unlinkSpouse: () => j<{ ok: boolean }>(`/api/tutor/spouse`, { method: "DELETE" }),
 
   // Niño auth
-  childMe: () => j<ChildMe>(`/api/child/me`),
+  childMe: () => j<ChildMe>(`/api/child/me?tz=${encodeURIComponent(deviceTz())}`),
   childLogin: (username: string, pin: string) => j<{ child: ChildMe["child"]; courses: Course[] }>(`/api/child/login`, post({ username, pin })),
   childLogout: () => j<{ ok: boolean }>(`/api/child/logout`, { method: "POST" }),
 
@@ -305,7 +338,7 @@ export const api = {
       `/api/session/next?skill=${encodeURIComponent(skillId)}&profile=${encodeURIComponent(profileId)}` +
         (exclude.length ? `&exclude=${encodeURIComponent(exclude.join(","))}` : ""),
     ),
-  attempt: (body: { profileId: string; exerciseTemplateId: string; answer: Answer; responseTimeMs?: number }) =>
+  attempt: (body: { profileId: string; exerciseTemplateId: string; answer: Answer; responseTimeMs?: number; clientAttemptId?: string }) =>
     j<AttemptResult>(`/api/session/attempt`, post(body)),
   rewards: () => j<Reward[]>(`/api/rewards`),
   redeem: (rewardId: string, profileId: string) => j<{ ok: boolean; balance: number; status: string }>(`/api/rewards/${rewardId}/redeem`, post({ profileId })),
@@ -355,7 +388,7 @@ export const api = {
   deleteRequestAsset: (reqId: string, assetId: string) =>
     j<{ ok: boolean }>(`/api/tutor/content-requests/${reqId}/assets/${assetId}`, { method: "DELETE" }),
   // Estadísticas / seguimiento
-  childStats: () => j<ProfileStats>(`/api/child/stats`),
+  childStats: () => j<ProfileStats>(`/api/child/stats?tz=${encodeURIComponent(deviceTz())}`),
   tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
 
   // Web Push

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, type Answer, type AttemptResult, type Exercise } from "../api";
+import { api, ApiError, type Answer, type AttemptResult, type Exercise } from "../api";
 import { ExerciseInput, FillBlanks, correctAnswerString } from "../components/ExerciseInput";
 import { ExerciseFigure } from "../components/ExerciseFigure";
 import { Icon } from "../components/Icon";
@@ -33,7 +33,9 @@ export function Session({
   const [reviewBudget, setReviewBudget] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [error, setError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const served = useRef<string[]>([]);
+  const attemptId = useRef<string>(""); // id idempotente del intento en curso (uno por ejercicio servido)
 
   const load = useCallback(() => {
     setAnswer(null);
@@ -43,6 +45,7 @@ export function Session({
       .nextExercise(skillId, profileId, served.current)
       .then((ex) => {
         setExercise(ex);
+        attemptId.current = crypto.randomUUID(); // nuevo id por ejercicio: los reintentos comparten id, ejercicios distintos no
         setStartedAt(Date.now());
       })
       .catch(() => setError(true));
@@ -56,15 +59,29 @@ export function Session({
   useEffect(() => keepAwake(), []);
 
   async function submit() {
-    if (!exercise || !answer || result) return;
-    try {
-      const res = await api.attempt({ profileId, exerciseTemplateId: exercise.id, answer, responseTimeMs: Date.now() - startedAt });
-      onBalance(res.balance);
-      served.current = [...served.current, exercise.id];
-      setResult(res);
-      vibrate(res.correct ? 30 : [40, 60, 40]); // háptico: acierto corto, fallo doble
-    } catch {
-      setError(true);
+    if (!exercise || !answer || result || submitting) return;
+    const payload = { profileId, exerciseTemplateId: exercise.id, answer, responseTimeMs: Date.now() - startedAt, clientAttemptId: attemptId.current };
+    setSubmitting(true);
+    // Ante un microcorte de red reintentamos con el MISMO clientAttemptId (el servidor lo deduplica):
+    // no se pierde el intento ni se duplican monedas. Solo damos error si la red no vuelve.
+    for (let tryN = 0; tryN < 3; tryN++) {
+      try {
+        const res = await api.attempt(payload);
+        onBalance(res.balance);
+        served.current = [...served.current, exercise.id];
+        setResult(res);
+        vibrate(res.correct ? 30 : [40, 60, 40]); // háptico: acierto corto, fallo doble
+        setSubmitting(false);
+        return;
+      } catch (e) {
+        if (e instanceof ApiError && e.kind === "network" && tryN < 2) {
+          await new Promise((r) => setTimeout(r, 600 * (tryN + 1)));
+          continue;
+        }
+        setSubmitting(false);
+        setError(true);
+        return;
+      }
     }
   }
 
@@ -191,8 +208,8 @@ export function Session({
       </div>
 
       {!result ? (
-        <button className="btn-primary session-next" disabled={!answer} onClick={submit}>
-          {t("session.check")}
+        <button className="btn-primary session-next" disabled={!answer || submitting} onClick={submit}>
+          {submitting ? t("session.checking") : t("session.check")}
         </button>
       ) : (
         <button className="btn-primary session-next" onClick={advance}>

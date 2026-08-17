@@ -9,7 +9,7 @@ import { GalaxyMap } from "./GalaxyMap";
 import { Session } from "./Session";
 import { RewardShop } from "./RewardShop";
 
-type View = "map" | "session" | "reward";
+type Tab = "home" | "stats" | "shop";
 type PathGroup = { pathId: string; pathName: CustomContent["pathName"]; modules: CustomContent[] };
 
 export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void }) {
@@ -31,21 +31,22 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
     }
   }
   const hasCustom = custom.length > 0;
+  const noContent = data.courses.length === 0 && !hasCustom;
 
+  const [tab, setTab] = useState<Tab>("home");
+  // Sub-navegación DENTRO de "Inicio": curso abierto (galaxia), ficha/módulo o path abiertos.
   const [course, setCourse] = useState<Course | null>(
     data.courses.length === 1 && !hasCustom ? data.courses[0]! : null,
   );
   const [openPath, setOpenPath] = useState<PathGroup | null>(null);
   const [customSkill, setCustomSkill] = useState<CustomContent | null>(null);
-  const [view, setView] = useState<View>("map");
-  const [skillId, setSkillId] = useState<string | null>(null);
+  const [sessionSkillId, setSessionSkillId] = useState<string | null>(null); // sesión de un skill de curso (galaxia)
   const [balance, setBalance] = useState(data.balance);
-  const [homeTab, setHomeTab] = useState<"home" | "stats" | "shop">("home");
 
-  // Al navegar (curso, vista, pestaña, ficha, path) devolvemos el scroll al inicio.
-  useScrollTop(`${course?.id ?? "home"}|${view}|${homeTab}|${customSkill?.skillId ?? ""}|${openPath?.pathId ?? ""}`);
+  const inFullScreen = customSkill !== null || sessionSkillId !== null; // sesión a pantalla completa: sin HUD ni barra
+  useScrollTop(`${tab}|${course?.id ?? ""}|${openPath?.pathId ?? ""}|${customSkill?.skillId ?? ""}|${sessionSkillId ?? ""}`);
 
-  // Ficha o módulo: se juega directamente, sin galaxia intermedia.
+  // Ficha o módulo de contenido a medida: se juega directamente, sin galaxia intermedia.
   if (customSkill) {
     return (
       <div className="app-shell">
@@ -55,183 +56,138 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
       </div>
     );
   }
-
-  // Módulos de un path.
-  if (openPath) {
+  // Sesión de un skill de curso (desde la galaxia).
+  if (sessionSkillId) {
     return (
       <div className="app-shell">
-        <Hud profile={data.child} balance={balance} onExit={onLogout} />
         <div className="app-body">
-          <button className="btn-ghost sm" type="button" onClick={() => setOpenPath(null)} style={{ alignSelf: "flex-start", marginTop: "0.8rem" }}>
-            <Icon name="back" size={14} /> {t("common.back")}
-          </button>
-          <h2 className="screen-title">{tx(openPath.pathName)}</h2>
-          <div className="course-grid">
-            {openPath.modules.map((m, i) => (
-              <button className="course-card custom" key={m.skillId} type="button" onClick={() => setCustomSkill(m)}>
-                <span className="course-emoji">
-                  <Icon name="star" size={22} />
-                </span>
-                <span className="course-text">
-                  <b>
-                    {t("kid.module")} {(m.moduleIndex ?? i) + 1}
-                  </b>
-                  <span className="course-sub">
-                    {m.exercises} {t("content.exercises")}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
+          <Session profileId={data.child.id} skillId={sessionSkillId} onBalance={setBalance} onExit={() => setSessionSkillId(null)} />
         </div>
-      </div>
-    );
-  }
-
-  if (data.courses.length === 0 && !hasCustom) {
-    return (
-      <div className="app-shell">
-        <Hud profile={data.child} balance={balance} onExit={onLogout} />
-        <div className="screen-pad">
-          <h2 className="screen-title">
-            {t("kid.noCoursesTitle")} <Icon name="satellite" size={20} />
-          </h2>
-          <p className="muted">{t("kid.noCoursesBody")}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Inicio: cursos + fichas/paths (contenido a medida) como tarjetas independientes.
-  if (!course) {
-    return (
-      <div className="app-shell">
-        <Hud profile={data.child} balance={balance} onExit={onLogout} />
-        <div className="app-body">
-          {homeTab === "shop" ? (
-            <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />
-          ) : homeTab === "stats" ? (
-            <KidStats />
-          ) : (
-            <>
-              {data.courses.length > 0 && (
-                <>
-                  <div className="screen-kicker" style={{ paddingTop: "1.2rem" }}>
-                    {t("kid.yourCourses")}
-                  </div>
-                  <h2 className="screen-title">{t("kid.whatStudy")}</h2>
-                  <div className="course-grid">
-                    {data.courses.map((cr) => (
-                      <button
-                        className="course-card"
-                        key={cr.id}
-                        type="button"
-                        onClick={() => {
-                          setCourse(cr);
-                          setView("map");
-                        }}
-                      >
-                        <span className="course-emoji">
-                          <Icon name="book" size={22} />
-                        </span>
-                        <b>{tx(cr.nameI18n)}</b>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              {hasCustom && (
-                <>
-                  <div className="screen-kicker" style={{ paddingTop: "1.4rem" }}>
-                    {t("kid.worksheets")}
-                  </div>
-                  <div className="course-grid">
-                    {singles.map((cc) => (
-                      <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
-                        <span className="course-emoji">
-                          <Icon name="star" size={22} />
-                        </span>
-                        <span className="course-text">
-                          <b>{tx(cc.nameI18n)}</b>
-                          <span className="course-sub">
-                            {cc.exercises} {t("content.exercises")}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                    {paths.map((p) => (
-                      <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
-                        <span className="course-emoji">
-                          <Icon name="satellite" size={22} />
-                        </span>
-                        <span className="course-text">
-                          <b>{tx(p.pathName)}</b>
-                          <span className="course-sub">
-                            {p.modules.length} {t("kid.modules")}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
-        <nav className="bottom-nav">
-          <button className={homeTab === "home" ? "on" : ""} onClick={() => setHomeTab("home")}>
-            <span className="ic">
-              <Icon name="planet" size={22} />
-            </span>
-            <span>{t("kid.home")}</span>
-          </button>
-          <button className={homeTab === "stats" ? "on" : ""} onClick={() => setHomeTab("stats")}>
-            <span className="ic">
-              <Icon name="target" size={22} />
-            </span>
-            <span>{t("kid.stats")}</span>
-          </button>
-          <button className={homeTab === "shop" ? "on" : ""} onClick={() => setHomeTab("shop")}>
-            <span className="ic">
-              <Icon name="coin" size={22} />
-            </span>
-            <span>{t("kid.shop")}</span>
-          </button>
-        </nav>
       </div>
     );
   }
 
   return (
     <div className="app-shell">
-      {view !== "session" && <Hud profile={data.child} balance={balance} onExit={onLogout} />}
+      <Hud profile={data.child} balance={balance} streak={data.streak} onExit={onLogout} />
       <div className="app-body">
-        {view === "map" && (
+        {tab === "shop" ? (
+          <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />
+        ) : tab === "stats" ? (
+          <KidStats />
+        ) : /* tab === "home" */ course ? (
           <GalaxyMap
             profileId={data.child.id}
             courseId={course.id}
             courseName={tx(course.nameI18n)}
-            onPlay={(s) => {
-              setSkillId(s);
-              setView("session");
-            }}
+            onPlay={(s) => setSessionSkillId(s)}
             onBack={data.courses.length > 1 || hasCustom ? () => setCourse(null) : undefined}
           />
+        ) : openPath ? (
+          <>
+            <button className="btn-ghost sm" type="button" onClick={() => setOpenPath(null)} style={{ alignSelf: "flex-start", marginTop: "0.8rem" }}>
+              <Icon name="back" size={14} /> {t("common.back")}
+            </button>
+            <h2 className="screen-title">{tx(openPath.pathName)}</h2>
+            <div className="course-grid">
+              {openPath.modules.map((m, i) => (
+                <button className="course-card custom" key={m.skillId} type="button" onClick={() => setCustomSkill(m)}>
+                  <span className="course-emoji">
+                    <Icon name="star" size={22} />
+                  </span>
+                  <span className="course-text">
+                    <b>
+                      {t("kid.module")} {(m.moduleIndex ?? i) + 1}
+                    </b>
+                    <span className="course-sub">
+                      {m.exercises} {t("content.exercises")}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : noContent ? (
+          <div className="screen-pad">
+            <h2 className="screen-title">
+              {t("kid.noCoursesTitle")} <Icon name="satellite" size={20} />
+            </h2>
+            <p className="muted">{t("kid.noCoursesBody")}</p>
+          </div>
+        ) : (
+          <>
+            {data.courses.length > 0 && (
+              <>
+                <div className="screen-kicker" style={{ paddingTop: "1.2rem" }}>
+                  {t("kid.yourCourses")}
+                </div>
+                <h2 className="screen-title">{t("kid.whatStudy")}</h2>
+                <div className="course-grid">
+                  {data.courses.map((cr) => (
+                    <button className="course-card" key={cr.id} type="button" onClick={() => setCourse(cr)}>
+                      <span className="course-emoji">
+                        <Icon name="book" size={22} />
+                      </span>
+                      <b>{tx(cr.nameI18n)}</b>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {hasCustom && (
+              <>
+                <div className="screen-kicker" style={{ paddingTop: "1.4rem" }}>
+                  {t("kid.worksheets")}
+                </div>
+                <div className="course-grid">
+                  {singles.map((cc) => (
+                    <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
+                      <span className="course-emoji">
+                        <Icon name="star" size={22} />
+                      </span>
+                      <span className="course-text">
+                        <b>{tx(cc.nameI18n)}</b>
+                        <span className="course-sub">
+                          {cc.exercises} {t("content.exercises")}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                  {paths.map((p) => (
+                    <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
+                      <span className="course-emoji">
+                        <Icon name="satellite" size={22} />
+                      </span>
+                      <span className="course-text">
+                        <b>{tx(p.pathName)}</b>
+                        <span className="course-sub">
+                          {p.modules.length} {t("kid.modules")}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
         )}
-        {view === "session" && skillId && (
-          <Session profileId={data.child.id} skillId={skillId} onBalance={setBalance} onExit={() => setView("map")} />
-        )}
-        {view === "reward" && <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />}
       </div>
-      {view !== "session" && (
+
+      {!inFullScreen && (
         <nav className="bottom-nav">
-          <button className={view === "map" ? "on" : ""} onClick={() => setView("map")}>
+          <button className={tab === "home" ? "on" : ""} onClick={() => setTab("home")}>
             <span className="ic">
               <Icon name="planet" size={22} />
             </span>
-            <span>{t("kid.galaxy")}</span>
+            <span>{t("kid.home")}</span>
           </button>
-          <button className={view === "reward" ? "on" : ""} onClick={() => setView("reward")}>
+          <button className={tab === "stats" ? "on" : ""} onClick={() => setTab("stats")}>
+            <span className="ic">
+              <Icon name="target" size={22} />
+            </span>
+            <span>{t("kid.stats")}</span>
+          </button>
+          <button className={tab === "shop" ? "on" : ""} onClick={() => setTab("shop")}>
             <span className="ic">
               <Icon name="coin" size={22} />
             </span>

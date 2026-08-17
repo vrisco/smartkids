@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
@@ -119,12 +119,16 @@ function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const loadStats = useCallback(() => {
+    setError(false);
     api
       .tutorChildStats(child.id)
       .then(setStats)
       .catch(() => setError(true));
   }, [child.id]);
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -145,7 +149,72 @@ function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void
         ) : (
           <StatsView stats={stats} />
         )}
+        <WalletAdjust childId={child.id} onDone={loadStats} />
+        <div className="modal-actions" style={{ marginTop: "var(--sp-3)" }}>
+          <a className="btn-ghost sm" href={api.exportChildUrl(child.id)} download>
+            {t("stats.exportData")}
+          </a>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// El tutor da o quita puntos del monedero del niño (premiar/corregir fuera de la app).
+function WalletAdjust({ childId, onDone }: { childId: string; onDone: () => void }) {
+  const { t } = useTranslation();
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function apply(sign: 1 | -1) {
+    const n = parseInt(amount, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api.adjustWallet(childId, sign * n, reason.trim());
+      setAmount("");
+      setReason("");
+      setMsg(t("stats.walletDone", { balance: r.balance }));
+      onDone();
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="stat-block">
+      <div className="stat-block-title">{t("stats.adjustWallet")}</div>
+      <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+        <input
+          className="field"
+          style={{ flex: "0 0 6rem" }}
+          inputMode="numeric"
+          placeholder={t("stats.amountPh")}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/\D/g, "").slice(0, 6))}
+        />
+        <input
+          className="field"
+          style={{ flex: "1 1 8rem" }}
+          placeholder={t("stats.reasonPh")}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+      <div className="row-actions" style={{ marginTop: "var(--sp-2)" }}>
+        <button className="btn-ghost sm" type="button" disabled={busy || !amount} onClick={() => apply(-1)}>
+          <Icon name="close" size={14} /> {t("stats.take")}
+        </button>
+        <button className="btn-primary sm" type="button" disabled={busy || !amount} onClick={() => apply(1)}>
+          <Icon name="plus" size={14} /> {t("stats.give")}
+        </button>
+      </div>
+      {msg && <div className="auth-info" style={{ marginTop: "var(--sp-2)" }}>{msg}</div>}
     </div>
   );
 }
@@ -183,6 +252,8 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
   const [username, setUsername] = useState(child?.username ?? "");
   const [pin, setPin] = useState("");
   const [avatar, setAvatar] = useState<string>(avatarKeyOf(child?.avatar));
+  const [birthYear, setBirthYear] = useState<string>(child?.birthYear != null ? String(child.birthYear) : "");
+  const [consent, setConsent] = useState(false);
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,13 +275,15 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
     setError(null);
     try {
       let id = child?.id;
+      const by = birthYear ? parseInt(birthYear, 10) : null;
       if (editing) {
-        const patch: { displayName: string; avatar: string; username: string; pin?: string } = { displayName: name, avatar, username };
+        const patch: { displayName: string; avatar: string; username: string; pin?: string; birthYear?: number | null } = { displayName: name, avatar, username };
         if (pin.length >= 4) patch.pin = pin;
+        if (by) patch.birthYear = by;
         await api.updateChild(child!.id, patch);
       } else {
         if (pin.length < 4) throw new Error(t("tutor.pinError"));
-        const r = await api.createChild({ displayName: name, username, avatar, gradeBand: "ESO-5", pin, courseIds: sel });
+        const r = await api.createChild({ displayName: name, username, avatar, gradeBand: "ESO-5", pin, courseIds: sel, birthYear: by, consent });
         id = r.profile.id;
       }
       if (id) await api.setChildCourses(id, sel);
@@ -254,6 +327,14 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
         />
+        <input
+          className="field"
+          inputMode="numeric"
+          maxLength={4}
+          placeholder={t("tutor.birthYearPh")}
+          value={birthYear}
+          onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
+        />
         <div className="avatar-pick">
           {AVATAR_KEYS.map((k) => (
             <button key={k} type="button" className={"ava" + (k === avatar ? " on" : "")} onClick={() => setAvatar(k)}>
@@ -271,6 +352,12 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
           ))}
           {courses.length === 0 && <span className="muted">{t("tutor.noCourses")}</span>}
         </div>
+        {!editing && (
+          <label className="muted" style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-start", margin: "var(--sp-2) 0", fontSize: "0.85rem", lineHeight: 1.4 }}>
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: "0.2rem", flexShrink: 0 }} />
+            <span>{t("tutor.consentLabel")}</span>
+          </label>
+        )}
         {error && <div className="auth-error">{error}</div>}
         <div className="modal-actions">
           {editing && (
@@ -281,7 +368,7 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
           <button className="btn-ghost" type="button" onClick={onClose}>
             {t("common.cancel")}
           </button>
-          <button className="btn-primary" type="button" onClick={save} disabled={busy || !name || username.length < 3}>
+          <button className="btn-primary" type="button" onClick={save} disabled={busy || !name || username.length < 3 || (!editing && !consent)}>
             {t("common.save")}
           </button>
         </div>
