@@ -98,6 +98,10 @@ const es = {
     pwChanged: "Contraseña cambiada.",
     birthYearPh: "Año de nacimiento (opcional)",
     consentLabel: "Confirmo que soy responsable legal del menor y consiento el tratamiento de sus datos.",
+    noCoursesAssigned: "Sin cursos asignados",
+    neverActive: "Sin actividad",
+    today: "Hoy",
+    daysAgo: "Hace {{count}} días",
   },
   kid: {
     noCoursesTitle: "Sin cursos todavía",
@@ -139,6 +143,8 @@ const es = {
     take: "Quitar",
     give: "Dar",
     walletDone: "Hecho. Nuevo saldo: {{balance}}",
+    coverage: "Cobertura del temario",
+    covBreakdown: "{{mastered}} dominados · {{started}} en curso · {{notStarted}} sin empezar",
   },
   install: {
     title: "Instala Smartkids",
@@ -385,6 +391,10 @@ const en: typeof es = {
     pwChanged: "Password changed.",
     birthYearPh: "Birth year (optional)",
     consentLabel: "I confirm I am the child's legal guardian and consent to the processing of their data.",
+    noCoursesAssigned: "No courses assigned",
+    neverActive: "No activity",
+    today: "Today",
+    daysAgo: "{{count}} days ago",
   },
   kid: {
     noCoursesTitle: "No courses yet",
@@ -426,6 +436,8 @@ const en: typeof es = {
     take: "Take",
     give: "Give",
     walletDone: "Done. New balance: {{balance}}",
+    coverage: "Curriculum coverage",
+    covBreakdown: "{{mastered}} mastered · {{started}} in progress · {{notStarted}} not started",
   },
   install: {
     title: "Install Smartkids",

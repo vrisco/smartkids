@@ -88,6 +88,29 @@ export function StatsView({ stats }: { stats: ProfileStats }) {
 
       <ActivityChart data={stats.activity} locale={locale} />
 
+      {stats.coverage.length > 0 && (
+        <div className="stat-block">
+          <div className="stat-block-title">{t("stats.coverage")}</div>
+          {stats.coverage.map((c) => {
+            const pct = c.total ? Math.round((c.mastered / c.total) * 100) : 0;
+            return (
+              <div className="stat-skill" key={c.courseId}>
+                <div className="stat-skill-head">
+                  <b>{tx(c.name)}</b>
+                  <span className="stat-skill-acc">{pct}%</span>
+                </div>
+                <div className="goal-bar">
+                  <i style={{ width: pct + "%" }} />
+                </div>
+                <div className="stat-skill-meta">
+                  {t("stats.covBreakdown", { mastered: c.mastered, started: Math.max(0, c.started - c.mastered), notStarted: c.notStarted })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {stats.perSkill.length > 0 && (
         <div className="stat-block">
           <div className="stat-block-title">{t("stats.bySkill")}</div>

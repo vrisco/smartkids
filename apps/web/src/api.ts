@@ -232,11 +232,36 @@ export interface ActivityDay {
   correct: number;
   points: number;
 }
+export interface CourseCoverage {
+  courseId: string;
+  name: LocaleText;
+  total: number;
+  started: number;
+  mastered: number;
+  notStarted: number;
+}
 export interface ProfileStats {
   overview: StatsOverview;
   perSkill: SkillStat[];
   sessions: SessionStat[];
   activity: ActivityDay[];
+  coverage: CourseCoverage[];
+}
+
+// Resumen del hogar: una fila por niño para el panel de mando del tutor.
+export interface ChildSummary {
+  id: string;
+  displayName: string;
+  avatar: string;
+  username?: string | null;
+  balance: number;
+  courseCount: number;
+  customCount: number;
+  attempts: number;
+  accuracyPct: number;
+  streak: number;
+  lastActivity: string | null;
+  pendingRedemptions: number;
 }
 
 /** Error de API tipado: distingue un fallo de RED (sin conexión) de una respuesta HTTP de error. */
@@ -390,6 +415,7 @@ export const api = {
   // Estadísticas / seguimiento
   childStats: () => j<ProfileStats>(`/api/child/stats?tz=${encodeURIComponent(deviceTz())}`),
   tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
+  householdSummary: () => j<ChildSummary[]>(`/api/tutor/summary`),
 
   // Web Push
   pushKey: () => j<{ publicKey: string | null }>(`/api/push/key`),

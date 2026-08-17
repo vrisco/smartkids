@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { ContentPreview } from "../components/ContentPreview";
 import { StatsView } from "../components/StatsView";
@@ -20,10 +20,25 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
   const [changingPw, setChangingPw] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+  const [summary, setSummary] = useState<ChildSummary[] | null>(null);
 
   useEffect(() => {
     api.courses().then(setCourses).catch(() => {});
   }, []);
+
+  const loadSummary = useCallback(() => {
+    api.householdSummary().then(setSummary).catch(() => setSummary(null));
+  }, []);
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary, me.children.length]);
+
+  const summaryById = new Map((summary ?? []).map((s) => [s.id, s]));
+  const lastLabel = (iso: string | null) => {
+    if (!iso) return t("tutor.neverActive");
+    const d = Math.floor((Date.now() - Date.parse(iso)) / 86400000);
+    return d <= 0 ? t("tutor.today") : t("tutor.daysAgo", { count: d });
+  };
 
   async function resendVerify() {
     try {
@@ -72,21 +87,42 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
           </button>
         </div>
         <div className="list">
-          {me.children.map((ch) => (
-            <div className="list-row" key={ch.id}>
-              <Avatar name={ch.avatar} size={38} />
-              <div className="list-main">
-                <b>{ch.displayName}</b>
-                <span>@{ch.username}</span>
+          {me.children.map((ch) => {
+            const s = summaryById.get(ch.id);
+            const noCourses = s ? s.courseCount + s.customCount === 0 : false;
+            return (
+              <div className="list-row" key={ch.id}>
+                <Avatar name={ch.avatar} size={38} />
+                <div className="list-main">
+                  <b>{ch.displayName}</b>
+                  <span>@{ch.username}</span>
+                  {s && (
+                    <span className="muted" style={{ display: "inline-flex", gap: "0.7rem", alignItems: "center", flexWrap: "wrap", fontSize: "0.8rem", marginTop: "0.15rem" }}>
+                      <span style={{ display: "inline-flex", gap: "0.25rem", alignItems: "center" }}>
+                        <Icon name="coin" size={12} /> {s.balance}
+                      </span>
+                      <span style={{ display: "inline-flex", gap: "0.25rem", alignItems: "center" }}>
+                        <Icon name="flame" size={12} /> {s.streak}
+                      </span>
+                      <span>{s.accuracyPct}%</span>
+                      <span>{lastLabel(s.lastActivity)}</span>
+                    </span>
+                  )}
+                  {noCourses && (
+                    <span style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center", fontSize: "0.78rem", color: "#c98a1e", marginTop: "0.15rem" }}>
+                      <Icon name="satellite" size={12} /> {t("tutor.noCoursesAssigned")}
+                    </span>
+                  )}
+                </div>
+                <button className="btn-ghost sm" type="button" onClick={() => setStatsChild(ch)}>
+                  {t("stats.progress")}
+                </button>
+                <button className="btn-ghost sm" type="button" onClick={() => setEditing(ch)}>
+                  {t("common.edit")}
+                </button>
               </div>
-              <button className="btn-ghost sm" type="button" onClick={() => setStatsChild(ch)}>
-                {t("stats.progress")}
-              </button>
-              <button className="btn-ghost sm" type="button" onClick={() => setEditing(ch)}>
-                {t("common.edit")}
-              </button>
-            </div>
-          ))}
+            );
+          })}
           {me.children.length === 0 && <p className="muted screen-pad">{t("tutor.noKids")}</p>}
         </div>
 
@@ -99,7 +135,7 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
 
       {creating && <ChildForm courses={courses} onClose={() => setCreating(false)} onDone={() => { setCreating(false); onRefresh(); }} />}
       {editing && <ChildForm child={editing} courses={courses} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onRefresh(); }} />}
-      {statsChild && <ChildStatsModal child={statsChild} onClose={() => setStatsChild(null)} />}
+      {statsChild && <ChildStatsModal child={statsChild} onClose={() => { setStatsChild(null); loadSummary(); }} />}
       {changingPw && <ChangePassword onClose={() => setChangingPw(false)} />}
       {settingsOpen && (
         <SettingsPanel
