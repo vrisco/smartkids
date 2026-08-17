@@ -29,6 +29,9 @@ export const childProfiles = sqliteTable("child_profiles", {
   username: text("username"), // login propio del niño (único)
   preferredLocale: text("preferred_locale").notNull().default("es"),
   region: text("region"),
+  timezone: text("timezone"), // zona IANA del dispositivo del niño (para calcular "hoy" de la racha)
+  consentAt: text("consent_at"), // ISO: cuándo el tutor consintió el tratamiento de datos del menor (RGPD)
+  consentVersion: text("consent_version"), // versión de la política aceptada
 }, (t) => [uniqueIndex("child_username_uq").on(t.username)]);
 
 /* ---------- Contenido (inmutable, versionado) ---------- */
@@ -187,6 +190,9 @@ export const redemptions = sqliteTable("redemptions", {
     .references(() => rewards.id),
   status: text("status").notNull().default("pending"),
   ts: text("ts").notNull(),
+  // Escudo de racha (streak_freeze): un canje "applied" y sin consumir puede salvar UN día perdido.
+  consumedAt: text("consumed_at"), // ISO en que se gastó el Escudo (null = disponible)
+  consumedFor: text("consumed_for"), // día (yyyy-mm-dd) que cubrió, para que el cálculo sea estable entre recargas
 });
 
 /* ---------- Seguridad ---------- */
