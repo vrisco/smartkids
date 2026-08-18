@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type Me, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { ContentPreview } from "../components/ContentPreview";
+import { correctAnswerString } from "../components/ExerciseInput";
+import { MathText } from "../components/MathText";
 import { StatsView } from "../components/StatsView";
 import { InstallCard } from "../components/InstallCard";
 import { NotificationsToggle } from "../components/NotificationsToggle";
@@ -185,12 +187,47 @@ function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void
         ) : (
           <StatsView stats={stats} />
         )}
+        <Mistakes childId={child.id} />
         <WalletAdjust childId={child.id} onDone={loadStats} />
         <div className="modal-actions" style={{ marginTop: "var(--sp-3)" }}>
           <a className="btn-ghost sm" href={api.exportChildUrl(child.id)} download>
             {t("stats.exportData")}
           </a>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Revisión de errores: qué ha fallado el niño (su respuesta vs la correcta).
+function Mistakes({ childId }: { childId: string }) {
+  const { t } = useTranslation();
+  const [items, setItems] = useState<Mistake[] | null>(null);
+  useEffect(() => {
+    api.childMistakes(childId).then(setItems).catch(() => setItems([]));
+  }, [childId]);
+  if (!items || items.length === 0) return null; // sin errores registrados: no mostramos la sección
+  const ans = (m: Mistake, a: Mistake["given"]) => (m.render && a ? correctAnswerString(m.render, a) : "—");
+  return (
+    <div className="stat-block">
+      <div className="stat-block-title">{t("stats.mistakes")}</div>
+      <div className="mistake-list">
+        {items.map((m, i) => (
+          <div className="mistake" key={i}>
+            <div className="mistake-skill">{tx(m.skillName)}</div>
+            <div className="mistake-stem">
+              <MathText text={m.stem} />
+            </div>
+            <div className="mistake-answers">
+              <span className="mistake-a wrong">
+                <Icon name="close" size={12} /> <MathText text={ans(m, m.given)} />
+              </span>
+              <span className="mistake-a ok">
+                <Icon name="check" size={12} /> <MathText text={ans(m, m.correctAnswer)} />
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

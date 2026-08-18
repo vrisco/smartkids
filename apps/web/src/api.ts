@@ -89,8 +89,20 @@ export interface Exercise {
   type: string;
   stem: string;
   figure?: string | null; // SVG en línea opcional (ilustración)
+  hints?: string[] | null; // pistas/andamiaje que se revelan una a una antes de responder
   contentVersion: string;
   render: RenderPayload;
+}
+
+// Un error reciente del niño (revisión de errores del tutor).
+export interface Mistake {
+  ts: string;
+  skillName: LocaleText;
+  stem: string;
+  type: string;
+  render: RenderPayload | null;
+  given: Answer | null;
+  correctAnswer: Answer | null;
 }
 
 // Preview del tutor: ejercicio COMPLETO (con solución) + estado de visibilidad.
@@ -365,6 +377,9 @@ export const api = {
     ),
   attempt: (body: { profileId: string; exerciseTemplateId: string; answer: Answer; responseTimeMs?: number; clientAttemptId?: string }) =>
     j<AttemptResult>(`/api/session/attempt`, post(body)),
+  // Reserva un ejercicio CONCRETO por id (reintentar el mismo / repaso dirigido a los fallos).
+  retryExercise: (exerciseId: string, profileId: string) =>
+    j<Exercise>(`/api/session/next?profile=${encodeURIComponent(profileId)}&exercise=${encodeURIComponent(exerciseId)}`),
   rewards: () => j<Reward[]>(`/api/rewards`),
   redeem: (rewardId: string, profileId: string) => j<{ ok: boolean; balance: number; status: string }>(`/api/rewards/${rewardId}/redeem`, post({ profileId })),
 
@@ -416,6 +431,7 @@ export const api = {
   childStats: () => j<ProfileStats>(`/api/child/stats?tz=${encodeURIComponent(deviceTz())}`),
   tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
   householdSummary: () => j<ChildSummary[]>(`/api/tutor/summary`),
+  childMistakes: (childId: string) => j<Mistake[]>(`/api/tutor/children/${encodeURIComponent(childId)}/mistakes`),
 
   // Web Push
   pushKey: () => j<{ publicKey: string | null }>(`/api/push/key`),

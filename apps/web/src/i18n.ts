@@ -145,6 +145,7 @@ const es = {
     walletDone: "Hecho. Nuevo saldo: {{balance}}",
     coverage: "Cobertura del temario",
     covBreakdown: "{{mastered}} dominados · {{started}} en curso · {{notStarted}} sin empezar",
+    mistakes: "Errores recientes",
   },
   install: {
     title: "Instala Smartkids",
@@ -193,6 +194,8 @@ const es = {
     finishMission: "Terminar misión",
     next: "Siguiente",
     checking: "Comprobando…",
+    hint: "Pista",
+    retry: "Reintentar",
   },
   shop: {
     voucherIssued: "Vale emitido: {{name}} — tu familia lo aplicará",
@@ -438,6 +441,7 @@ const en: typeof es = {
     walletDone: "Done. New balance: {{balance}}",
     coverage: "Curriculum coverage",
     covBreakdown: "{{mastered}} mastered · {{started}} in progress · {{notStarted}} not started",
+    mistakes: "Recent mistakes",
   },
   install: {
     title: "Install Smartkids",
@@ -486,6 +490,8 @@ const en: typeof es = {
     finishMission: "Finish mission",
     next: "Next",
     checking: "Checking…",
+    hint: "Hint",
+    retry: "Try again",
   },
   shop: {
     voucherIssued: "Voucher issued: {{name}} — your family will apply it",

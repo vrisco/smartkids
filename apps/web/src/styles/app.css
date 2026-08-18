@@ -363,6 +363,66 @@ code {
 .mexp .blank-input {
   padding: 0 0.2em;
 }
+/* --- Pistas / andamiaje en la sesión --- */
+.hints {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.1rem 0 0.3rem;
+}
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.92rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.5rem 0.7rem;
+}
+.hint-btn {
+  align-self: flex-start;
+}
+/* --- Revisión de errores (panel del tutor) --- */
+.mistake-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.mistake {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-2);
+}
+.mistake-skill {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  margin-bottom: 0.2rem;
+}
+.mistake-stem {
+  font-size: 0.98rem;
+  margin-bottom: 0.35rem;
+}
+.mistake-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  font-size: 0.9rem;
+}
+.mistake-a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.mistake-a.wrong {
+  color: var(--bad, #cf4436);
+}
+.mistake-a.ok {
+  color: var(--good, #1a8168);
+}
 .opts {
   display: grid;
   grid-template-columns: 1fr 1fr;

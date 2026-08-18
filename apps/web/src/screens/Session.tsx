@@ -28,32 +28,34 @@ export function Session({
   const [result, setResult] = useState<AttemptResult | null>(null);
   const [phase, setPhase] = useState<"main" | "review">("main");
   const [mainDone, setMainDone] = useState(0);
-  const [wrong, setWrong] = useState(0);
-  const [reviewLeft, setReviewLeft] = useState(0);
-  const [reviewBudget, setReviewBudget] = useState(0);
+  const [failedIds, setFailedIds] = useState<string[]>([]); // ejercicios fallados en la tanda principal
+  const [reviewQueue, setReviewQueue] = useState<string[]>([]); // ids pendientes de repasar (los fallados)
+  const [reviewBudget, setReviewBudget] = useState(0); // tope de reintentos de repaso
+  const [hintsShown, setHintsShown] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [error, setError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const served = useRef<string[]>([]);
   const attemptId = useRef<string>(""); // id idempotente del intento en curso (uno por ejercicio servido)
 
-  const load = useCallback(() => {
+  // Reset común al recibir un ejercicio (nuevo o reintentado).
+  const applyExercise = useCallback((p: Promise<Exercise>) => {
     setAnswer(null);
     setResult(null);
     setExercise(null);
-    api
-      .nextExercise(skillId, profileId, served.current)
-      .then((ex) => {
-        setExercise(ex);
-        attemptId.current = crypto.randomUUID(); // nuevo id por ejercicio: los reintentos comparten id, ejercicios distintos no
-        setStartedAt(Date.now());
-      })
-      .catch(() => setError(true));
-  }, [skillId, profileId]);
+    setHintsShown(0);
+    p.then((ex) => {
+      setExercise(ex);
+      attemptId.current = crypto.randomUUID();
+      setStartedAt(Date.now());
+    }).catch(() => setError(true));
+  }, []);
+  const loadNext = useCallback(() => applyExercise(api.nextExercise(skillId, profileId, served.current)), [applyExercise, skillId, profileId]);
+  const loadId = useCallback((id: string) => applyExercise(api.retryExercise(id, profileId)), [applyExercise, profileId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadNext();
+  }, [loadNext]);
 
   // Mantén la pantalla encendida mientras dura la sesión (se libera al salir).
   useEffect(() => keepAwake(), []);
@@ -62,8 +64,7 @@ export function Session({
     if (!exercise || !answer || result || submitting) return;
     const payload = { profileId, exerciseTemplateId: exercise.id, answer, responseTimeMs: Date.now() - startedAt, clientAttemptId: attemptId.current };
     setSubmitting(true);
-    // Ante un microcorte de red reintentamos con el MISMO clientAttemptId (el servidor lo deduplica):
-    // no se pierde el intento ni se duplican monedas. Solo damos error si la red no vuelve.
+    // Ante un microcorte de red reintentamos con el MISMO clientAttemptId (el servidor lo deduplica).
     for (let tryN = 0; tryN < 3; tryN++) {
       try {
         const res = await api.attempt(payload);
@@ -86,35 +87,39 @@ export function Session({
   }
 
   function advance() {
-    if (!result) return;
+    if (!result || !exercise) return;
     const ok = result.correct;
     if (phase === "main") {
       const nd = mainDone + 1;
-      const totalWrong = wrong + (ok ? 0 : 1);
+      const failed = ok ? failedIds : [...failedIds, exercise.id];
       setMainDone(nd);
-      setWrong(totalWrong);
+      setFailedIds(failed);
       if (nd >= QUESTIONS_PER_SESSION) {
-        if (totalWrong > 0) {
+        // Fin de la tanda: si hubo fallos, se REPASAN esos mismos ejercicios (no otros al azar).
+        const queue = [...new Set(failed)];
+        if (queue.length > 0) {
           setPhase("review");
-          setReviewLeft(totalWrong);
-          setReviewBudget(totalWrong + REVIEW_EXTRA);
-          load();
+          setReviewQueue(queue);
+          setReviewBudget(queue.length + REVIEW_EXTRA);
+          loadId(queue[0]!);
         } else {
           onExit();
         }
         return;
       }
-      load();
+      loadNext();
     } else {
-      const nl = reviewLeft - (ok ? 1 : 0);
-      const nb = reviewBudget - 1;
-      if (nl <= 0 || nb <= 0) {
+      // Repaso: acertar saca el ejercicio de la cola; fallar lo manda al final para reintentarlo.
+      const rest = reviewQueue.filter((id) => id !== exercise.id);
+      const queue = ok ? rest : [...rest, exercise.id];
+      const budget = reviewBudget - 1;
+      if (queue.length === 0 || budget <= 0) {
         onExit();
         return;
       }
-      setReviewLeft(nl);
-      setReviewBudget(nb);
-      load();
+      setReviewQueue(queue);
+      setReviewBudget(budget);
+      loadId(queue[0]!);
     }
   }
 
@@ -138,11 +143,19 @@ export function Session({
     render.type !== "multiple_choice" &&
     render.type !== "true_false";
 
-  const willFinish = Boolean(
-    result &&
-      ((phase === "main" && mainDone + 1 >= QUESTIONS_PER_SESSION && wrong + (result.correct ? 0 : 1) === 0) ||
-        (phase === "review" && (reviewLeft - (result.correct ? 1 : 0) <= 0 || reviewBudget - 1 <= 0))),
-  );
+  const hints = exercise.hints ?? [];
+
+  // ¿El botón termina la misión? Simula la transición de `advance()`.
+  let willFinish = false;
+  if (result) {
+    if (phase === "main") {
+      willFinish = mainDone + 1 >= QUESTIONS_PER_SESSION && (result.correct ? failedIds.length : failedIds.length + 1) === 0;
+    } else {
+      const rest = reviewQueue.filter((id) => id !== exercise.id);
+      const queue = result.correct ? rest : [...rest, exercise.id];
+      willFinish = queue.length === 0 || reviewBudget - 1 <= 0;
+    }
+  }
 
   return (
     <div className="session-screen">
@@ -158,7 +171,7 @@ export function Session({
           </div>
         ) : (
           <div className="review-badge">
-            <Icon name="target" size={14} /> {t("session.reviewLeft", { count: reviewLeft })}
+            <Icon name="target" size={14} /> {t("session.reviewLeft", { count: reviewQueue.length })}
           </div>
         )}
       </div>
@@ -177,6 +190,21 @@ export function Session({
 
       {render.type !== "fill_in_blank" && (
         <ExerciseInput key={exercise.id} render={render} answer={answer} onChange={setAnswer} result={result} />
+      )}
+
+      {!result && hints.length > 0 && (
+        <div className="hints">
+          {hints.slice(0, hintsShown).map((h, i) => (
+            <div className="hint" key={i}>
+              <Icon name="star" size={13} /> <MathText text={h} />
+            </div>
+          ))}
+          {hintsShown < hints.length && (
+            <button className="btn-ghost sm hint-btn" type="button" onClick={() => setHintsShown((n) => n + 1)}>
+              <Icon name="eye" size={14} /> {t("session.hint")}
+            </button>
+          )}
+        </div>
       )}
 
       <div className="ex-foot">
@@ -215,6 +243,10 @@ export function Session({
         <button className="btn-primary session-next" onClick={advance}>
           {willFinish ? (
             t("session.finishMission")
+          ) : phase === "review" ? (
+            <>
+              {t("session.retry")} <Icon name="play" size={16} />
+            </>
           ) : (
             <>
               {t("session.next")} <Icon name="play" size={16} />
