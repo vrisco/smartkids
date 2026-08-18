@@ -74,6 +74,9 @@ const BaseExercise = z.object({
   figure: FigureSchema.optional(),
   difficulty: DifficultySchema,
   feedback: FeedbackSchema.optional(),
+  /** Pistas/andamiaje que se revelan una a una ANTES de responder. No son la solución: es seguro
+   *  enviarlas al cliente. Van de lo general a lo concreto (la última puede casi resolver). */
+  hints: z.array(z.string()).optional(),
 });
 
 /* ---------- Tipos ---------- */
