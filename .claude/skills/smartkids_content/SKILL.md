@@ -32,7 +32,8 @@ Este skill es **autónomo una vez invocado** y **siempre opera contra PRODUCCIÓ
 - **No necesitas `ANTHROPIC_API_KEY` ni el pipeline `content-gen`.** En la Vía B eres TÚ quien lee el material y
   redacta los ejercicios directamente. El endpoint `/api/admin/content/import` valida cada ejercicio en servidor
   (`ExerciseSchema` + `validateExercise`) y rechaza el lote entero con `400` si alguno es inválido: esa es tu red
-  de seguridad, no hace falta un dry-run local.
+  de seguridad. Para lotes grandes, pre-valida además en local con esos MISMOS esquemas (ver «Pre-validación
+  local», más abajo) para no gastar llamadas de prod en `400`s; no es obligatorio, pero ahorra viajes.
 - La única razón para **parar y preguntar** es que falte un dato imprescindible que no puedas inferir de la
   solicitud ni del material (p. ej. la Vía A con una descripción demasiado vaga). En la Vía B no preguntes: toda
   la config viene en la solicitud.
@@ -125,13 +126,55 @@ Autónomo de principio a fin. Para CADA solicitud pendiente:
    - `skill.subjectId`/`gradeBand` = los del curso del niño.
    - Para un path: `skill.pathId`, `skill.pathName` y `skill.moduleIndex` en cada módulo.
    - `assign.childIds` = `[childId]` de la solicitud.
-   - `requestId` = id de la solicitud **solo en la ÚLTIMA llamada** (marca `published` y envía UN email al tutor).
+   - `requestId` = id de la solicitud, en la llamada que CIERRA (la última de un path, o la ÚNICA si `modules` = 1):
+     marca la solicitud `published`, fija `skillId`/`packageId`/`exerciseCount` y envía UN email al tutor. El cierre
+     SOLO ocurre si `requestId` viaja DENTRO del body del import (no basta con tenerlo generado a un lado).
+     **Trampa de `modules` = 1:** como solo hay UNA llamada, ESA debe llevar `requestId`; si se olvida, el contenido
+     se publica y se asigna, pero la solicitud se queda en `uploaded` y NO se envía el email.
    - Cada `exercise` lleva sus campos base (`exerciseId`, `packageId`, `skillId`, `language`, `stem`,
      `difficulty`, `type`) + los del tipo + `feedback`. El endpoint valida y responde `{ ok, exercises, assigned }`.
-6. Si el import responde `400`, corrige el/los ejercicio(s) señalado(s) y reintenta (no dejes la solicitud a medias).
-7. **Verifica en prod** (opcional pero recomendado): la solicitud quedó `status='published'` con `notified_at`, el
-   `child_skills` se creó y hay `numQuestions` plantillas. Reporta al usuario: nº generado, nº rechazado y por qué,
-   módulos/path, a qué niño se asignó, email enviado.
+6. Si el import responde `400`, trae `{ error, detail }` con el mensaje del **primer** ejercicio inválido (sin
+   índice); como cada lote es de un módulo (pocos ejercicios), localízalo, corrígelo o descártalo y reenvía. El
+   import es **idempotente** (upsert del skill, `DELETE`+`INSERT` de plantillas por `packageId`, asignación con
+   `onConflictDoNothing`): reenviar el MISMO body NO duplica nada. Úsalo también para auto-repararte: si una
+   solicitud publicó el contenido pero se quedó en `uploaded` (te faltó el `requestId`), reenvía el mismo body
+   con `requestId` y cerrará bien.
+7. **Verifica en prod (hazlo siempre):** vuelve a `GET .../content-requests?status=uploaded` y confirma que la
+   solicitud YA NO aparece; que quedó `status='published'` con `notified_at`, que el `child_skills` se creó y que
+   hay `numQuestions` plantillas. Reporta al usuario: nº generado, nº rechazado y por qué, módulos/path, a qué niño
+   se asignó, email enviado.
+
+## Pre-validación local (opcional; recomendada para lotes grandes)
+
+El servidor valida y es tu red de seguridad, pero rechaza el **lote entero** con `400` si UN solo ejercicio falla;
+en lotes grandes conviene pre-validar en local con los MISMOS esquemas antes de tocar prod (no gastas viajes). No
+hay que instalar nada: Node >= 22 ejecuta TypeScript con `--experimental-strip-types` y `zod` ya vive en
+`packages/shared/node_modules`, así que puedes importar los esquemas de verdad (la resolución de `zod` sale de la
+ubicación de `exercise.ts`, no de tu script). Usa rutas `file://` absolutas a `packages/shared/src/…`:
+
+```ts
+// validate.ts  ·  node --experimental-strip-types validate.ts cuerpo1.json cuerpo2.json ...
+import { readFileSync } from "node:fs";
+import { ExerciseSchema } from "file:///<repo>/packages/shared/src/exercise.ts";
+import { validateExercise } from "file:///<repo>/packages/shared/src/grading.ts";
+for (const f of process.argv.slice(2))
+  for (const ex of JSON.parse(readFileSync(f, "utf8")).exercises) {
+    const p = ExerciseSchema.safeParse(ex);
+    if (!p.success) { console.log(f, "zod:", p.error.issues[0]?.message); continue; }
+    const v = validateExercise(p.data);
+    if (!v.ok) console.log(f, "self-check:", v.reason);
+    // extra fill_in_blank: el nº de marcadores {{n}} del stem debe == nº de blanks
+  }
+```
+
+Es literalmente lo que corre el endpoint (`ExerciseSchema` + `validateExercise`), así que lo que pase aquí pasa allí.
+
+**Genera con un script, no a mano.** Para decenas de ejercicios, en vez de teclear JSON, escribe un builder pequeño
+(Node) con funciones-fábrica por tipo (garantizan ids únicos y campos base bien puestos) que **calcule las respuestas
+en código** (resolver la ecuación, `Math.pow`, aritmética de fracciones) y meta `assert()` que replanteen el
+resultado. Así el motor verifica la aritmética —el self-check solo comprueba coherencia interna, no la verdad del
+mundo— y emites los N cuerpos de import ya bien formados. No olvides poner `requestId` en el body que CIERRA (paso
+5/6): es fácil pasarlo como metadato del script y olvidar meterlo en el body que se envía.
 
 ## Reglas (no las saltes)
 
