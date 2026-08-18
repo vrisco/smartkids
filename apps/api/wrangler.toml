@@ -8,6 +8,12 @@ compatibility_date = "2026-07-01"
 VAPID_PUBLIC = "BBt5nkdUbJp9PtRHuGsyJXqmAjAdCrULfJ9dOzpCO3LIM6NZ4gDiyI-U1Fw3A-FYmC7C-y6hOOz8TTuESde72-4"
 VAPID_SUBJECT = "https://app.smart-kids.uk"
 
+# Cron: engagement proactivo (resumen semanal + alerta de inactividad). El handler scheduled()
+# es idempotente por día (anti-spam por digestAt/inactivityNotifiedAt), así que basta un disparo diario.
+# 17:00 UTC ≈ 18-19h en España (buena hora para avisar a las familias).
+[triggers]
+crons = ["0 17 * * *"]
+
 # Dominio propio: el Worker se sirve en https://app.smart-kids.uk
 # Cloudflare provisiona el registro DNS de `app` y el certificado TLS automáticamente.
 # (La URL app.smartkids.workers.dev sigue funcionando como respaldo.)

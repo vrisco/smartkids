@@ -139,6 +139,7 @@ Reglas OBLIGATORIAS:
 - step_problem: "steps" en orden, cada uno numeric o short_text con su respuesta.
 - NOTACIÓN MATEMÁTICA (en stem, opciones y prompts): potencias con "^" (2^5, x^2, 2^(-3)), raíces con "√" o "sqrt(...)" (√81, √(9 + 16)), fracciones con "/" (1/2, x/2), multiplicación con "·". El exponente puede llevar paréntesis (10^(-3)) y un hueco puede ir en el exponente (2^{{1}}). NO uses LaTeX (\\frac, \\sqrt) ni superíndices Unicode (²³): la app renderiza esta notación en pantalla.
 - feedback.correct y feedback.incorrect breves; feedback.solution con la solución trabajada. Sin apóstrofos ni comillas raras.
+- Opcional "hints": array de 1-3 pistas que GUÍEN sin dar la solución, de lo general a lo concreto (la última puede casi resolver). Ayudan al alumno atascado antes de responder.
 - difficulty.level en easy/medium/hard y difficulty.numeric entre 0 y 1, con variedad.
 - Las respuestas deben ser CORRECTAS. Revisa la aritmética/los datos.`;
 

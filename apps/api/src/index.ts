@@ -32,6 +32,7 @@ import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simp
 import {
   AnswerSchema,
   ExerciseSchema,
+  canonicalAnswer,
   exerciseFromRow,
   grade,
   redactForClient,
@@ -1276,6 +1277,49 @@ app.get("/api/tutor/summary", async (c) => {
   return c.json(out);
 });
 
+// Revisión de errores: los últimos ejercicios que el niño falló, con SU respuesta y la correcta.
+// Da sentido pedagógico a la precisión (qué se falla, no solo cuánto).
+app.get("/api/tutor/children/:id/mistakes", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const childId = c.req.param("id");
+  if (!(await ownsProfile(db, parentId, childId))) return c.json({ error: "forbidden" }, 403);
+  const rows = await db
+    .select({ ts: attempts.ts, templateId: attempts.exerciseTemplateId, skillId: attempts.skillId, answer: attempts.answerGiven })
+    .from(attempts)
+    .where(and(eq(attempts.profileId, childId), eq(attempts.correct, false)))
+    .orderBy(desc(attempts.ts))
+    .limit(30);
+  if (!rows.length) return c.json([]);
+  const tplIds = [...new Set(rows.map((r) => r.templateId))];
+  const tpls = await db.select().from(exerciseTemplates).where(inArray(exerciseTemplates.id, tplIds));
+  const tplById = new Map(tpls.map((t) => [t.id, t]));
+  const skillIds = [...new Set(rows.map((r) => r.skillId))];
+  const srows = skillIds.length ? await db.select({ id: skills.id, name: skills.nameI18n }).from(skills).where(inArray(skills.id, skillIds)) : [];
+  const nameById = new Map(srows.map((s) => [s.id, s.name]));
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of rows) {
+    const tpl = tplById.get(r.templateId);
+    if (!tpl) continue;
+    let render: unknown = null;
+    let correctAnswer: unknown = null;
+    try {
+      const exercise = exerciseFromRow({
+        id: tpl.id, packageId: tpl.packageId, skillId: tpl.skillId, type: tpl.type, language: tpl.language,
+        contentVersion: tpl.contentVersion, stem: tpl.stem, payload: tpl.payload,
+        difficultyNumeric: tpl.difficultyNumeric, difficultyLevel: tpl.difficultyLevel,
+      });
+      render = redactForClient(exercise); // para que el cliente pueda mapear ids->texto en la respuesta
+      correctAnswer = canonicalAnswer(exercise);
+    } catch {
+      /* plantilla no conforme: se muestra solo el enunciado */
+    }
+    out.push({ ts: r.ts, skillName: nameById.get(r.skillId) ?? { es: r.skillId }, stem: tpl.stem, type: tpl.type, render, given: r.answer ?? null, correctAnswer });
+  }
+  return c.json(out);
+});
+
 /* ================= Web Push ================= */
 
 // Envía un push (sin payload) a todas las suscripciones de un dueño; limpia las caducadas.
@@ -2021,12 +2065,49 @@ app.get("/api/admin/content-requests/:id/assets/:assetId", async (c) => {
   });
 });
 
+// Arma el ejercicio que ve el cliente desde una fila de plantilla: redacta (sin solución), baraja la
+// presentación y adjunta las pistas (andamiaje, seguro de enviar). Devuelve null si el payload no parsea.
+function buildClientExercise(ex: typeof exerciseTemplates.$inferSelect) {
+  let exercise: Exercise;
+  try {
+    exercise = exerciseFromRow({
+      id: ex.id, packageId: ex.packageId, skillId: ex.skillId, type: ex.type, language: ex.language,
+      contentVersion: ex.contentVersion, stem: ex.stem, payload: ex.payload,
+      difficultyNumeric: ex.difficultyNumeric, difficultyLevel: ex.difficultyLevel,
+    });
+  } catch {
+    return null;
+  }
+  const render = shuffleRender(redactForClient(exercise));
+  return {
+    id: ex.id,
+    skillId: ex.skillId,
+    type: exercise.type,
+    stem: exercise.stem,
+    figure: exercise.figure ?? null,
+    hints: exercise.hints ?? null,
+    contentVersion: ex.contentVersion,
+    render,
+  };
+}
+
 app.get("/api/session/next", async (c) => {
   const db = getDb(c.env.DB);
   const profileId = c.req.query("profile");
   if (!profileId) return c.json({ error: "invalid" }, 400);
   const a = await childOrOwner(c, db, profileId);
   if (typeof a !== "string") return a;
+
+  // Reintentar / repaso dirigido a los fallos: servir un ejercicio CONCRETO por id.
+  const forcedId = c.req.query("exercise");
+  if (forcedId) {
+    const [ex] = await db.select().from(exerciseTemplates).where(and(eq(exerciseTemplates.id, forcedId), eq(exerciseTemplates.hidden, false))).limit(1);
+    if (!ex) return c.json({ error: "no exercise found" }, 404);
+    if (!(await childCanAttemptSkill(db, profileId, ex.skillId))) return c.json({ error: "no_course_access" }, 403);
+    const out = buildClientExercise(ex);
+    return out ? c.json(out) : c.json({ error: "no exercise found" }, 404);
+  }
+
   const skillId = c.req.query("skill") ?? "MATH.ESO5.FRAC.ADD";
   // El niño solo puede practicar skills de un curso al que tiene acceso.
   if (!(await childCanAttemptSkill(db, profileId, skillId))) return c.json({ error: "no_course_access" }, 403);
@@ -2062,34 +2143,8 @@ app.get("/api/session/next", async (c) => {
     [pool[i], pool[j]] = [pool[j]!, pool[i]!];
   }
   for (const ex of pool) {
-    let exercise: Exercise;
-    try {
-      exercise = exerciseFromRow({
-        id: ex.id,
-        packageId: ex.packageId,
-        skillId: ex.skillId,
-        type: ex.type,
-        language: ex.language,
-        contentVersion: ex.contentVersion,
-        stem: ex.stem,
-        payload: ex.payload,
-        difficultyNumeric: ex.difficultyNumeric,
-        difficultyLevel: ex.difficultyLevel,
-      });
-    } catch {
-      continue; // payload no conforme al esquema: se salta esta plantilla.
-    }
-    // Redacción anti-cheat: el cliente nunca recibe la solución; barajamos la presentación.
-    const render = shuffleRender(redactForClient(exercise));
-    return c.json({
-      id: ex.id,
-      skillId: ex.skillId,
-      type: exercise.type,
-      stem: exercise.stem,
-      figure: exercise.figure ?? null,
-      contentVersion: ex.contentVersion,
-      render,
-    });
+    const out = buildClientExercise(ex);
+    if (out) return c.json(out); // la primera plantilla que parsea al modelo unificado
   }
   return c.json({ error: "no exercise found" }, 404);
 });
@@ -2169,6 +2224,7 @@ app.post("/api/session/attempt", async (c) => {
       responseTimeMs: body.responseTimeMs ?? null,
       difficultyServed: tpl.difficultyNumeric ?? null,
       ts: now,
+      answerGiven: parsedAns.data,
     })
     .onConflictDoNothing()
     .returning({ id: attempts.id });
@@ -2488,4 +2544,87 @@ app.post("/api/tutor/redemptions/:id/reject", async (c) => {
 app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
-export default app;
+/* ================= Cron: engagement proactivo (resumen semanal + inactividad) ================= */
+
+// Se ejecuta desde el trigger cron (ver wrangler.toml). Idempotente por día gracias a los anti-spam
+// digestAt (tutor) e inactivityNotifiedAt (niño): puede dispararse a diario sin duplicar avisos.
+async function runDailyJobs(env: Env): Promise<void> {
+  const db = getDb(env.DB);
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const APP_URL = "https://app.smart-kids.uk";
+
+  // 1) Alerta de inactividad: niño que YA practicó pero lleva >= 3 días parado (máx. 1 aviso/semana).
+  const kids = await db
+    .select({ id: childProfiles.id, name: childProfiles.displayName, parentId: childProfiles.parentId, notified: childProfiles.inactivityNotifiedAt })
+    .from(childProfiles);
+  for (const kid of kids) {
+    const [last] = await db.select({ ts: sql<string | null>`max(${attempts.ts})` }).from(attempts).where(eq(attempts.profileId, kid.id));
+    const lastTs = last?.ts ? Date.parse(last.ts) : null;
+    if (lastTs == null) continue; // nunca practicó: no molestamos (puede ser recién creado)
+    if ((now - lastTs) / 86400000 < 3) continue;
+    if (kid.notified && now - Date.parse(kid.notified) < 7 * 86400000) continue;
+    const household = await householdIds(db, kid.parentId);
+    const parents = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(inArray(parentAccounts.id, household));
+    const days = Math.floor((now - lastTs) / 86400000);
+    const html = emailLayout(
+      "Hace días que no practica",
+      `<b>${kid.name}</b> lleva ${days} días sin hacer ejercicios. Un pequeño empujón suele bastar para retomar la rutina.`,
+      { url: APP_URL, label: "Abrir smartkids" },
+    );
+    for (const p of parents) await sendEmail(env, p.email, `smartkids · ${kid.name} lleva días sin practicar`, html);
+    for (const pid of household) await notifyOwner(env, db, pid);
+    await db.update(childProfiles).set({ inactivityNotifiedAt: nowIso }).where(eq(childProfiles.id, kid.id));
+  }
+
+  // 2) Resumen semanal por tutor (a lo sumo una vez cada ~7 días), con tema atascado si lo hay.
+  const tutors = await db.select().from(parentAccounts).where(eq(parentAccounts.role, "tutor"));
+  const weekAgo = new Date(now - 7 * 86400000).toISOString();
+  for (const tutor of tutors) {
+    if (tutor.digestAt && now - Date.parse(tutor.digestAt) < 6.5 * 86400000) continue;
+    const household = await householdIds(db, tutor.id);
+    const kidsH = await db.select({ id: childProfiles.id, name: childProfiles.displayName }).from(childProfiles).where(inArray(childProfiles.parentId, household));
+    if (!kidsH.length) {
+      await db.update(parentAccounts).set({ digestAt: nowIso }).where(eq(parentAccounts.id, tutor.id));
+      continue;
+    }
+    const lines: string[] = [];
+    for (const kid of kidsH) {
+      const [agg] = await db
+        .select({ n: sql<number>`count(*)`, ok: sql<number>`sum(case when ${attempts.correct} then 1 else 0 end)` })
+        .from(attempts)
+        .where(and(eq(attempts.profileId, kid.id), gte(attempts.ts, weekAgo)));
+      const n = Number(agg?.n ?? 0);
+      if (n === 0) {
+        lines.push(`<li><b>${kid.name}</b>: sin práctica esta semana.</li>`);
+        continue;
+      }
+      const acc = Math.round((Number(agg?.ok ?? 0) / n) * 100);
+      const bySkill = await db
+        .select({ sk: attempts.skillId, n: sql<number>`count(*)`, ok: sql<number>`sum(case when ${attempts.correct} then 1 else 0 end)` })
+        .from(attempts)
+        .where(and(eq(attempts.profileId, kid.id), gte(attempts.ts, weekAgo)))
+        .groupBy(attempts.skillId);
+      const worst = bySkill
+        .filter((s) => Number(s.n) >= 5 && Number(s.ok) / Number(s.n) < 0.5)
+        .sort((a, b) => Number(a.ok) / Number(a.n) - Number(b.ok) / Number(b.n))[0];
+      let extra = "";
+      if (worst) {
+        const [sn] = await db.select({ name: skills.nameI18n }).from(skills).where(eq(skills.id, worst.sk)).limit(1);
+        const nm = sn ? (sn.name as Record<string, string>).es ?? Object.values(sn.name as Record<string, string>)[0] ?? worst.sk : worst.sk;
+        extra = ` · atascado en ${nm}`;
+      }
+      lines.push(`<li><b>${kid.name}</b>: ${n} ejercicios, ${acc}% de aciertos${extra}.</li>`);
+    }
+    const html = emailLayout("Resumen semanal", `Cómo ha ido la semana de tus niños:<ul>${lines.join("")}</ul>`, { url: APP_URL, label: "Ver el detalle" });
+    await sendEmail(env, tutor.email, "smartkids · resumen semanal", html);
+    await db.update(parentAccounts).set({ digestAt: nowIso }).where(eq(parentAccounts.id, tutor.id));
+  }
+}
+
+export default {
+  fetch: app.fetch,
+  scheduled: (_controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    ctx.waitUntil(runDailyJobs(env));
+  },
+};
