@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Answer, AttemptResult, RenderPayload } from "../api";
 import { Icon } from "./Icon";
-import { MathText } from "./MathText";
+import { MathText, renderMath } from "./MathText";
 
 type Narrow<T extends RenderPayload["type"]> = Extract<RenderPayload, { type: T }>;
 
@@ -106,33 +106,25 @@ export function FillBlanks({
     setVals(nv);
     onChange(nv.every((v) => v.trim() !== "") ? { type: "fill_in_blank", values: nv } : null);
   };
-  const parts = stem.split(/(\{\{\d+\}\})/g);
-  let bi = -1;
-  return (
-    <span className="fill-stem">
-      {parts.map((p, idx) => {
-        if (/^\{\{\d+\}\}$/.test(p)) {
-          bi += 1;
-          const i = bi;
-          const ok = result?.parts ? result.parts[i] : null;
-          const cls = "blank-input" + (ok === true ? " correct" : ok === false ? " wrong" : "");
-          const ph = render.blanks[i]?.placeholder ?? "…";
-          return (
-            <input
-              key={idx}
-              className={cls}
-              disabled={Boolean(result)}
-              value={vals[i] ?? ""}
-              placeholder={ph}
-              size={Math.max(4, ph.length)}
-              onChange={(e) => update(i, e.target.value)}
-            />
-          );
-        }
-        return <MathText key={idx} text={p} />;
-      })}
-    </span>
-  );
+  // El hueco {{n}} se pinta donde toque DENTRO de la fórmula (p. ej. en el exponente de 2^{{1}}).
+  const blank = (n: number) => {
+    const i = Math.max(0, n - 1);
+    const ok = result?.parts ? result.parts[i] : null;
+    const cls = "blank-input" + (ok === true ? " correct" : ok === false ? " wrong" : "");
+    const ph = render.blanks[i]?.placeholder ?? "…";
+    return (
+      <input
+        key={"blank" + i}
+        className={cls}
+        disabled={Boolean(result)}
+        value={vals[i] ?? ""}
+        placeholder={ph}
+        size={Math.max(3, ph.length)}
+        onChange={(e) => update(i, e.target.value)}
+      />
+    );
+  };
+  return <span className="fill-stem">{renderMath(stem, { blank })}</span>;
 }
 
 /* ---------- Ordenar (toques: subir/bajar) ---------- */

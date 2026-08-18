@@ -329,6 +329,40 @@ code {
 .frac .den {
   padding: 0.05em 0.28em 0;
 }
+/* --- Notación matemática (MathText): superíndices, raíces, variables --- */
+.mvar {
+  font-style: italic;
+}
+.mexp {
+  font-size: 0.7em;
+  vertical-align: super;
+  line-height: 0; /* el superíndice no ensancha la línea */
+}
+.root {
+  display: inline-flex;
+  align-items: flex-start;
+  white-space: nowrap;
+}
+.root .rad {
+  margin-right: 0.03em;
+}
+.root .radicand {
+  border-top: 1.6px solid currentColor;
+  padding: 0.06em 0.2em 0;
+  margin-top: 0.14em;
+}
+.mblank {
+  display: inline-block;
+  min-width: 1.3em;
+  height: 1em;
+  border-bottom: 2px dashed currentColor;
+  opacity: 0.5;
+  vertical-align: middle;
+}
+/* Un input de hueco DENTRO de un exponente hereda el tamaño reducido del superíndice. */
+.mexp .blank-input {
+  padding: 0 0.2em;
+}
 .opts {
   display: grid;
   grid-template-columns: 1fr 1fr;
