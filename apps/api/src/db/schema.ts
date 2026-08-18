@@ -13,6 +13,7 @@ export const parentAccounts = sqliteTable("parent_accounts", {
   spouseId: text("spouse_id"), // co-tutor (cónyuge) que comparte los niños; vínculo simétrico
   spousePendingFrom: text("spouse_pending_from"), // invitación de cónyuge pendiente de aceptar (id de quien invita)
   localeFormat: text("locale_format").notNull().default("es-ES"),
+  digestAt: text("digest_at"), // última vez que se le envió el resumen semanal (cron; anti-spam)
   createdAt: text("created_at").notNull(),
 });
 
@@ -32,6 +33,7 @@ export const childProfiles = sqliteTable("child_profiles", {
   timezone: text("timezone"), // zona IANA del dispositivo del niño (para calcular "hoy" de la racha)
   consentAt: text("consent_at"), // ISO: cuándo el tutor consintió el tratamiento de datos del menor (RGPD)
   consentVersion: text("consent_version"), // versión de la política aceptada
+  inactivityNotifiedAt: text("inactivity_notified_at"), // última alerta de inactividad enviada (cron; anti-spam)
 }, (t) => [uniqueIndex("child_username_uq").on(t.username)]);
 
 /* ---------- Contenido (inmutable, versionado) ---------- */
@@ -136,6 +138,7 @@ export const attempts = sqliteTable("attempts", {
   responseTimeMs: integer("response_time_ms"),
   difficultyServed: real("difficulty_served"),
   ts: text("ts").notNull(),
+  answerGiven: text("answer_given", { mode: "json" }), // respuesta que dio el niño (para revisión de errores del tutor)
 });
 
 /* ---------- Economía / recompensas ---------- */
