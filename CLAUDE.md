@@ -59,10 +59,10 @@ pnpm dev            # web (Vite :5173) + api (wrangler dev :8787) en paralelo
 | `pnpm dev` | Levanta web + api en paralelo. |
 | `pnpm build` | `pnpm -r run build` (recursivo). |
 | `pnpm typecheck` | `tsc --noEmit` en todos los paquetes. **content-gen queda fuera** (no define el script). |
+| `pnpm test` | Pruebas de los paquetes que las definen (hoy solo `packages/shared`: grading + corpus de `content/`). |
 | `pnpm format` / `pnpm format:check` | Prettier (defaults, sin config propia). |
 | `pnpm deploy` | Build de la web **y luego** `wrangler deploy` del Worker. El orden importa. |
 | `pnpm db:migrate:remote` | Aplica migraciones a la D1 **de producción**. |
-| `pnpm db:seed:remote` | Ejecuta `apps/api/seed.sql` contra la D1 **de producción**. |
 
 Scripts por paquete (via `pnpm --filter @smartkids/<pkg> run <script>`):
 - **api**: `db:generate` (drizzle-kit), `db:migrate` / `db:seed` (**solo `--local`**), `admin` (CLI de admin), `cf-typegen`.
@@ -212,9 +212,12 @@ git): un `course.json` (metadatos + lista ORDENADA de módulos) y un fichero por
 `{ skill, exercises }`; los ejercicios NO llevan los campos de contexto —`exerciseId`/`packageId`/`skillId`/
 `language`—, los inyecta el builder). `tools/content-gen/src/build-course.ts` (script `build:course`) valida cada
 ejercicio (`validateExercise` + Zod) y emite UN `.sql` **idempotente** (UPSERT de subject/curso/skills, cadena de
-`skill_prerequisites` por orden de módulo, `DELETE`+`INSERT` de paquetes/plantillas) en `out/<courseId>.sql`. Se
+`skill_prerequisites` por orden de módulo, **UPSERT por id** de paquetes/plantillas) en `out/<courseId>.sql`. Se
 aplica con `wrangler d1 execute` (local o `--remote`). **Evolucionar** = editar el JSON del módulo y re-ejecutar
-(los paquetes se reemplazan por completo). El niño ve el curso cuando el tutor se lo **asigna** (asignatura+nivel);
+(la publicación **NO es destructiva**: hace UPSERT por id y marca `exercise_templates.retired=1` lo que ya no viene
+en el lote, porque `attempts` y `coin_awards` las referencian con FK; `hidden` queda fuera del UPDATE para no pisar
+la curación del tutor, y si cambia el enunciado o el payload se libera su `coin_awards` para que el niño vuelva a
+cobrar por contenido nuevo). El niño ve el curso cuando el tutor se lo **asigna** (asignatura+nivel);
 `owner_id` NULL = global. Primer curso: `content/math-eso2-operaciones/` (2º ESO, nivel `ESO-2`, 10 módulos, 118
 ejercicios). Nota: el `gradeBand` del niño es cosmético (HUD), NO filtra contenido: lo entrega el curso asignado.
 
@@ -238,7 +241,7 @@ Todo Cloudflare, free tier (ver `DEPLOY.md`). Config en `apps/api/wrangler.toml`
   `RESEND_API_KEY`, `EMAIL_FROM`, `CONTENT_IMPORT_TOKEN` (token de máquina para el endpoint de import de contenido).
   En local, `.dev.vars` (gitignored) define `EMAIL_DEV_LINKS=true` y el `CONTENT_IMPORT_TOKEN` local.
 - Migraciones D1 al día hasta **`0010`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
-  0010 = `coin_awards`). Migrar/sembrar **producción**: `pnpm db:migrate:remote` / `pnpm db:seed:remote` (tocan
+  0010 = `coin_awards`). Migrar **producción**: `pnpm db:migrate:remote` (toca
   datos reales, cuidado). Los scripts `db:migrate`/`db:seed` del paquete api son **solo `--local`**.
 
 ## 10. Git e identidad — CRÍTICO

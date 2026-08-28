@@ -23,31 +23,69 @@ pnpm --filter @smartkids/api exec wrangler d1 create smartkids
 # 3) Aplicar la migración a la D1 remota
 pnpm run db:migrate:remote
 
-# 4) Sembrar datos iniciales en remoto (mates ESO-5, perfil demo, recompensas)
-pnpm run db:seed:remote
+# 4) Crear la cuenta de admin (no hay registro público: el admin da de alta a los tutores)
+pnpm --filter @smartkids/api run admin -- create admin@tudominio.com "<password-largo>" --remote
 
-# 5) Build de la web + deploy del Worker (sirve SPA + API)
+# 5) Publicar el curso en remoto (contenido real, versionado en content/)
+pnpm --filter @smartkids/content-gen run build:course -- --course ../../content/math-eso2-operaciones
+pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote --file=../../tools/content-gen/out/course_math_eso2_oper.sql
+#   (la ruta es relativa a apps/api porque --filter ejecuta ahi; build:course imprime la ruta absoluta)
+
+# 6) Build de la web + deploy del Worker (sirve SPA + API)
 pnpm run deploy
 #   -> imprime la URL:  https://app.<tu-subdominio>.workers.dev
 ```
 
 Abre esa URL: verás la app «Órbita» hablando con su API, en producción.
 
-## Publicar un paquete de contenido en remoto (opcional)
+## Actualizar un despliegue existente
+
+Los pasos de arriba son el **alta inicial**. Para actualizar una instalacion que ya funciona, el
+orden es OBLIGATORIO y en este sentido:
 
 ```bash
-pnpm --filter @smartkids/content-gen run generate -- --mock
-pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote \
-  --file=tools/content-gen/out/pkg_math_eso5_sub_v1.sql
+# 1) PRIMERO las migraciones. `pnpm run deploy` NO las aplica.
+pnpm run db:migrate:remote
+
+# 2) Y DESPUES el codigo.
+pnpm run deploy
 ```
+
+> **Desplegar sin migrar rompe produccion.** El Worker nuevo consulta columnas que la migracion
+> aun no ha creado y la sesion de ejercicios responde 500 (`no such column: ...`) a los ninos que
+> esten jugando. Si dudas de en que estado esta la base, compruebalo antes:
+>
+> ```bash
+> pnpm --filter @smartkids/api exec wrangler d1 migrations list smartkids --remote
+> ```
+>
+> El orden inverso (codigo antes que esquema) solo es seguro cuando el cambio de esquema es
+> puramente aditivo Y el codigo nuevo no lee todavia lo que anade. No lo asumas: migra primero.
+
+> **NO siembres producción.** `apps/api/seed.sql` es un fichero de DESARROLLO: borra las 27
+> tablas y crea cuentas demo cuyas contraseñas están publicadas en este repositorio
+> (`admin@smartkids.dev` / `admin1234`, `demo@smartkids.dev` / `demo1234`, PIN `1234`).
+> Aplicado a la base real destruye el progreso de niños reales y reinstala credenciales
+> conocidas. Por eso ya no existe el script `db:seed:remote`: el seed solo corre en local con
+> `pnpm --filter @smartkids/api run db:seed`.
+
+## Actualizar el contenido de un curso
+
+Edita el JSON del módulo en `content/<curso>/` y repite el paso 5. La publicación es
+**idempotente**: hace UPSERT por id y retira lo que ya no viene en el lote, así que puedes
+republicar tantas veces como haga falta aunque los niños ya hayan respondido esos ejercicios.
 
 ## Notas
 
 - **Admin (bootstrap):** crea/resetea el usuario admin con la CLI:
-  `pnpm --filter @smartkids/api run admin -- create admin@tudominio.com <password> --remote`.
-  El admin da de alta tutores; no hay registro público.
+  `pnpm --filter @smartkids/api run admin -- create admin@tudominio.com <password> --remote`
+  (o `reset` para cambiar la contraseña). El admin da de alta tutores; no hay registro público.
+  Usa un correo propio, **no** `admin@smartkids.dev`: ese es el de las cuentas demo del seed.
 - **Email real (recuperación/verificación):** configura Resend como secretos:
   `wrangler secret put RESEND_API_KEY` y `wrangler secret put EMAIL_FROM`.
+- **Resto de secretos:** `CONTENT_IMPORT_TOKEN` (import de contenido) y `VAPID_PRIVATE_JWK`
+  (Web Push; sin él las notificaciones se descartan en silencio). `EMAIL_DEV_LINKS` **jamás**
+  debe valer `true` en producción.
 - **Dominio propio:** en el dashboard de Cloudflare (Workers → app → Settings →
   Domains & Routes) puedes añadir un dominio o subdominio custom.
 - **Desarrollo local** sigue igual: `pnpm dev` (web en 5173 + API en 8787). El binding de

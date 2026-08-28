@@ -135,7 +135,8 @@ Autónomo de principio a fin. Para CADA solicitud pendiente:
      `difficulty`, `type`) + los del tipo + `feedback`. El endpoint valida y responde `{ ok, exercises, assigned }`.
 6. Si el import responde `400`, trae `{ error, detail }` con el mensaje del **primer** ejercicio inválido (sin
    índice); como cada lote es de un módulo (pocos ejercicios), localízalo, corrígelo o descártalo y reenvía. El
-   import es **idempotente** (upsert del skill, `DELETE`+`INSERT` de plantillas por `packageId`, asignación con
+   import es **idempotente** (upsert del skill, **UPSERT por id** de plantillas —nunca DELETE: `attempts` y
+   `coin_awards` las referencian con FK—, retirada lógica con `retired=1` de lo que no viene en el lote, asignación con
    `onConflictDoNothing`): reenviar el MISMO body NO duplica nada. Úsalo también para auto-repararte: si una
    solicitud publicó el contenido pero se quedó en `uploaded` (te faltó el `requestId`), reenvía el mismo body
    con `requestId` y cerrará bien.

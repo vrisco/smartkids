@@ -9,7 +9,7 @@ Guía global en `../../CLAUDE.md`; modelo de datos en `../../docs/ARCHITECTURE.m
 - `src/auth.ts` — sesiones (cookies + D1), PBKDF2, tokens de un solo uso, rate-limiting.
 - `src/email.ts` — envío por Resend (con modo mock y `emailLayout`).
 - `src/db/index.ts` — `getDb(d1)` = `drizzle(d1, { schema })`.
-- `src/db/schema.ts` — las 20 tablas Drizzle. **Fuente de verdad del esquema.**
+- `src/db/schema.ts` — las tablas Drizzle (hoy 27). **Fuente de verdad del esquema.**
 - `migrations/` — SQL generado por drizzle-kit (no editar a mano) + `meta/_journal.json`.
 - `seed.sql` — datos iniciales + credenciales demo.
 - `scripts/admin.mjs` — CLI de bootstrap del admin.
@@ -26,7 +26,8 @@ pnpm --filter @smartkids/api run db:seed       # aplica seed.sql   (SOLO --local
 pnpm --filter @smartkids/api run admin -- create <email> <pw> [--remote]
 ```
 
-Para **producción** usa los scripts de la raíz: `pnpm db:migrate:remote`, `pnpm db:seed:remote` (tocan datos reales).
+Para **producción**: `pnpm db:migrate:remote` (toca datos reales). **No existe `db:seed:remote`**: el seed
+borra las 27 tablas y crea cuentas demo con contraseñas publicadas en el repo, así que es SOLO local.
 
 ## Convenciones (síguelas al añadir código)
 
@@ -42,6 +43,14 @@ Para **producción** usa los scripts de la raíz: `pnpm db:migrate:remote`, `pnp
   cónyuge **simétrico**. No introduzcas rutas que asuman acceso por vínculo asimétrico.
 - **Cambios de esquema**: edita `schema.ts` y corre `db:generate`. **No** escribas SQL de migración a mano ni
   edites `meta/_journal.json` (las 0004–0007 se renombraron a mano y el journal está sincronizado).
+
+- **Publicar contenido NO borra plantillas.** `attempts` y `coin_awards` referencian
+  `exercise_templates` con FK sin `ON DELETE`, así que un `DELETE` por `package_id` falla en cuanto un niño ha
+  respondido. El import y los dos builders hacen **UPSERT por id**, retiran el paquete entero antes (`retired=1`)
+  y cada upsert reactiva lo suyo. `hidden` (curación del tutor) queda FUERA del SET; `retired` (retirada
+  automática) es una columna distinta a propósito. Migración `0016`.
+- **Filtra `retired` y `hidden`** en cualquier consulta que sirva o acepte un ejercicio: los ids son adivinables
+  (`<paquete>_<n>`) y las retiradas se acumulan para siempre.
 
 ## Gotchas / cuidado
 

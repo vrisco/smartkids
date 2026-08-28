@@ -260,7 +260,8 @@ empaquetar → publicar**:
    `stem` normalizado, y **auto-resolución matemática independiente** (`evalStem` resuelve `a/b ± c/d` con
    aritmética de fracciones; rechaza si la clave marcada no cuadra o si algún distractor equivale a la solución).
 3. **Empaquetar** — escribe `out/<PACKAGE_ID>.json` y `out/<PACKAGE_ID>.sql`. Reproducible (`CREATED_AT` fijo).
-   El `.sql` es idempotente (DELETE previos por `package_id`/`id`) e inserta `content_packages` +
+   El `.sql` es idempotente por **UPSERT por id** (nunca DELETE de plantillas: `attempts` y `coin_awards` las
+   referencian con clave ajena sin ON DELETE, así que borrarlas impide republicar) e inserta `content_packages` +
    `exercise_templates` con `payload = JSON.stringify({ options, feedback })`.
 4. **Publicar** — **manual**: el script solo imprime el comando `wrangler d1 execute smartkids --file=<...>.sql`.
 

@@ -12,7 +12,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply smartkids --local",
     "db:seed": "wrangler d1 execute smartkids --local --file=./seed.sql",
-    "admin": "node scripts/admin.mjs"
+    "admin": "node scripts/admin.mjs",
+    "backup": "node scripts/backup.mjs"
   },
   "dependencies": {
     "@simplewebauthn/server": "^13.3.2",

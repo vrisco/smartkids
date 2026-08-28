@@ -1,18 +1,41 @@
--- Seed de desarrollo (idempotente): matemáticas ESO-5, fracciones.
+-- ============================================================================
+-- SEED DE DESARROLLO. **NO EJECUTAR CONTRA PRODUCCIÓN.**
+--
+-- Este fichero BORRA todas las tablas y crea cuentas demo con contraseñas
+-- publicadas en este mismo repositorio (ver el bloque de más abajo). Aplicado a
+-- la base real destruye el progreso de niños reales y reinstala credenciales
+-- conocidas por cualquiera que lea el código.
+--
+-- Uso correcto:  pnpm --filter @smartkids/api run db:seed     (siempre --local)
+-- Para producción: migrar + crear el admin con la CLI + publicar el curso.
+--                  Ver DEPLOY.md, paso 4.
+-- ============================================================================
+
+-- Limpieza en orden INVERSO de dependencias: todas las tablas que referencian a
+-- otra van antes que ella. Faltaban ocho y el seed fallaba a mitad sobre una base
+-- con datos, dejando el progreso ya borrado y el resto intacto.
+DELETE FROM coin_awards;
+DELETE FROM child_rewards;
+DELETE FROM child_skills;
 DELETE FROM child_courses;
 DELETE FROM child_sessions;
-DELETE FROM courses;
 DELETE FROM redemptions;
 DELETE FROM rewards;
 DELETE FROM wallet_ledger;
 DELETE FROM wallets;
 DELETE FROM attempts;
 DELETE FROM skill_progress;
+DELETE FROM content_request_assets;
+DELETE FROM content_requests;
 DELETE FROM exercise_templates;
 DELETE FROM content_packages;
 DELETE FROM skill_prerequisites;
 DELETE FROM skills;
+DELETE FROM courses;
 DELETE FROM subjects;
+DELETE FROM push_subscriptions;
+DELETE FROM webauthn_credentials;
+DELETE FROM webauthn_flows;
 DELETE FROM child_profiles;
 DELETE FROM auth_tokens;
 DELETE FROM login_attempts;
@@ -53,8 +76,10 @@ INSERT INTO exercise_templates (id, package_id, skill_id, type, language, conten
    '{"options":[{"id":"a","text":"2/4","isCorrect":true},{"id":"b","text":"1/3","isCorrect":false},{"id":"c","text":"2/3","isCorrect":false},{"id":"d","text":"3/4","isCorrect":false}],"feedback":{"correct":"Multiplicaste arriba y abajo por 2.","incorrect":"Multiplica numerador y denominador por el mismo numero."}}',
    0.25, 'easy');
 
--- Demo: admin (admin@smartkids.dev / admin1234), tutor (demo@smartkids.dev / demo1234),
+-- Cuentas DEMO — solo desarrollo local. Las contraseñas están en el repo a propósito:
+-- admin (admin@smartkids.dev / admin1234), tutor (demo@smartkids.dev / demo1234),
 -- niña Lucía (usuario 'lucia' / PIN 1234) con acceso al curso de matemáticas.
+-- Precisamente por eso este fichero NUNCA debe aplicarse a la base de producción.
 INSERT INTO parent_accounts (id, email, password_hash, email_verified, role, locale_format, created_at) VALUES
   ('par_admin', 'admin@smartkids.dev', 'ed429425ff8b4032424fb4cc2e54a201:8bdfc43e416ee99d9ffb1744447064f12d6268866d83a5cc4eaf7323de7a53c7', 1, 'admin', 'es-ES', '2026-07-11T00:00:00Z'),
   ('par_demo', 'demo@smartkids.dev', '521be1f5a3a1240e43727cd5a4f33a9a:ccbe41ddc77a1febbb5fc8cd1d5f890f175da511f4f5a18aa721c44926858fbd', 1, 'tutor', 'es-ES', '2026-07-11T00:00:00Z');
