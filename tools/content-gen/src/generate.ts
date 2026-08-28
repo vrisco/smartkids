@@ -216,19 +216,28 @@ function buildSql(valid: Exercise[], spec: Spec): string {
     `INSERT OR IGNORE INTO skills (id, subject_id, grade_band, name_i18n, difficulty_base, position, owner_id) VALUES (` +
       `${sqlStr(spec.skillId)}, ${sqlStr(spec.subjectId)}, ${sqlStr(spec.gradeBand)}, ${sqlStr(JSON.stringify(spec.skillName))}, 0.4, 0, ${sqlVal(spec.ownerId ?? null)});`,
   );
-  L.push(`DELETE FROM exercise_templates WHERE package_id=${sqlStr(spec.packageId)};`);
-  L.push(`DELETE FROM content_packages WHERE id=${sqlStr(spec.packageId)};`);
+  // UPSERT, nunca delete+insert: `attempts` y `coin_awards` referencian exercise_templates
+  // con clave ajena, asi que borrarlas impide republicar en cuanto un nino ha respondido.
   L.push(
     `INSERT INTO content_packages (id, subject_id, grade_band, version, status, owner_id, created_at) VALUES (` +
-      `${sqlStr(spec.packageId)}, ${sqlStr(spec.subjectId)}, ${sqlStr(spec.gradeBand)}, ${sqlStr(spec.version)}, 'published', ${sqlVal(spec.ownerId ?? null)}, ${sqlStr(spec.createdAt)});`,
+      `${sqlStr(spec.packageId)}, ${sqlStr(spec.subjectId)}, ${sqlStr(spec.gradeBand)}, ${sqlStr(spec.version)}, 'published', ${sqlVal(spec.ownerId ?? null)}, ${sqlStr(spec.createdAt)}) ` +
+      `ON CONFLICT(id) DO UPDATE SET subject_id=excluded.subject_id, grade_band=excluded.grade_band, ` +
+      `version=excluded.version, status='published', owner_id=excluded.owner_id;`,
   );
+  // Se retira TODO el paquete ANTES de los upserts; cada INSERT ... ON CONFLICT reactiva
+  // (retired=0) lo que sí viene en el lote. Evita un NOT IN con la lista completa de ids.
+  L.push(`UPDATE exercise_templates SET retired=1 WHERE package_id=${sqlStr(spec.packageId)};`);
   valid.forEach((ex, idx) => {
     const id = `${spec.packageId}_${idx + 1}`;
     const payload = JSON.stringify(toStoredPayload(ex));
+    // `hidden` queda FUERA del SET a proposito: es curacion manual del tutor.
     L.push(
-      `INSERT INTO exercise_templates (id, package_id, skill_id, type, language, content_version, stem, payload, difficulty_numeric, difficulty_level) VALUES (` +
+      `INSERT INTO exercise_templates (id, package_id, skill_id, type, language, content_version, stem, payload, difficulty_numeric, difficulty_level, retired) VALUES (` +
         `${sqlStr(id)}, ${sqlStr(spec.packageId)}, ${sqlStr(spec.skillId)}, ${sqlStr(ex.type)}, ${sqlStr(spec.language)}, ${sqlStr(spec.version)}, ` +
-        `${sqlStr(ex.stem)}, ${sqlStr(payload)}, ${ex.difficulty.numeric}, ${sqlStr(ex.difficulty.level)});`,
+        `${sqlStr(ex.stem)}, ${sqlStr(payload)}, ${ex.difficulty.numeric}, ${sqlStr(ex.difficulty.level)}, 0) ` +
+        `ON CONFLICT(id) DO UPDATE SET package_id=excluded.package_id, skill_id=excluded.skill_id, type=excluded.type, ` +
+        `language=excluded.language, content_version=excluded.content_version, stem=excluded.stem, payload=excluded.payload, ` +
+        `difficulty_numeric=excluded.difficulty_numeric, difficulty_level=excluded.difficulty_level, retired=0;`,
     );
   });
   return L.join("\n") + "\n";

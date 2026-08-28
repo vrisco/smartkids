@@ -33,25 +33,58 @@ export function Session({
   const [reviewBudget, setReviewBudget] = useState(0); // tope de reintentos de repaso
   const [hintsShown, setHintsShown] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<null | "red" | "permanente">(null); // fallo al CARGAR: de red (reintentable) o definitivo
+  const [submitError, setSubmitError] = useState(false); // fallo al ENVIAR: el ejercicio sigue en pantalla
   const [submitting, setSubmitting] = useState(false);
   const served = useRef<string[]>([]);
   const attemptId = useRef<string>(""); // id idempotente del intento en curso (uno por ejercicio servido)
+  const lastRun = useRef<(() => Promise<Exercise>) | null>(null); // última carga, para poder reintentarla
+  const cargaId = useRef(0); // generación de carga: descarta respuestas de peticiones ya superadas
 
   // Reset común al recibir un ejercicio (nuevo o reintentado).
-  const applyExercise = useCallback((p: Promise<Exercise>) => {
+  // Recibe un THUNK, no una promesa ya lanzada, para poder REPETIR la petición al reintentar.
+  const applyExercise = useCallback((run: () => Promise<Exercise>) => {
+    lastRun.current = run;
+    const gen = ++cargaId.current; // si el niño pulsa Reintentar dos veces, solo cuenta la última
+    setError(null); // sin esto el flag se quedaba puesto para siempre y encerraba al niño
+    setSubmitError(false);
     setAnswer(null);
     setResult(null);
     setExercise(null);
     setHintsShown(0);
-    p.then((ex) => {
-      setExercise(ex);
-      attemptId.current = crypto.randomUUID();
-      setStartedAt(Date.now());
-    }).catch(() => setError(true));
+    void (async () => {
+      // Un microcorte de red no debe romper la misión: reintentamos como ya hace el envío.
+      for (let tryN = 0; tryN < 3; tryN++) {
+        try {
+          const ex = await run();
+          if (gen !== cargaId.current) return; // llegó tarde: ya hay otra carga en curso
+          setExercise(ex);
+          attemptId.current = crypto.randomUUID();
+          setStartedAt(Date.now());
+          return;
+        } catch (e) {
+          if (gen !== cargaId.current) return;
+          const esRed = e instanceof ApiError && e.kind === "network";
+          if (esRed && tryN < 2) {
+            await new Promise((r) => setTimeout(r, 600 * (tryN + 1)));
+            continue;
+          }
+          // Un 403/404/500 no se arregla reintentando: ofrecer "Volver a intentarlo" sería
+          // mentirle al niño y, en fase de repaso, dejarlo dando vueltas sin terminar la misión.
+          setError(esRed ? "red" : "permanente");
+          return;
+        }
+      }
+    })();
   }, []);
-  const loadNext = useCallback(() => applyExercise(api.nextExercise(skillId, profileId, served.current)), [applyExercise, skillId, profileId]);
-  const loadId = useCallback((id: string) => applyExercise(api.retryExercise(id, profileId)), [applyExercise, profileId]);
+  const loadNext = useCallback(
+    () => applyExercise(() => api.nextExercise(skillId, profileId, served.current)),
+    [applyExercise, skillId, profileId],
+  );
+  const loadId = useCallback((id: string) => applyExercise(() => api.retryExercise(id, profileId)), [applyExercise, profileId]);
+  const retryLoad = useCallback(() => {
+    if (lastRun.current) applyExercise(lastRun.current);
+  }, [applyExercise]);
 
   useEffect(() => {
     loadNext();
@@ -64,6 +97,7 @@ export function Session({
     if (!exercise || !answer || result || submitting) return;
     const payload = { profileId, exerciseTemplateId: exercise.id, answer, responseTimeMs: Date.now() - startedAt, clientAttemptId: attemptId.current };
     setSubmitting(true);
+    setSubmitError(false);
     // Ante un microcorte de red reintentamos con el MISMO clientAttemptId (el servidor lo deduplica).
     for (let tryN = 0; tryN < 3; tryN++) {
       try {
@@ -80,7 +114,8 @@ export function Session({
           continue;
         }
         setSubmitting(false);
-        setError(true);
+        // NO tiramos la pantalla: el ejercicio y la respuesta del niño siguen ahí y puede reintentar.
+        setSubmitError(true);
         return;
       }
     }
@@ -123,8 +158,42 @@ export function Session({
     }
   }
 
-  if (error) return <p className="screen-pad muted">{t("session.connError")}</p>;
-  if (!exercise) return <p className="screen-pad muted">{t("session.loadingMission")}</p>;
+  // Ni el error ni la carga pueden dejar al niño sin salida: se pintan DENTRO del layout de
+  // sesión, que es donde vive el botón de cerrar (antes había un early return que lo escondía
+  // y la sesión ocupa la pantalla completa, sin HUD ni barra inferior: no había forma de salir).
+  if (error !== null || !exercise) {
+    return (
+      <div className="session-screen">
+        <div className="session-top">
+          <button className="icon-btn" onClick={onExit} aria-label={t("session.exitMission")}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        <div className="session-state">
+          {error !== null ? (
+            <>
+              <Orbi className="session-state-orbi float" />
+              <p className="session-state-text">{error === "red" ? t("session.missionOffline") : t("session.missionFailed")}</p>
+              {error === "red" ? (
+                <button className="btn-primary" onClick={retryLoad}>
+                  <Icon name="play" size={16} /> {t("session.connRetry")}
+                </button>
+              ) : (
+                <button className="btn-primary" onClick={loadNext}>
+                  <Icon name="play" size={16} /> {t("session.next")}
+                </button>
+              )}
+              <button className="btn-ghost" onClick={onExit}>
+                {t("session.exitMission")}
+              </button>
+            </>
+          ) : (
+            <p className="session-state-text muted">{t("session.loadingMission")}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const render = exercise.render;
   const qk =
@@ -236,9 +305,12 @@ export function Session({
       </div>
 
       {!result ? (
-        <button className="btn-primary session-next" disabled={!answer || submitting} onClick={submit}>
-          {submitting ? t("session.checking") : t("session.check")}
-        </button>
+        <>
+          {submitError && <p className="session-inline-error">{t("session.sendFailed")}</p>}
+          <button className="btn-primary session-next" disabled={!answer || submitting} onClick={submit}>
+            {submitting ? t("session.checking") : submitError ? t("session.connRetry") : t("session.check")}
+          </button>
+        </>
       ) : (
         <button className="btn-primary session-next" onClick={advance}>
           {willFinish ? (

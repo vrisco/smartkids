@@ -53,6 +53,7 @@ export interface Env {
   VAPID_PUBLIC?: string; // clave pública VAPID (base64url, para el cliente)
   VAPID_PRIVATE_JWK?: string; // clave privada VAPID como JWK (SECRETO)
   VAPID_SUBJECT?: string; // sub del JWT VAPID (URL o mailto:)
+  WEBAUTHN_ORIGINS?: string; // orígenes válidos para passkeys, separados por comas (dev: http://localhost:5173)
 }
 
 const {
@@ -187,6 +188,41 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, childId));
   await db.update(contentRequests).set({ childId: null }).where(eq(contentRequests.childId, childId));
   await db.delete(childProfiles).where(eq(childProfiles.id, childId));
+}
+
+/** Borra un skill PRIVADO con su paquete, plantillas y todo lo que las referencia. */
+async function deletePrivateSkillCascade(db: DB, skillId: string, household: string[]): Promise<void> {
+  const pkgRows = await db.selectDistinct({ pkg: exerciseTemplates.packageId }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const tplRows = await db.select({ id: exerciseTemplates.id }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const tplIds = tplRows.map((r) => r.id);
+  // Sin ON DELETE cascade: hay que respetar el orden de las FKs (coin_awards antes que las plantillas).
+  await db.delete(attempts).where(eq(attempts.skillId, skillId));
+  await db.delete(skillProgress).where(eq(skillProgress.skillId, skillId));
+  await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
+  if (tplIds.length) await db.delete(coinAwards).where(inArray(coinAwards.exerciseTemplateId, tplIds));
+  await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
+  for (const { pkg } of pkgRows) {
+    const [rem] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.packageId, pkg));
+    if ((rem?.n ?? 0) === 0) await db.delete(contentPackages).where(and(eq(contentPackages.id, pkg), inArray(contentPackages.ownerId, household)));
+  }
+  await db.delete(skills).where(eq(skills.id, skillId));
+}
+
+/** Borra una solicitud de contenido, sus metadatos de fichero y los objetos en R2. */
+async function deleteContentRequestCascade(env: Env, db: DB, reqId: string): Promise<void> {
+  const assets = await db.select().from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
+  if (env.UPLOADS) {
+    for (const as of assets) {
+      try {
+        await env.UPLOADS.delete(as.r2Key);
+      } catch {
+        /* el objeto pudo no existir; seguimos */
+      }
+    }
+  }
+  await db.delete(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
+  await db.delete(contentRequests).where(eq(contentRequests.id, reqId));
 }
 
 /** Borra una recompensa y sus asignaciones (child_rewards) y canjes (redemptions). */
@@ -492,16 +528,28 @@ app.delete("/api/admin/tutors/:id", async (c) => {
   const [t] = await db.select({ role: parentAccounts.role, spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, id)).limit(1);
   if (!t || t.role !== "tutor") return c.json({ error: "not_found" }, 404);
   if (t.spouseId) {
-    // Tiene cónyuge: los niños y las recompensas sobreviven. Se reasignan al cónyuge y se deshace el vínculo.
+    // Tiene cónyuge: los niños, las recompensas Y EL CONTENIDO A MEDIDA sobreviven.
+    // Reasignar solo los niños dejaba el contenido privado con un owner_id ya borrado: como las
+    // lecturas revalidan que el dueño siga en el hogar, se volvía invisible e injugable, y el
+    // tutor superviviente tampoco podía borrarlo desde la UI.
     await db.update(childProfiles).set({ parentId: t.spouseId }).where(eq(childProfiles.parentId, id));
     await db.update(rewards).set({ ownerId: t.spouseId }).where(eq(rewards.ownerId, id));
+    await db.update(skills).set({ ownerId: t.spouseId }).where(eq(skills.ownerId, id));
+    await db.update(contentPackages).set({ ownerId: t.spouseId }).where(eq(contentPackages.ownerId, id));
+    await db.update(contentRequests).set({ ownerId: t.spouseId }).where(eq(contentRequests.ownerId, id));
     await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, t.spouseId));
   } else {
-    // Sin cónyuge: se borran sus niños en cascada (con su progreso) y sus recompensas.
+    // Sin cónyuge: se borra todo lo suyo. El orden importa (FKs sin ON DELETE).
     const kids = await db.select({ id: childProfiles.id }).from(childProfiles).where(eq(childProfiles.parentId, id));
     for (const k of kids) await deleteChildCascade(db, k.id);
     const rw = await db.select({ id: rewards.id }).from(rewards).where(eq(rewards.ownerId, id));
     for (const r of rw) await deleteRewardCascade(db, r.id);
+    const sk = await db.select({ id: skills.id }).from(skills).where(eq(skills.ownerId, id));
+    for (const k of sk) await deletePrivateSkillCascade(db, k.id, [id]);
+    // content_requests.owner_id es NOT NULL con FK: sin esto el borrado del tutor fallaba por
+    // clave ajena DESPUÉS de haber destruido su hogar, dejando la cuenta viva y el estado roto.
+    const reqs = await db.select({ id: contentRequests.id }).from(contentRequests).where(eq(contentRequests.ownerId, id));
+    for (const r of reqs) await deleteContentRequestCascade(c.env, db, r.id);
   }
   // Limpia cualquier invitación de cónyuge pendiente que apuntara a este tutor.
   await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, id));
@@ -509,6 +557,22 @@ app.delete("/api/admin/tutors/:id", async (c) => {
   await db.delete(schema.sessions).where(eq(schema.sessions.parentId, id));
   await db.delete(webauthnCredentials).where(eq(webauthnCredentials.parentId, id));
   await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, id));
+
+  // Chequeo previo: si algo sigue apuntando al tutor, abortamos con 409 en vez de descubrirlo
+  // a mitad del DELETE final (la cascada no es atómica: fallar aquí deja el hogar destruido).
+  const pendientes: string[] = [];
+  const [nKids] = await db.select({ n: sql<number>`count(*)` }).from(childProfiles).where(eq(childProfiles.parentId, id));
+  if (Number(nKids?.n ?? 0) > 0) pendientes.push("child_profiles");
+  const [nRw] = await db.select({ n: sql<number>`count(*)` }).from(rewards).where(eq(rewards.ownerId, id));
+  if (Number(nRw?.n ?? 0) > 0) pendientes.push("rewards");
+  const [nSk] = await db.select({ n: sql<number>`count(*)` }).from(skills).where(eq(skills.ownerId, id));
+  if (Number(nSk?.n ?? 0) > 0) pendientes.push("skills");
+  const [nPkg] = await db.select({ n: sql<number>`count(*)` }).from(contentPackages).where(eq(contentPackages.ownerId, id));
+  if (Number(nPkg?.n ?? 0) > 0) pendientes.push("content_packages");
+  const [nReq] = await db.select({ n: sql<number>`count(*)` }).from(contentRequests).where(eq(contentRequests.ownerId, id));
+  if (Number(nReq?.n ?? 0) > 0) pendientes.push("content_requests");
+  if (pendientes.length > 0) return c.json({ error: "referencias_pendientes", tablas: pendientes }, 409);
+
   await db.delete(parentAccounts).where(eq(parentAccounts.id, id));
   return c.json({ ok: true });
 });
@@ -798,9 +862,26 @@ app.get("/api/profiles/:id", async (c) => {
   const id = c.req.param("id");
   const a = await childOrOwner(c, db, id);
   if (typeof a !== "string") return a;
-  const [profile] = await db.select().from(childProfiles).where(eq(childProfiles.id, id)).limit(1);
+  // Columnas EXPLÍCITAS: un select() entero devolvía también login_pin_hash, y un PBKDF2 sobre
+  // un PIN de cuatro cifras se agota offline en segundos. Nunca sirvas la fila completa.
+  const [profile] = await db
+    .select({
+      id: childProfiles.id,
+      parentId: childProfiles.parentId,
+      displayName: childProfiles.displayName,
+      username: childProfiles.username,
+      avatar: childProfiles.avatar,
+      gradeBand: childProfiles.gradeBand,
+      birthYear: childProfiles.birthYear,
+      preferredLocale: childProfiles.preferredLocale,
+      region: childProfiles.region,
+      timezone: childProfiles.timezone,
+    })
+    .from(childProfiles)
+    .where(eq(childProfiles.id, id))
+    .limit(1);
   if (!profile) return c.json({ error: "profile not found" }, 404);
-  const [wallet] = await db.select().from(wallets).where(eq(wallets.profileId, id)).limit(1);
+  const [wallet] = await db.select({ balance: wallets.balance }).from(wallets).where(eq(wallets.profileId, id)).limit(1);
   return c.json({ profile, balance: wallet?.balance ?? 0 });
 });
 
@@ -1380,7 +1461,18 @@ app.post("/api/push/unsubscribe", async (c) => {
   const db = getDb(c.env.DB);
   const body = await c.req.json<{ endpoint?: string }>();
   if (!body?.endpoint) return c.json({ error: "invalid" }, 400);
-  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, body.endpoint));
+  // Resuelve el propietario igual que subscribe: sin esto cualquiera que conociera el endpoint
+  // push de una familia podía desactivarle los avisos (era el único mutador sin guard).
+  const kid = await currentChildId(c, db);
+  let ownerId: string;
+  if (kid) {
+    ownerId = kid;
+  } else {
+    const p = await requireParent(c, db);
+    if (typeof p !== "string") return p;
+    ownerId = p;
+  }
+  await db.delete(pushSubscriptions).where(and(eq(pushSubscriptions.endpoint, body.endpoint), eq(pushSubscriptions.ownerId, ownerId)));
   return c.json({ ok: true });
 });
 
@@ -1389,11 +1481,32 @@ app.post("/api/push/unsubscribe", async (c) => {
 const WEBAUTHN_RP_NAME = "Smartkids";
 const FLOW_TTL_MS = 5 * 60 * 1000;
 
-// rpID = hostname del origen del navegador; origin = ese origen completo (deben cuadrar con la página).
+/**
+ * rpID y origen esperados de WebAuthn.
+ *
+ * NO se derivan de la cabecera `Origin` a secas: es el cliente quien la manda, y es justo el
+ * valor que la verificación tiene que comprobar. Solo se acepta si está en una ALLOWLIST; si no,
+ * se cae al origen real de la petición y la ceremonia fallará, que es lo que debe pasar.
+ *
+ * El rpID sale del origen ya validado, no de la URL de la petición: bajo `wrangler dev` con una
+ * ruta `custom_domain`, el Worker recibe la URL de PRODUCCIÓN aunque se sirva en localhost, así
+ * que derivarlo de ahí daba rpId "app.smart-kids.uk" a un navegador en localhost y el navegador
+ * abortaba con SecurityError. En desarrollo: WEBAUTHN_ORIGINS=http://localhost:5173 en .dev.vars.
+ */
 function rpFromReq(c: Ctx): { rpID: string; origin: string } {
-  const origin = c.req.header("origin") ?? new URL(c.req.url).origin;
-  return { rpID: new URL(origin).hostname, origin };
+  const propio = new URL(c.req.url).origin;
+  const permitidos = [propio, ...(c.env.WEBAUTHN_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean)];
+  const enviado = c.req.header("origin");
+  const origin = enviado && permitidos.includes(enviado) ? enviado : propio;
+  let rpID: string;
+  try {
+    rpID = new URL(origin).hostname; // `Origin: null` (páginas sandboxed) no debe tumbar el handler
+  } catch {
+    rpID = new URL(propio).hostname;
+  }
+  return { rpID, origin };
 }
+
 function b64urlToBytes(s: string): Uint8Array<ArrayBuffer> {
   const pad = "=".repeat((4 - (s.length % 4)) % 4);
   const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
@@ -1665,8 +1778,7 @@ app.post("/api/admin/content/import", async (c) => {
       });
   }
 
-  // Upsert del paquete (idempotente): reemplaza sus plantillas.
-  await db.delete(exerciseTemplates).where(eq(exerciseTemplates.packageId, body.package.id));
+  // Upsert del paquete (idempotente).
   await db
     .insert(contentPackages)
     .values({
@@ -1680,12 +1792,26 @@ app.post("/api/admin/content/import", async (c) => {
     })
     .onConflictDoUpdate({ target: contentPackages.id, set: { version: body.package.version, ownerId: body.package.ownerId ?? null } });
 
+  // Plantillas: UPSERT por id, NUNCA delete+insert. `attempts` y `coin_awards` referencian
+  // exercise_templates con FK sin ON DELETE, así que borrarlas hacía imposible republicar un
+  // paquete en cuanto UN niño había respondido un solo ejercicio (fallo de clave ajena → 500).
+  // Se retira TODO el paquete ANTES de insertar; cada upsert reactiva lo que sí viene en el lote
+  // (el objeto `campos` lleva retired:false). Así no hace falta un NOT IN con la lista entera, que
+  // en un paquete grande superaría el límite de parámetros ligados de D1.
+  await db.update(exerciseTemplates).set({ retired: true }).where(eq(exerciseTemplates.packageId, body.package.id));
   let i = 0;
   for (const ex of parsed) {
     i += 1;
-    await db.insert(exerciseTemplates).values({
-      id: `${body.package.id}_${i}`,
-      packageId: body.package.id,
+    const id = `${body.package.id}_${i}`;
+    // El id de plantilla es POSICIONAL (`<paquete>_<n>`), así que reeditar un ejercicio en sitio
+    // reutiliza el id y `coin_awards` sigue diciendo "ya cobrado": el niño resolvería contenido
+    // NUEVO por cero monedas. Si el contenido cambia, se borra el registro de cobro.
+    const [previa] = await db
+      .select({ stem: exerciseTemplates.stem, payload: exerciseTemplates.payload })
+      .from(exerciseTemplates)
+      .where(eq(exerciseTemplates.id, id))
+      .limit(1);
+    const campos = {
       skillId: ex.skillId,
       type: ex.type,
       language: ex.language,
@@ -1694,7 +1820,16 @@ app.post("/api/admin/content/import", async (c) => {
       payload: toStoredPayload(ex),
       difficultyNumeric: ex.difficulty.numeric,
       difficultyLevel: ex.difficulty.level,
-    });
+      retired: false, // vuelve a estar en el lote: deja de estar retirada
+    };
+    await db
+      .insert(exerciseTemplates)
+      .values({ id, packageId: body.package.id, ...campos })
+      // `hidden` queda FUERA del SET a propósito: es curación manual del tutor y republicar
+      // no debe deshacerla en silencio.
+      .onConflictDoUpdate({ target: exerciseTemplates.id, set: campos });
+    const cambio = previa && (previa.stem !== campos.stem || JSON.stringify(previa.payload) !== JSON.stringify(campos.payload));
+    if (cambio) await db.delete(coinAwards).where(eq(coinAwards.exerciseTemplateId, id));
   }
 
   // Asignar el skill privado a los niños destino.
@@ -1780,7 +1915,10 @@ app.get("/api/tutor/skills/:skillId/exercises", async (c) => {
   const household = await householdIds(db, a);
   const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
   if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
-  const rows = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  const rows = await db
+    .select()
+    .from(exerciseTemplates)
+    .where(and(eq(exerciseTemplates.skillId, skillId), eq(exerciseTemplates.retired, false)));
   const out: Array<{ templateId: string; hidden: boolean; exercise: Exercise }> = [];
   for (const ex of rows) {
     try {
@@ -1829,23 +1967,7 @@ app.delete("/api/tutor/skills/:skillId", async (c) => {
   const household = await householdIds(db, a);
   const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
   if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
-  const pkgRows = await db.selectDistinct({ pkg: exerciseTemplates.packageId }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
-  const tplRows = await db.select({ id: exerciseTemplates.id }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
-  const tplIds = tplRows.map((r) => r.id);
-  // Sin ON DELETE cascade: borramos respetando el orden de las FKs.
-  // coin_awards referencia exercise_templates: hay que vaciarlo ANTES de borrar las plantillas
-  // (si no, un ejercicio con monedas ya concedidas rompe el borrado por FK y el curso no se elimina).
-  await db.delete(attempts).where(eq(attempts.skillId, skillId));
-  await db.delete(skillProgress).where(eq(skillProgress.skillId, skillId));
-  await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
-  if (tplIds.length) await db.delete(coinAwards).where(inArray(coinAwards.exerciseTemplateId, tplIds));
-  await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
-  await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
-  for (const { pkg } of pkgRows) {
-    const [rem] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.packageId, pkg));
-    if ((rem?.n ?? 0) === 0) await db.delete(contentPackages).where(and(eq(contentPackages.id, pkg), inArray(contentPackages.ownerId, household)));
-  }
-  await db.delete(skills).where(eq(skills.id, skillId));
+  await deletePrivateSkillCascade(db, skillId, household);
   return c.json({ ok: true });
 });
 
@@ -1858,18 +1980,7 @@ app.delete("/api/tutor/content-requests/:id", async (c) => {
   const household = await householdIds(db, a);
   const [req] = await db.select({ ownerId: contentRequests.ownerId }).from(contentRequests).where(eq(contentRequests.id, reqId)).limit(1);
   if (!req || !household.includes(req.ownerId)) return c.json({ error: "forbidden" }, 403);
-  const assets = await db.select().from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
-  if (c.env.UPLOADS) {
-    for (const as of assets) {
-      try {
-        await c.env.UPLOADS.delete(as.r2Key);
-      } catch {
-        /* el objeto pudo no existir; seguimos */
-      }
-    }
-  }
-  await db.delete(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
-  await db.delete(contentRequests).where(eq(contentRequests.id, reqId));
+  await deleteContentRequestCascade(c.env, db, reqId);
   return c.json({ ok: true });
 });
 
@@ -2101,23 +2212,26 @@ app.get("/api/session/next", async (c) => {
   // Reintentar / repaso dirigido a los fallos: servir un ejercicio CONCRETO por id.
   const forcedId = c.req.query("exercise");
   if (forcedId) {
-    const [ex] = await db.select().from(exerciseTemplates).where(and(eq(exerciseTemplates.id, forcedId), eq(exerciseTemplates.hidden, false))).limit(1);
+    const [ex] = await db.select().from(exerciseTemplates).where(and(eq(exerciseTemplates.id, forcedId), eq(exerciseTemplates.hidden, false), eq(exerciseTemplates.retired, false))).limit(1);
     if (!ex) return c.json({ error: "no exercise found" }, 404);
     if (!(await childCanAttemptSkill(db, profileId, ex.skillId))) return c.json({ error: "no_course_access" }, 403);
     const out = buildClientExercise(ex);
     return out ? c.json(out) : c.json({ error: "no exercise found" }, 404);
   }
 
-  const skillId = c.req.query("skill") ?? "MATH.ESO5.FRAC.ADD";
+  // Sin default: apuntaba a un skill del seed de demo (MATH.ESO5.FRAC.ADD) que ni siquiera
+  // existe en producción. Si el cliente no dice qué practicar, es un error suyo.
+  const skillId = c.req.query("skill");
+  if (!skillId) return c.json({ error: "invalid" }, 400);
   // El niño solo puede practicar skills de un curso al que tiene acceso.
   if (!(await childCanAttemptSkill(db, profileId, skillId))) return c.json({ error: "no_course_access" }, 403);
 
   // Banco de plantillas del skill (con un tope de seguridad); ya no solo las 10 primeras.
-  // Excluye las ocultas por el tutor: el niño no las recibe.
+  // Excluye las ocultas por el tutor y las retiradas al republicar: el niño no las recibe.
   const rows = await db
     .select()
     .from(exerciseTemplates)
-    .where(and(eq(exerciseTemplates.skillId, skillId), eq(exerciseTemplates.hidden, false)))
+    .where(and(eq(exerciseTemplates.skillId, skillId), eq(exerciseTemplates.hidden, false), eq(exerciseTemplates.retired, false)))
     .limit(200);
   if (rows.length === 0) return c.json({ error: "no exercise found" }, 404);
 
@@ -2164,7 +2278,14 @@ app.post("/api/session/attempt", async (c) => {
   if (typeof a !== "string") return a;
 
   // Fuente de verdad: la plantilla del ejercicio. El skill se DERIVA de ella (no se confía en el cliente).
-  const [tpl] = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.id, body.exerciseTemplateId)).limit(1);
+  // Se excluyen las RETIRADAS y las OCULTAS: los ids son adivinables (`<paquete>_<n>`) y las
+  // retiradas se acumulan para siempre, así que sin este filtro cualquiera podría puntuar y cobrar
+  // monedas con ejercicios que el motor no sirve nunca.
+  const [tpl] = await db
+    .select()
+    .from(exerciseTemplates)
+    .where(and(eq(exerciseTemplates.id, body.exerciseTemplateId), eq(exerciseTemplates.retired, false), eq(exerciseTemplates.hidden, false)))
+    .limit(1);
   if (!tpl) return c.json({ error: "exercise not found" }, 404);
   const skillId = tpl.skillId;
   if (!(await childCanAttemptSkill(db, body.profileId, skillId))) return c.json({ error: "no_course_access" }, 403);

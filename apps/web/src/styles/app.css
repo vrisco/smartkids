@@ -260,6 +260,37 @@ code {
   /* La sesión oculta la cabecera: respeta la barra de estado en iOS standalone. */
   padding-top: env(safe-area-inset-top);
 }
+/* Estado de carga / sin conexión DENTRO de la sesión: el botón de salir sigue arriba. */
+.session-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  text-align: center;
+  padding: var(--sp-6) var(--sp-4);
+}
+.session-state-orbi {
+  width: 108px;
+  height: auto;
+}
+.session-state-text {
+  margin: 0;
+  max-width: 26ch;
+  color: var(--text-dim);
+}
+.session-state .btn-primary,
+.session-state .btn-ghost {
+  min-width: 15rem;
+}
+.session-inline-error {
+  margin: 0;
+  text-align: center;
+  color: var(--coral);
+  font-size: 0.92rem;
+}
+
 .icon-btn {
   width: 34px;
   height: 34px;

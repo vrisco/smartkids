@@ -20,7 +20,13 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       // Inyecta el handler de Web Push (public/push-sw.js) en el SW generado.
-      workbox: { importScripts: ["push-sw.js"] },
+      workbox: {
+        importScripts: ["push-sw.js"],
+        // El fallback de navegación NO puede tragarse /api/*: sin esta lista el service worker
+        // respondía index.html a la descarga de datos del niño (portabilidad RGPD), y solo
+        // fallaba en producción con la app instalada.
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       manifest: {
         name: "Smartkids · Órbita",
         short_name: "Smartkids",

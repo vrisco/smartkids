@@ -230,21 +230,40 @@ function buildSql(course: Course, mods: BuiltModule[]): string {
     );
   }
 
-  // Paquetes + plantillas: se reemplazan por completo (permite evolucionar el contenido).
+  // Paquetes + plantillas: UPSERT por id, NUNCA delete+insert.
+  // `attempts` y `coin_awards` referencian exercise_templates con clave ajena sin ON DELETE,
+  // así que borrar las plantillas hacía fallar la republicación en cuanto un niño había
+  // respondido un solo ejercicio: evolucionar el contenido era imposible en producción.
   for (const m of mods) {
-    L.push(`DELETE FROM exercise_templates WHERE package_id=${sqlStr(m.packageId)};`);
-    L.push(`DELETE FROM content_packages WHERE id=${sqlStr(m.packageId)};`);
     L.push(
       `INSERT INTO content_packages (id, subject_id, grade_band, version, status, owner_id, created_at) VALUES (` +
-        `${sqlStr(m.packageId)}, ${sqlStr(course.subjectId)}, ${sqlStr(course.gradeBand)}, ${sqlStr(course.version)}, 'published', NULL, ${sqlStr(createdAt)});`,
+        `${sqlStr(m.packageId)}, ${sqlStr(course.subjectId)}, ${sqlStr(course.gradeBand)}, ${sqlStr(course.version)}, 'published', NULL, ${sqlStr(createdAt)}) ` +
+        `ON CONFLICT(id) DO UPDATE SET subject_id=excluded.subject_id, grade_band=excluded.grade_band, ` +
+        `version=excluded.version, status='published', owner_id=NULL;`,
     );
+    // Se retira TODO el paquete ANTES de los upserts; cada INSERT ... ON CONFLICT reactiva
+    // (retired=0) lo que sí viene en el lote. Evita un NOT IN con la lista completa de ids.
+    L.push(`UPDATE exercise_templates SET retired=1 WHERE package_id=${sqlStr(m.packageId)};`);
     m.exercises.forEach((ex, idx) => {
       const id = `${m.packageId}_${idx + 1}`;
       const payload = JSON.stringify(toStoredPayload(ex));
+      // El id es POSICIONAL, así que reeditar un ejercicio reutiliza el id y `coin_awards` seguiría
+      // diciendo "ya cobrado": el niño resolvería contenido NUEVO por cero monedas. Si el contenido
+      // cambia, se borra el registro de cobro. (Si el JSON difiere solo en formato, el efecto es que
+      // se puede volver a cobrar: preferimos ese error al de trabajar gratis.)
       L.push(
-        `INSERT INTO exercise_templates (id, package_id, skill_id, type, language, content_version, stem, payload, difficulty_numeric, difficulty_level) VALUES (` +
+        `DELETE FROM coin_awards WHERE exercise_template_id=${sqlStr(id)} AND EXISTS (` +
+          `SELECT 1 FROM exercise_templates t WHERE t.id=${sqlStr(id)} ` +
+          `AND (t.stem<>${sqlStr(ex.stem)} OR t.payload<>${sqlStr(payload)}));`,
+      );
+      // `hidden` queda FUERA del SET a propósito: es curación manual del tutor.
+      L.push(
+        `INSERT INTO exercise_templates (id, package_id, skill_id, type, language, content_version, stem, payload, difficulty_numeric, difficulty_level, retired) VALUES (` +
           `${sqlStr(id)}, ${sqlStr(m.packageId)}, ${sqlStr(m.skillId)}, ${sqlStr(ex.type)}, ${sqlStr(course.language)}, ${sqlStr(course.version)}, ` +
-          `${sqlStr(ex.stem)}, ${sqlStr(payload)}, ${ex.difficulty.numeric}, ${sqlStr(ex.difficulty.level)});`,
+          `${sqlStr(ex.stem)}, ${sqlStr(payload)}, ${ex.difficulty.numeric}, ${sqlStr(ex.difficulty.level)}, 0) ` +
+          `ON CONFLICT(id) DO UPDATE SET package_id=excluded.package_id, skill_id=excluded.skill_id, type=excluded.type, ` +
+          `language=excluded.language, content_version=excluded.content_version, stem=excluded.stem, payload=excluded.payload, ` +
+          `difficulty_numeric=excluded.difficulty_numeric, difficulty_level=excluded.difficulty_level, retired=0;`,
       );
     });
   }
