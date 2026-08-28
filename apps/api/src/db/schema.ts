@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 type LocaleText = Record<string, string>;
 
@@ -34,7 +34,10 @@ export const childProfiles = sqliteTable("child_profiles", {
   consentAt: text("consent_at"), // ISO: cuándo el tutor consintió el tratamiento de datos del menor (RGPD)
   consentVersion: text("consent_version"), // versión de la política aceptada
   inactivityNotifiedAt: text("inactivity_notified_at"), // última alerta de inactividad enviada (cron; anti-spam)
-}, (t) => [uniqueIndex("child_username_uq").on(t.username)]);
+}, (t) => [
+  uniqueIndex("child_username_uq").on(t.username),
+  index("children_parent_idx").on(t.parentId), // niños del hogar, en cada carga del panel
+]);
 
 /* ---------- Contenido (inmutable, versionado) ---------- */
 
@@ -57,7 +60,10 @@ export const skills = sqliteTable("skills", {
   pathId: text("path_id"), // agrupa módulos de un mismo "path"; null = ficha suelta
   pathName: text("path_name", { mode: "json" }).$type<LocaleText>(), // nombre del path (si es módulo de uno)
   moduleIndex: integer("module_index").notNull().default(0), // orden del módulo dentro del path
-});
+}, (t) => [
+  index("skills_owner_idx").on(t.ownerId), // contenido privado del hogar
+  index("skills_subject_grade_idx").on(t.subjectId, t.gradeBand), // catálogo por curso
+]);
 
 export const skillPrerequisites = sqliteTable(
   "skill_prerequisites",
@@ -69,7 +75,7 @@ export const skillPrerequisites = sqliteTable(
       .notNull()
       .references(() => skills.id),
   },
-  (t) => [primaryKey({ columns: [t.skillId, t.prerequisiteId] })],
+  (t) => [primaryKey({ columns: [t.skillId, t.prerequisiteId] }), index("skill_prereq_prereq_idx").on(t.prerequisiteId)],
 );
 
 export const contentPackages = sqliteTable("content_packages", {
@@ -100,7 +106,18 @@ export const exerciseTemplates = sqliteTable("exercise_templates", {
   difficultyNumeric: real("difficulty_numeric").notNull().default(0.5),
   difficultyLevel: text("difficulty_level").notNull().default("medium"),
   hidden: integer("hidden", { mode: "boolean" }).notNull().default(false), // el tutor puede ocultar un ejercicio: el niño no lo recibe
-});
+  /**
+   * Retirada AUTOMÁTICA al republicar: la plantilla ya no viene en el lote nuevo, pero no se
+   * puede borrar porque `attempts` y `coin_awards` la referencian. Es distinta de `hidden`
+   * (curación manual del tutor) para que republicar no pise su decisión ni deje ejercicios
+   * ocultos para siempre si el paquete vuelve a crecer.
+   */
+  retired: integer("retired", { mode: "boolean" }).notNull().default(false),
+}, (t) => [
+  // Banco de ejercicios de un skill: se consulta en CADA ejercicio servido.
+  index("templates_skill_idx").on(t.skillId, t.retired, t.hidden),
+  index("templates_package_idx").on(t.packageId), // publicación y retirada por paquete
+]);
 
 /* ---------- Progreso (mutable, por perfil) ---------- */
 
@@ -119,7 +136,7 @@ export const skillProgress = sqliteTable(
     status: text("status").notNull().default("available"),
     fsrs: text("fsrs", { mode: "json" }),
   },
-  (t) => [primaryKey({ columns: [t.profileId, t.skillId] })],
+  (t) => [primaryKey({ columns: [t.profileId, t.skillId] }), index("skill_progress_skill_idx").on(t.skillId)],
 );
 
 export const attempts = sqliteTable("attempts", {
@@ -139,7 +156,12 @@ export const attempts = sqliteTable("attempts", {
   difficultyServed: real("difficulty_served"),
   ts: text("ts").notNull(),
   answerGiven: text("answer_given", { mode: "json" }), // respuesta que dio el niño (para revisión de errores del tutor)
-});
+}, (t) => [
+  // La tabla más leída del sistema: motor de sesión, estadísticas, racha y cron.
+  index("attempts_profile_skill_ts_idx").on(t.profileId, t.skillId, t.ts), // anti-repetición de session/next
+  index("attempts_profile_ts_idx").on(t.profileId, t.ts), // racha, estadísticas y última actividad
+  index("attempts_template_idx").on(t.exerciseTemplateId), // revisión de errores del tutor
+]);
 
 /* ---------- Economía / recompensas ---------- */
 
@@ -158,7 +180,7 @@ export const walletLedger = sqliteTable("wallet_ledger", {
   delta: integer("delta").notNull(),
   reason: text("reason").notNull(),
   ts: text("ts").notNull(),
-});
+}, (t) => [index("ledger_profile_ts_idx").on(t.profileId, t.ts)]); // earnedSince y el monedero
 
 export const rewards = sqliteTable("rewards", {
   id: text("id").primaryKey(),
@@ -181,7 +203,7 @@ export const sessions = sqliteTable("sessions", {
     .references(() => parentAccounts.id),
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
-});
+}, (t) => [index("sessions_parent_idx").on(t.parentId), index("sessions_expires_idx").on(t.expiresAt)]);
 
 export const redemptions = sqliteTable("redemptions", {
   id: text("id").primaryKey(),
@@ -196,7 +218,10 @@ export const redemptions = sqliteTable("redemptions", {
   // Escudo de racha (streak_freeze): un canje "applied" y sin consumir puede salvar UN día perdido.
   consumedAt: text("consumed_at"), // ISO en que se gastó el Escudo (null = disponible)
   consumedFor: text("consumed_for"), // día (yyyy-mm-dd) que cubrió, para que el cálculo sea estable entre recargas
-});
+}, (t) => [
+  index("redemptions_profile_ts_idx").on(t.profileId, t.ts), // límites por ventana y "mis canjes"
+  index("redemptions_reward_idx").on(t.rewardId), // bandeja del tutor y borrado en cascada
+]);
 
 /* ---------- Seguridad ---------- */
 
@@ -208,13 +233,13 @@ export const authTokens = sqliteTable("auth_tokens", {
   type: text("type").notNull(), // 'verify' | 'reset'
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
-});
+}, (t) => [index("auth_tokens_parent_idx").on(t.parentId), index("auth_tokens_expires_idx").on(t.expiresAt)]);
 
 export const loginAttempts = sqliteTable("login_attempts", {
   id: text("id").primaryKey(),
   ident: text("ident").notNull(),
   ts: text("ts").notNull(),
-});
+}, (t) => [index("login_attempts_ident_ts_idx").on(t.ident, t.ts)]); // rate-limit del login
 
 /* ---------- Sesiones de niño + cursos ---------- */
 
@@ -225,7 +250,7 @@ export const childSessions = sqliteTable("child_sessions", {
     .references(() => childProfiles.id),
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
-});
+}, (t) => [index("child_sessions_child_idx").on(t.childId), index("child_sessions_expires_idx").on(t.expiresAt)]);
 
 /** Un curso = asignatura + nivel (p.ej. Matemáticas · ESO-5). */
 export const courses = sqliteTable("courses", {
@@ -248,7 +273,7 @@ export const childCourses = sqliteTable(
       .notNull()
       .references(() => courses.id),
   },
-  (t) => [primaryKey({ columns: [t.childId, t.courseId] })],
+  (t) => [primaryKey({ columns: [t.childId, t.courseId] }), index("child_courses_course_idx").on(t.courseId)],
 );
 
 /** Acceso de un niño a una recompensa (lo concede el tutor). */
@@ -262,7 +287,7 @@ export const childRewards = sqliteTable(
       .notNull()
       .references(() => rewards.id),
   },
-  (t) => [primaryKey({ columns: [t.childId, t.rewardId] })],
+  (t) => [primaryKey({ columns: [t.childId, t.rewardId] }), index("child_rewards_reward_idx").on(t.rewardId)],
 );
 
 /* ---------- Contenido privado del hogar + solicitudes de generación (Vía B) ---------- */
@@ -278,7 +303,7 @@ export const childSkills = sqliteTable(
       .notNull()
       .references(() => skills.id),
   },
-  (t) => [primaryKey({ columns: [t.childId, t.skillId] })],
+  (t) => [primaryKey({ columns: [t.childId, t.skillId] }), index("child_skills_skill_idx").on(t.skillId)],
 );
 
 /** Solicitud de contenido a partir de material subido por el tutor (fotos, PDF, texto). */
@@ -303,7 +328,7 @@ export const contentRequests = sqliteTable("content_requests", {
   createdAt: text("created_at").notNull(),
   publishedAt: text("published_at"),
   notifiedAt: text("notified_at"),
-});
+}, (t) => [index("content_requests_owner_status_idx").on(t.ownerId, t.status)]);
 
 /** Registro atómico de la PRIMERA vez que se acierta cada ejercicio (anti-farm sin carrera).
  *  La PK compuesta garantiza que las monedas se concedan una única vez por (niño, ejercicio). */
@@ -318,7 +343,7 @@ export const coinAwards = sqliteTable(
       .references(() => exerciseTemplates.id),
     ts: text("ts").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.profileId, t.exerciseTemplateId] })],
+  (t) => [primaryKey({ columns: [t.profileId, t.exerciseTemplateId] }), index("coin_awards_template_idx").on(t.exerciseTemplateId)],
 );
 
 /** Fichero subido para una solicitud (imagen o documento). El binario vive en R2. */
@@ -333,7 +358,7 @@ export const contentRequestAssets = sqliteTable("content_request_assets", {
   kind: text("kind").notNull(), // 'image' | 'document'
   size: integer("size").notNull(),
   createdAt: text("created_at").notNull(),
-});
+}, (t) => [index("request_assets_request_idx").on(t.requestId)]);
 
 /** Suscripción de Web Push (tutor o niño). Sin FK a propósito (ownerId es par_ o kid_);
  *  se limpia por ownerId al borrar. `endpoint` único para poder hacer upsert. */
@@ -345,7 +370,7 @@ export const pushSubscriptions = sqliteTable("push_subscriptions", {
   p256dh: text("p256dh").notNull(), // clave pública del cliente (base64url)
   auth: text("auth").notNull(), // secreto de auth del cliente (base64url)
   createdAt: text("created_at").notNull(),
-});
+}, (t) => [index("push_owner_idx").on(t.ownerId)]);
 
 /** Credencial WebAuthn (passkey) de un tutor: login biométrico (Face ID / huella). */
 export const webauthnCredentials = sqliteTable("webauthn_credentials", {
@@ -366,4 +391,4 @@ export const webauthnFlows = sqliteTable("webauthn_flows", {
   userId: text("user_id"), // parentId en registro; null en login (usernameless)
   challenge: text("challenge").notNull(),
   expiresAt: text("expires_at").notNull(),
-});
+}, (t) => [index("webauthn_flows_expires_idx").on(t.expiresAt)]);
