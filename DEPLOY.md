@@ -38,6 +38,36 @@ pnpm run deploy
 
 Abre esa URL: verás la app «Órbita» hablando con su API, en producción.
 
+## Entorno de pruebas (staging)
+
+Existe para que probar deje de significar tocar la base donde estan los intentos y las
+monedas de un nino real. Vive en `https://app-staging.smartkids.workers.dev`, con base de
+datos y bucket propios.
+
+```bash
+pnpm run db:migrate:staging   # migra la D1 de pruebas
+pnpm run db:seed:staging      # datos demo: aqui SI es seguro sembrar
+pnpm run deploy:staging       # build de la web + deploy del Worker de pruebas
+```
+
+Diferencias deliberadas con produccion, todas en `apps/api/wrangler.toml`:
+
+| | Produccion | Pruebas |
+|---|---|---|
+| Dominio | `app.smart-kids.uk` | `workers.dev`, **`routes = []`** |
+| Cron de engagement | 17:00 diario | **ninguno** |
+| `RESEND_API_KEY` | configurado | **ausente**: el email cae a modo simulado |
+| `EMAIL_DEV_LINKS` | jamas | `true` |
+| Datos | reales | seed demo |
+
+> El `routes = []` de staging **no es opcional**: sin el, el entorno de pruebas hereda las
+> rutas del bloque principal y se lleva el dominio `app.smart-kids.uk`, dejando la app real
+> fuera de servicio en cuanto se despliegue. Comprueba siempre con `--dry-run` antes de
+> desplegar un entorno nuevo; ese aviso solo sale ahi.
+
+> Y la razon de fondo de separar entornos es la clave de Resend: sin ella, un correo de
+> prueba no puede llegar nunca al buzon de una familia real.
+
 ## Actualizar un despliegue existente
 
 Los pasos de arriba son el **alta inicial**. Para actualizar una instalacion que ya funciona, el

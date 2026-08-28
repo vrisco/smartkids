@@ -96,6 +96,35 @@ type DB = ReturnType<typeof getDb>;
 
 const app = new Hono<{ Bindings: Env }>();
 
+/**
+ * Cabeceras comunes de la API. OJO: aquí NO hay middleware de autorización a propósito;
+ * cada handler llama a su guard a mano (ver apps/api/CLAUDE.md). Este `use` solo pone
+ * cabeceras, así que añadirlo no cambia quién puede entrar a dónde.
+ */
+app.use("/api/*", async (c, next) => {
+  await next();
+  // Las respuestas de la API no se cachean nunca, ni en el navegador ni en el service worker.
+  c.header("Cache-Control", "no-store");
+});
+
+/**
+ * Manejo central de errores. Antes no había ninguno: un cuerpo JSON malformado o un fallo
+ * de D1 salían como un 500 mudo, sin rastro y sin forma de correlacionar la queja de un
+ * tutor con nada. El `cf-ray` identifica la petición en los logs de Cloudflare, así que no
+ * inventamos otro identificador.
+ */
+app.onError((err, c) => {
+  const requestId = c.req.header("cf-ray") ?? crypto.randomUUID();
+  // Cuerpo ilegible: es culpa del cliente, no un fallo del servidor.
+  if (err instanceof SyntaxError) {
+    return c.json({ error: "invalid_body", message: "El cuerpo de la petición no es JSON válido.", requestId }, 400);
+  }
+  console.error(`[${requestId}] ${c.req.method} ${new URL(c.req.url).pathname}`, err);
+  // El mensaje del error NUNCA se devuelve al cliente: puede llevar SQL, rutas internas
+  // o datos de otro usuario. El detalle vive en el log, referenciado por requestId.
+  return c.json({ error: "internal", message: "Algo ha fallado por nuestra parte. Inténtalo de nuevo.", requestId }, 500);
+});
+
 app.get("/api/health", (c) => c.json({ ok: true, service: "smartkids-api", ts: new Date().toISOString() }));
 
 /* ================= Helpers de autorización ================= */

@@ -44,3 +44,52 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "UPLOADS"
 bucket_name = "smartkids-uploads"
+
+# ============================================================================
+# ENTORNO DE PRUEBAS (staging)
+#
+#   pnpm --filter @smartkids/api exec wrangler deploy --env staging
+#   pnpm --filter @smartkids/api exec wrangler d1 migrations apply smartkids_staging --remote --env staging
+#
+# Existe para que probar deje de significar "tocar la base donde están los intentos y
+# las monedas de un niño real". Diferencias deliberadas con producción:
+#   - Base de datos y bucket PROPIOS: nada de lo que pase aquí toca los datos reales.
+#   - SIN dominio custom (se sirve en app-staging.<subdominio>.workers.dev).
+#   - SIN cron: nada de correos automáticos desde un entorno de pruebas.
+#   - SIN RESEND_API_KEY: el email cae a modo simulado y JAMÁS sale un correo a una
+#     familia real desde aquí. Es la razón principal de separar los entornos.
+#   - EMAIL_DEV_LINKS=true: los enlaces de verificación y reset vuelven en la respuesta
+#     HTTP para poder probar sin proveedor de correo. Esto NUNCA debe estar en producción.
+#
+# Los bindings NO se heredan del bloque de arriba: hay que declararlos enteros.
+# ============================================================================
+[env.staging]
+name = "app-staging"
+workers_dev = true
+# CRÍTICO: sin esto, staging HEREDA las rutas de arriba y se lleva el dominio
+# app.smart-kids.uk, dejando la app real fuera de servicio en cuanto se despliegue.
+routes = []
+
+[env.staging.vars]
+EMAIL_DEV_LINKS = "true"
+VAPID_PUBLIC = "BBt5nkdUbJp9PtRHuGsyJXqmAjAdCrULfJ9dOzpCO3LIM6NZ4gDiyI-U1Fw3A-FYmC7C-y6hOOz8TTuESde72-4"
+VAPID_SUBJECT = "https://app-staging.workers.dev"
+
+# Sin disparadores: el cron de engagement manda correos a familias.
+[env.staging.triggers]
+crons = []
+
+[env.staging.assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "smartkids_staging"
+database_id = "5f51e719-8422-4d5e-8886-46ecc3044859"
+migrations_dir = "migrations"
+
+[[env.staging.r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "smartkids-uploads-staging"

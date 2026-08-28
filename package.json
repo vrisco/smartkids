@@ -9,13 +9,16 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter=@smartkids/web --filter=@smartkids/api run dev",
-    "build": "pnpm -r run build",
+    "build": "pnpm --filter @smartkids/web run build && pnpm --filter @smartkids/api run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "deploy": "pnpm --filter @smartkids/web run build && pnpm --filter @smartkids/api exec wrangler deploy",
-    "db:migrate:remote": "pnpm --filter @smartkids/api exec wrangler d1 migrations apply smartkids --remote"
+    "deploy:staging": "pnpm --filter @smartkids/web run build && pnpm --filter @smartkids/api exec wrangler deploy --env staging",
+    "db:migrate:remote": "pnpm --filter @smartkids/api exec wrangler d1 migrations apply smartkids --remote",
+    "db:migrate:staging": "pnpm --filter @smartkids/api exec wrangler d1 migrations apply smartkids_staging --remote --env staging",
+    "db:seed:staging": "pnpm --filter @smartkids/api exec wrangler d1 execute smartkids_staging --remote --env staging --file=seed.sql"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -23,6 +26,10 @@
     "typescript": "^5.7.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "workerd", "sharp"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd",
+      "sharp"
+    ]
   }
 }

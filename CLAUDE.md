@@ -60,6 +60,8 @@ pnpm dev            # web (Vite :5173) + api (wrangler dev :8787) en paralelo
 | `pnpm build` | `pnpm -r run build` (recursivo). |
 | `pnpm typecheck` | `tsc --noEmit` en todos los paquetes. **content-gen queda fuera** (no define el script). |
 | `pnpm test` | Pruebas de los paquetes que las definen (hoy solo `packages/shared`: grading + corpus de `content/`). |
+| `pnpm run deploy:staging` | Despliega al entorno de **pruebas** (`app-staging`, base y bucket propios, sin cron, sin Resend). |
+| `pnpm run db:migrate:staging` / `db:seed:staging` | Migra y siembra la D1 de pruebas. El seed **solo** es seguro aquí y en local. |
 | `pnpm format` / `pnpm format:check` | Prettier (defaults, sin config propia). |
 | `pnpm deploy` | Build de la web **y luego** `wrangler deploy` del Worker. El orden importa. |
 | `pnpm db:migrate:remote` | Aplica migraciones a la D1 **de producción**. |

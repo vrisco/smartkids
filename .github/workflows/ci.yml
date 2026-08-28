@@ -1,0 +1,52 @@
+# Integración continua de smartkids.
+#
+# Deliberadamente SIN secretos y SIN desplegar: el despliegue sigue siendo manual y en
+# el orden que manda DEPLOY.md (migrar primero, desplegar después). Un CI con permiso
+# para tocar la base de producción es justo lo que no queremos en un repositorio que
+# guarda datos de menores.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nuevo sobre la misma rama cancela la ejecución anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: Typecheck, pruebas y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Node y pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          # corepack lee packageManager de package.json, así que la versión de pnpm
+          # sale del repositorio y no se duplica aquí.
+      - run: corepack enable
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Pruebas
+        run: pnpm test
+
+      # El build de la web va ANTES que el del Worker: wrangler.toml declara los assets
+      # en ../web/dist, así que sin ese directorio el dry-run del Worker falla. El script
+      # `build` de la raíz ya fuerza ese orden; aquí solo lo ejecutamos.
+      - name: Build (web + Worker en dry-run)
+        run: pnpm build
