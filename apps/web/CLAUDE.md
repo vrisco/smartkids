@@ -64,12 +64,18 @@ funciona por el proxy de Vite; en prod por mismo origen. Un despliegue cross-ori
   que se genera, preguntas por misión (5..30), 1..6 módulos y casillas de tipos de pregunta con presets por materia
   (`TYPE_PRESETS`); en modo «Regenerar» elige sustituir (`replace`) o crear uno nuevo (`copy`) y llama a
   `api.regenerateContentRequest`. Cada contenido del hogar ofrece «Regenerar» (si su solicitud está procesada) y un
-  selector de preguntas por misión (`api.setSkillSessionLength`).
+  selector de preguntas por misión (`api.setSkillSessionLength`). `ExerciseReports` lista las preguntas que los niños
+  han marcado como erróneas (su respuesta, la esperada y la solución) con «Ocultar pregunta» (solo contenido propio)
+  y «Estaba bien».
+- **`screens/Session.tsx` → `ReportQuestion`** — tras responder, «¿Crees que esta pregunta está mal?» con tres
+  motivos (`api.reportExercise`).
 
 ## Gotchas / código a no imitar
 
-- `Hud` pinta la **inicial** del nombre (no el `<Avatar>` SVG) y la racha está **hardcodeada a `7`**.
-- `gradeBand` se fija a `"ESO-5"` al crear niño en `TutorPanel.ChildForm`.
+- `Hud` pinta la **inicial** del nombre (no el `<Avatar>` SVG). La racha sí es real (`streak` de `/api/child/me`).
+- Curso escolar: `grades.ts` (`GRADE_BANDS`, `isGradeBand`); cualquier otro valor (el antiguo `"ESO-5"`) = sin definir.
+- Inputs de texto de las respuestas: siempre con `NO_AUTOCORRECT` (`ExerciseInput.tsx`); el autocorrector del
+  móvil cambiaría una respuesta mal escrita por la buena y el subrayado del corrector chivaría el error.
 - `MathText` solo entiende fracciones `entero/entero` (regex `\d+/\d+`); otra notación pasa como texto plano.
 - `Starfield` (canvas) lee el tema una sola vez: **no se recolorea** al conmutar tema en caliente.
 - `SettingsToggle` usa estado local (sin Context): dos instancias no se sincronizarían.
@@ -77,5 +83,3 @@ funciona por el proxy de Vite; en prod por mismo origen. Un despliegue cross-ori
   icono queda vacío.
 - Código muerto: `screens/FamilyHome.tsx` y `screens/ParentPanel.tsx` son `export {}`; hay CSS de pantallas
   eliminadas en `app.css`/`auth.css`. No los uses de referencia.
-- Credenciales demo hardcodeadas en el JSX de `Auth.tsx` (visibles en el bundle). PWA sin iconos
-  (`vite.config.ts` → `manifest.icons: []`, TODO pendiente).

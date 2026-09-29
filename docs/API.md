@@ -85,6 +85,7 @@ en el árbol de trabajo sin commitear según el momento.
 | GET | `/api/session/next?profile=&skill=&exclude=` | Un ejercicio del skill (sin solución, opciones barajadas), elegido al azar con prioridad a lo fallado la última vez y variedad de tipos; `exclude` = ids ya servidos en la sesión. Incluye `sessionLength` del skill (default 5). `skill` es obligatorio. Valida acceso (403 `no_course_access`). |
 | GET | `/api/session/next?profile=&exercise=` | Sirve un ejercicio CONCRETO (sesión de repaso de fallos). Excluye retirados y ocultos. |
 | POST | `/api/session/attempt` | `{ profileId, exerciseTemplateId, answer, responseTimeMs?, clientAttemptId? }`. Corrige EN SERVIDOR, actualiza `skill_progress`, otorga los puntos del skill una sola vez por ejercicio (`coin_awards`). Devuelve `correct`, `correctAnswer`, `parts`, `feedback`, `solution`, `theory`, `coinsAwarded`, `balance`, `masteryScore`, `status`. |
+| POST | `/api/session/report` | `{ profileId, exerciseTemplateId, reason }` con `reason` = `wrong_answer` \| `unclear` \| `other`. «Esta pregunta está mal»: exige haber intentado el ejercicio (409 `not_attempted`); la respuesta y el veredicto los copia el servidor de `attempts`. Uno por (niño, ejercicio); volver a marcar lo reabre. |
 | GET | `/api/rewards` | Niño: recompensas asignadas del hogar con `progress`/`claimable`/`redeemedInWindow`. Tutor: recompensas del hogar. |
 | POST | `/api/rewards/:id/redeem` | Canjea recompensa asignada del hogar. `goal` exige puntos ganados (no descuenta); `spend` descuenta el wallet atómicamente. |
 
@@ -98,10 +99,12 @@ Tutor (`requireParent`; todo se acota al hogar con `householdIds`, 403 `forbidde
 | POST | `/api/tutor/skills/:skillId/settings` | `{ sessionLength }` (preguntas por misión, acotado 3..30) de un skill privado del hogar. |
 | POST | `/api/tutor/skills/:skillId/assign` | `{ childIds }`: reemplaza los niños asignados (solo niños del hogar). |
 | GET | `/api/tutor/skills/:skillId/exercises` | Preview del tutor: ejercicios vigentes (incluidos los ocultos) CON solución. |
-| POST | `/api/tutor/exercises/:templateId/hidden` | `{ hidden }`: oculta/muestra un ejercicio al niño. |
+| POST | `/api/tutor/exercises/:templateId/hidden` | `{ hidden }`: oculta/muestra un ejercicio al niño. Ocultar cierra sus avisos abiertos. |
+| GET | `/api/tutor/reports` | Avisos «esta pregunta está mal» abiertos de los niños del hogar (plantillas vigentes, máx. 50): niño, skill, enunciado, `render`, `given`/`wasCorrect` (su respuesta), `correctAnswer`, `solution`, `reason` y `canHide` (solo contenido privado del hogar). |
+| POST | `/api/tutor/reports/:templateId/resolve` | `{ profileId, action }`: `hide` oculta la pregunta y cierra todos sus avisos (403 si es del catálogo global); `dismiss` descarta el aviso de ese niño. |
 | DELETE | `/api/tutor/skills/:skillId` | Borra el skill privado en cascada (`deletePrivateSkillCascade`). |
 | GET | `/api/tutor/content-requests` | Solicitudes del hogar con su estado, config y `assets`. |
-| POST | `/api/tutor/content-requests` | Multipart: `title?`, `instructions?`, `childId?`, `subjectId?`, `gradeBand?`, `files` (máx. 6, 15 MB, imagen/PDF/texto) y config: `numQuestions` (5..200), `sessionLength` (3..30), `modules` (1..6), `pointsPerCorrect` (1..50), `questionTypes` (lista separada por comas de los 8 tipos; vacío = variados; desconocidos se descartan). Crea la solicitud `uploaded`. |
+| POST | `/api/tutor/content-requests` | Multipart: `title?`, `instructions?`, `childId?`, `subjectId?`, `gradeBand?`, `files` (máx. 6, 15 MB, imagen/PDF/texto) y config: `numQuestions` (5..200), `sessionLength` (3..30), `modules` (1..6), `pointsPerCorrect` (1..50), `questionTypes` (lista separada por comas de los 8 tipos; vacío = variados; desconocidos se descartan). Crea la solicitud `uploaded` y avisa a los admins (push + email). |
 | POST | `/api/tutor/content-requests/:id` | Edita una solicitud AÚN `uploaded` (mismos campos; añade ficheros). 409 `not_editable` si ya se procesó. |
 | DELETE | `/api/tutor/content-requests/:id` | Borra la solicitud y sus ficheros de R2 que ya nadie referencia. No borra lo publicado. |
 | DELETE | `/api/tutor/content-requests/:id/assets/:assetId` | Quita un fichero de una solicitud `uploaded` (R2 solo si nadie más lo referencia). |

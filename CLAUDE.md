@@ -38,7 +38,6 @@ Pendiente (no empieces ninguno sin confirmarlo con el usuario):
 - **Generación real con Claude API** requiere `ANTHROPIC_API_KEY` en el entorno (el pipeline ya es spec-driven
   multi-tipo; sin key corre en `--mock`; la Vía B multimodal "que ve" las figuras del PDF también la necesita).
 - Más asignaturas e idiomas de contenido.
-- Iconos PWA (`vite.config.ts` tiene `manifest.icons: []`).
 - Agrupar los paths en el panel del tutor (hoy los módulos de un path se listan sueltos).
 
 ## 3. Arranque y comandos
@@ -101,7 +100,7 @@ Consecuencia clave: **el binding `ASSETS` apunta a `apps/web/dist`**. En un clon
 
 ## 5. Modelo de datos
 
-Drizzle sobre D1/SQLite, **27 tablas**, esquema en `apps/api/src/db/schema.ts`. La frontera está marcada con
+Drizzle sobre D1/SQLite, **28 tablas**, esquema en `apps/api/src/db/schema.ts`. La frontera está marcada con
 comentarios de sección en el propio schema:
 
 - **CONTENIDO (inmutable, versionado):** `subjects`, `skills`, `skill_prerequisites`, `content_packages`,
@@ -111,7 +110,8 @@ comentarios de sección en el propio schema:
   `skills` además `coins_per_correct` (puntos por acierto), `session_length` (preguntas por misión; null = 5) y
   `path_id`/`path_name`/`module_index` (agrupar módulos).
 - **PROGRESO (mutable, por niño):** `skill_progress`, `attempts`, `coin_awards` (registro ATÓMICO de "ya cobrado"
-  por (niño, ejercicio), PK compuesta → anti-farm sin carrera), y la economía `wallets`, `wallet_ledger`,
+  por (niño, ejercicio), PK compuesta → anti-farm sin carrera), `exercise_reports` (avisos «esta pregunta está mal»
+  del niño, uno por (niño, ejercicio), los revisa el tutor), y la economía `wallets`, `wallet_ledger`,
   `redemptions`. Cada intento congela `content_version` para que el histórico no se corrompa si el contenido evoluciona.
 - **Identidad y acceso:** `parent_accounts` (tutores/admin, `role`), `child_profiles`, `courses`,
   `child_courses` (acceso niño↔curso), `child_rewards` (acceso niño↔recompensa), `child_skills`
@@ -203,7 +203,12 @@ sesión. Devuelve además `sessionLength` del skill (preguntas por misión; defa
 y `theory`: al fallar, la web muestra una tarjeta con la respuesta correcta, la teoría («Recuerda») y cómo se
 resuelve. Al acabar la tanda, si hubo fallos, pantalla de transición y **SESIÓN DE REPASO** con los MISMOS
 ejercicios fallados en orden aleatorio (`?exercise=<id>`; fallar lo manda al final de la cola, tope = fallos + 3)
-y un resumen final (lógica en `apps/web/src/screens/Session.tsx`). El cuerpo de `attempt` es `{ answer }` (unión
+y un resumen final (lógica en `apps/web/src/screens/Session.tsx`). Tras responder, el niño puede marcar
+**«¿Esta pregunta está mal?»** (`POST /api/session/report`: motivo + su última respuesta, que el servidor copia de
+`attempts`); el tutor lo ve en su panel (`GET /api/tutor/reports`) y oculta la pregunta (solo contenido privado del
+hogar) o descarta el aviso. Si es del catálogo global, el cron diario lo resume al admin. Republicar una plantilla
+con otro contenido borra sus avisos (hablaban de la versión anterior). Los inputs de texto de las respuestas van
+sin autocorrector ni corrector ortográfico (`NO_AUTOCORRECT` en `ExerciseInput.tsx`). El cuerpo de `attempt` es `{ answer }` (unión
 discriminada `AnswerSchema`), con compat del viejo `selectedOptionId`. Inputs de los 8 tipos en
 `apps/web/src/components/ExerciseInput.tsx`.
 
@@ -216,7 +221,8 @@ Lee una **spec JSON** (`--spec <ruta>`, ver `spec.example.json`); `--mock` sin c
 **Vía B — desde material del tutor** (PRIVADO del hogar): el tutor sube fotos/PDF/texto **o solo una descripción**
 desde el panel → `POST /api/tutor/content-requests` (multipart, R2) crea una `content_requests` con su config
 (`num_questions` 5..200, `session_length` 3..30, `points_per_correct`, `modules` 1..6, `question_types` = lista de
-tipos, null = variados; título opcional). Se GENERA un 50 % más de lo pedido (`GENERATION_EXTRA = 1.5`, el listado
+tipos, null = variados; título opcional). Al crearla o regenerarla se **avisa a los administradores** (push + email)
+de que hay algo por procesar con la skill. Se GENERA un 50 % más de lo pedido (`GENERATION_EXTRA = 1.5`, el listado
 de máquina da `targetExercises`) para que cada tanda salga distinta. La skill lista las pendientes, descarga los
 assets, genera, y publica vía `POST /api/admin/content/import` (auth: Bearer `CONTENT_IMPORT_TOKEN` **o** sesión de
 admin): crea skill PRIVADO (`owner_id`=tutor) + paquete + plantillas, lo asigna al niño (`child_skills`), marca la
@@ -265,9 +271,9 @@ Todo Cloudflare, free tier (ver `DEPLOY.md`). Config en `apps/api/wrangler.toml`
 - **Secrets de producción por `wrangler secret put`** (no en el toml ni en `.dev.vars`):
   `RESEND_API_KEY`, `EMAIL_FROM`, `CONTENT_IMPORT_TOKEN` (token de máquina para el endpoint de import de contenido).
   En local, `.dev.vars` (gitignored) define `EMAIL_DEV_LINKS=true` y el `CONTENT_IMPORT_TOKEN` local.
-- Migraciones D1 al día hasta **`0018`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
+- Migraciones D1 al día hasta **`0019`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
   0010 = `coin_awards`, 0016 = retirada de plantillas, 0017 = índices, 0018 = `question_types`/`session_length`/
-  `source_request_id` en solicitudes y `session_length` en skills). Migrar **producción**: `pnpm db:migrate:remote` (toca
+  `source_request_id` en solicitudes y `session_length` en skills, 0019 = `exercise_reports`). Migrar **producción**: `pnpm db:migrate:remote` (toca
   datos reales, cuidado). Los scripts `db:migrate`/`db:seed` del paquete api son **solo `--local`**.
 
 ## 10. Git e identidad — CRÍTICO
@@ -295,9 +301,9 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 - **No commitees** `out/`, `dist/`, `.wrangler/`, `.dev.vars` (ya gitignored).
 - Código muerto conocido: `apps/web/src/screens/FamilyHome.tsx` y `ParentPanel.tsx` son stubs (`export {}`); hay
   CSS de pantallas eliminadas en `app.css`/`auth.css`. No los tomes como referencia.
-- Detalles frágiles ya conocidos (no son bugs a arreglar sin pedirlo): `Hud` pinta la inicial en vez del avatar y
-  la racha está hardcodeada a `7`; `gradeBand` se fija a `"ESO-5"` al crear niño; `MathText` solo entiende fracciones
-  `entero/entero`; el `Starfield` no reacciona al cambio de tema en caliente.
+- Detalles frágiles ya conocidos (no son bugs a arreglar sin pedirlo): `Hud` pinta la inicial en vez del avatar;
+  `MathText` solo entiende fracciones `entero/entero`; el `Starfield` no reacciona al cambio de tema en caliente.
+  (La racha ya es real, `computeStreak`; el curso escolar del niño lo elige el tutor, `""` = sin definir.)
 
 ## 12. Mapa rápido de ficheros
 
@@ -323,7 +329,7 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 | Cursos fijos versionados (Vía C) + builder | `content/<curso>/`, `tools/content-gen/src/build-course.ts` |
 | Skill de generación de contenido | `.claude/skills/smartkids_content/SKILL.md` |
 | Cómo desplegar | `DEPLOY.md` |
-| Modelo de datos a fondo (27 tablas, auth, economía) | `docs/ARCHITECTURE.md` |
+| Modelo de datos a fondo (28 tablas, auth, economía) | `docs/ARCHITECTURE.md` |
 | Decisiones de arquitectura (el porqué) | `docs/adr/` |
 | Catálogo de endpoints por rol | `docs/API.md` |
 | Convenciones y gotchas del backend | `apps/api/CLAUDE.md` |

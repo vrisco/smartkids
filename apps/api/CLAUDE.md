@@ -27,7 +27,7 @@ pnpm --filter @smartkids/api run admin -- create <email> <pw> [--remote]
 ```
 
 Para **producción**: `pnpm db:migrate:remote` (toca datos reales). **No existe `db:seed:remote`**: el seed
-borra las 27 tablas y crea cuentas demo con contraseñas publicadas en el repo, así que es SOLO local.
+borra las 28 tablas y crea cuentas demo con contraseñas publicadas en el repo, así que es SOLO local.
 
 ## Convenciones (síguelas al añadir código)
 
@@ -89,6 +89,14 @@ borra las 27 tablas y crea cuentas demo con contraseñas publicadas en el repo, 
   (`PRIORIDAD_FALLOS = 0.7` hacia lo fallado la última vez, pesos por historial, lo reciente descansa, penaliza
   repetir tipo). `?exclude=` = lo ya servido en la sesión (no repite y mide la variedad); `?exercise=<id>` sirve
   uno concreto (la sesión de repaso de fallos). Devuelve `sessionLength` del skill (`SESSION_LENGTH_DEFAULT = 5`).
+- **Avisos «esta pregunta está mal»** (`exercise_reports`, PK (niño, plantilla)): `POST /api/session/report` exige
+  haber intentado el ejercicio y copia la respuesta y el veredicto de `attempts` (no del cliente); volver a marcar
+  reabre. El tutor los lista y resuelve (`hide` solo en contenido privado del hogar; `dismiss`). Tabla con FK a
+  `child_profiles` y `exercise_templates`: **bórrala en las cascadas** (ya lo hacen `deleteChildCascade`,
+  `deletePrivateSkillCascade` y el seed) y el import la limpia al cambiar el contenido de una plantilla.
+- **Aviso a admins** al crear/regenerar una solicitud de contenido (`notifyAdminsContentRequest`, push + email, en
+  `waitUntil` para no retrasar la respuesta). El cron diario añade: nº de avisos pendientes en el resumen semanal del
+  tutor y un resumen al admin de los avisos sobre el catálogo GLOBAL. Texto de usuario en emails: `escHtml`.
 - **Rate-limiting caro y con carrera**: cada check hace DELETE de poda + COUNT sobre `login_attempts`.
 - **`EMAIL_DEV_LINKS`** devuelve enlaces de reset en la respuesta HTTP: **jamás `true` en producción.**
 - Secrets de prod (`RESEND_API_KEY`, `EMAIL_FROM`) van por `wrangler secret put`, no en `wrangler.toml` ni `.dev.vars`.
