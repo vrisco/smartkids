@@ -251,11 +251,14 @@ function buildSql(course: Course, mods: BuiltModule[]): string {
       // diciendo "ya cobrado": el niño resolvería contenido NUEVO por cero monedas. Si el contenido
       // cambia, se borra el registro de cobro. (Si el JSON difiere solo en formato, el efecto es que
       // se puede volver a cobrar: preferimos ese error al de trabajar gratis.)
-      L.push(
-        `DELETE FROM coin_awards WHERE exercise_template_id=${sqlStr(id)} AND EXISTS (` +
-          `SELECT 1 FROM exercise_templates t WHERE t.id=${sqlStr(id)} ` +
-          `AND (t.stem<>${sqlStr(ex.stem)} OR t.payload<>${sqlStr(payload)}));`,
-      );
+      // Por lo mismo, los avisos de «pregunta mal» (exercise_reports) hablaban de la versión anterior.
+      for (const tabla of ["coin_awards", "exercise_reports"]) {
+        L.push(
+          `DELETE FROM ${tabla} WHERE exercise_template_id=${sqlStr(id)} AND EXISTS (` +
+            `SELECT 1 FROM exercise_templates t WHERE t.id=${sqlStr(id)} ` +
+            `AND (t.stem<>${sqlStr(ex.stem)} OR t.payload<>${sqlStr(payload)}));`,
+        );
+      }
       // `hidden` queda FUERA del SET a propósito: es curación manual del tutor.
       L.push(
         `INSERT INTO exercise_templates (id, package_id, skill_id, type, language, content_version, stem, payload, difficulty_numeric, difficulty_level, retired) VALUES (` +

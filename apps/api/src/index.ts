@@ -78,6 +78,7 @@ const {
   contentRequests,
   contentRequestAssets,
   coinAwards,
+  exerciseReports,
   pushSubscriptions,
   webauthnCredentials,
   webauthnFlows,
@@ -215,6 +216,7 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   await db.delete(skillProgress).where(eq(skillProgress.profileId, childId));
   // Estas también referencian al niño (FK sin ON DELETE): sin vaciarlas, el borrado del niño falla.
   await db.delete(coinAwards).where(eq(coinAwards.profileId, childId));
+  await db.delete(exerciseReports).where(eq(exerciseReports.profileId, childId));
   await db.delete(childSkills).where(eq(childSkills.childId, childId));
   await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, childId));
   await db.update(contentRequests).set({ childId: null }).where(eq(contentRequests.childId, childId));
@@ -232,6 +234,7 @@ async function deletePrivateSkillCascade(db: DB, skillId: string, household: str
   // al republicar) la lista superaba el límite de variables ligadas de D1 y el borrado daba 500.
   const plantillasDelSkill = db.select({ id: exerciseTemplates.id }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
   await db.delete(coinAwards).where(inArray(coinAwards.exerciseTemplateId, plantillasDelSkill));
+  await db.delete(exerciseReports).where(inArray(exerciseReports.exerciseTemplateId, plantillasDelSkill));
   await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
   await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
   for (const { pkg } of pkgRows) {
@@ -1535,6 +1538,102 @@ app.get("/api/tutor/children/:id/mistakes", async (c) => {
   return c.json(out);
 });
 
+/* ================= Preguntas marcadas como erróneas ================= */
+
+// Motivos que puede elegir el niño (y su texto para los emails, que van en español).
+const REPORT_REASON_ES: Record<string, string> = {
+  wrong_answer: "la respuesta correcta está mal",
+  unclear: "no se entiende",
+  other: "otro motivo",
+};
+
+/** Cierra los avisos ABIERTOS de un ejercicio (de cualquier niño, o solo de uno): se ocultó o se descartó. */
+async function closeReports(db: DB, templateId: string, status: "hidden" | "dismissed", profileId?: string): Promise<void> {
+  const conds = [eq(exerciseReports.exerciseTemplateId, templateId), eq(exerciseReports.status, "open")];
+  if (profileId) conds.push(eq(exerciseReports.profileId, profileId));
+  await db.update(exerciseReports).set({ status, resolvedAt: new Date().toISOString() }).where(and(...conds));
+}
+
+// Avisos abiertos de los niños del hogar, con el ejercicio (su respuesta vs la correcta) para decidir.
+// Solo plantillas vigentes: si el contenido se republicó, la versión marcada ya no se sirve.
+app.get("/api/tutor/reports", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const household = await householdIds(db, parentId);
+  const kids = await db.select({ id: childProfiles.id, name: childProfiles.displayName }).from(childProfiles).where(inArray(childProfiles.parentId, household));
+  if (!kids.length) return c.json([]);
+  const nameByKid = new Map(kids.map((k) => [k.id, k.name]));
+  const rows = await db
+    .select({ r: exerciseReports, tpl: exerciseTemplates, skillName: skills.nameI18n, ownerId: skills.ownerId })
+    .from(exerciseReports)
+    .innerJoin(exerciseTemplates, eq(exerciseTemplates.id, exerciseReports.exerciseTemplateId))
+    .innerJoin(skills, eq(skills.id, exerciseTemplates.skillId))
+    .where(and(inArray(exerciseReports.profileId, kids.map((k) => k.id)), eq(exerciseReports.status, "open"), eq(exerciseTemplates.retired, false)))
+    .orderBy(desc(exerciseReports.createdAt))
+    .limit(50);
+  const out: Array<Record<string, unknown>> = [];
+  for (const { r, tpl, skillName, ownerId } of rows) {
+    let render: unknown = null;
+    let correctAnswer: unknown = null;
+    let solution: string | null = null;
+    try {
+      const exercise = exerciseFromRow({
+        id: tpl.id, packageId: tpl.packageId, skillId: tpl.skillId, type: tpl.type, language: tpl.language,
+        contentVersion: tpl.contentVersion, stem: tpl.stem, payload: tpl.payload,
+        difficultyNumeric: tpl.difficultyNumeric, difficultyLevel: tpl.difficultyLevel,
+      });
+      render = redactForClient(exercise); // para que el cliente pueda mapear ids->texto en las respuestas
+      correctAnswer = canonicalAnswer(exercise);
+      solution = exercise.feedback?.solution ?? null;
+    } catch {
+      /* plantilla no conforme: se muestra solo el enunciado */
+    }
+    out.push({
+      profileId: r.profileId,
+      childName: nameByKid.get(r.profileId) ?? "",
+      templateId: tpl.id,
+      skillName,
+      stem: tpl.stem,
+      type: tpl.type,
+      render,
+      given: r.answerGiven ?? null,
+      wasCorrect: r.correct,
+      correctAnswer,
+      solution,
+      reason: r.reason,
+      createdAt: r.createdAt,
+      // Solo el contenido PRIVADO del hogar se puede ocultar desde aquí; el global lo corrige el admin.
+      canHide: Boolean(ownerId && household.includes(ownerId)),
+    });
+  }
+  return c.json(out);
+});
+
+// El tutor atiende un aviso: 'hide' oculta la pregunta (solo contenido privado del hogar) y cierra todos
+// sus avisos; 'dismiss' descarta el aviso de ese niño (la pregunta estaba bien).
+app.post("/api/tutor/reports/:templateId/resolve", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const templateId = c.req.param("templateId");
+  const body = await c.req.json<{ profileId?: string; action?: string }>().catch(() => null);
+  if (!body?.profileId || (body.action !== "hide" && body.action !== "dismiss")) return c.json({ error: "invalid body" }, 400);
+  if (!(await ownsProfile(db, parentId, body.profileId))) return c.json({ error: "forbidden" }, 403);
+  if (body.action === "dismiss") {
+    await closeReports(db, templateId, "dismissed", body.profileId);
+    return c.json({ ok: true });
+  }
+  const [tpl] = await db.select({ skillId: exerciseTemplates.skillId }).from(exerciseTemplates).where(eq(exerciseTemplates.id, templateId)).limit(1);
+  if (!tpl) return c.json({ error: "not_found" }, 404);
+  const household = await householdIds(db, parentId);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, tpl.skillId)).limit(1);
+  if (!sk?.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  await db.update(exerciseTemplates).set({ hidden: true }).where(eq(exerciseTemplates.id, templateId));
+  await closeReports(db, templateId, "hidden");
+  return c.json({ ok: true });
+});
+
 /* ================= Web Push ================= */
 
 // Envía un push (sin payload) a todas las suscripciones de un dueño; limpia las caducadas.
@@ -1560,6 +1659,27 @@ async function notifyPendingRedemption(env: Env, db: DB, household: string[], ch
     { url: "https://app.smart-kids.uk", label: "Abrir smartkids" },
   );
   for (const p of parents) await sendEmail(env, p.email, subject, html);
+}
+
+/** Escapa texto escrito por un usuario antes de meterlo en el HTML de un email. */
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
+}
+
+/** Avisa a los administradores (push + email) de que hay una solicitud de contenido por procesar.
+ *  Sin esto la solicitud esperaba en 'uploaded' hasta que alguien ejecutase la skill por su cuenta. */
+async function notifyAdminsContentRequest(env: Env, db: DB, title: string, numQuestions: number | null, regenerate: boolean): Promise<void> {
+  const admins = await db.select({ id: parentAccounts.id, email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.role, "admin"));
+  if (!admins.length) return;
+  for (const ad of admins) await notifyOwner(env, db, ad.id); // push (best-effort)
+  const nombre = escHtml(title || "(sin título)");
+  const html = emailLayout(
+    regenerate ? "Contenido a regenerar" : "Nueva solicitud de contenido",
+    `Un tutor ha ${regenerate ? "pedido regenerar" : "enviado"} <b>${nombre}</b>: ${numQuestions ?? 20} preguntas pedidas, ` +
+      `${targetExercises(numQuestions)} a generar. Procésala con <b>/smartkids_content</b>.`,
+  );
+  const subject = regenerate ? "smartkids · contenido a regenerar" : "smartkids · nueva solicitud de contenido";
+  for (const ad of admins) await sendEmail(env, ad.email, subject, html);
 }
 
 // Clave pública VAPID para que el cliente se suscriba.
@@ -1993,7 +2113,11 @@ app.post("/api/admin/content/import", async (c) => {
       );
       const previa = previaDe.get(id);
       const cambio = previa && (previa.stem !== campos.stem || JSON.stringify(previa.payload) !== JSON.stringify(campos.payload));
-      if (cambio) stmts.push(db.delete(coinAwards).where(eq(coinAwards.exerciseTemplateId, id)));
+      if (cambio) {
+        stmts.push(db.delete(coinAwards).where(eq(coinAwards.exerciseTemplateId, id)));
+        // Los avisos de «pregunta mal» hablaban de la versión anterior: ya no aplican.
+        stmts.push(db.delete(exerciseReports).where(eq(exerciseReports.exerciseTemplateId, id)));
+      }
     });
     if (stmts.length > 0) await db.batch(stmts as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
   }
@@ -2176,6 +2300,7 @@ app.post("/api/tutor/exercises/:templateId/hidden", async (c) => {
   const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, tpl.skillId)).limit(1);
   if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
   await db.update(exerciseTemplates).set({ hidden: Boolean(hidden) }).where(eq(exerciseTemplates.id, templateId));
+  if (hidden) await closeReports(db, templateId, "hidden"); // ya no se sirve: sus avisos quedan atendidos
   return c.json({ ok: true, hidden: Boolean(hidden) });
 });
 
@@ -2282,6 +2407,8 @@ app.post("/api/tutor/content-requests", async (c) => {
     await db.insert(contentRequestAssets).values({ id: assetId, requestId, r2Key: key, filename: file.name, contentType: file.type, kind, size: file.size, createdAt: now });
     stored.push({ id: assetId, filename: file.name, kind });
   }
+  // El aviso no retiene la respuesta al tutor (y si falla, la solicitud ya está guardada).
+  c.executionCtx.waitUntil(notifyAdminsContentRequest(c.env, db, title, cfg.numQuestions, false).catch(() => {}));
   return c.json({ ok: true, requestId, assets: stored });
 });
 
@@ -2425,6 +2552,7 @@ app.post("/api/tutor/content-requests/:id/regenerate", async (c) => {
     await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
     await db.insert(contentRequestAssets).values({ id: assetId, requestId: targetId, r2Key: key, filename: file.name, contentType: file.type, kind, size: file.size, createdAt: now });
   }
+  c.executionCtx.waitUntil(notifyAdminsContentRequest(c.env, db, title, cfg.numQuestions, true).catch(() => {}));
   return c.json({ ok: true, requestId: targetId, mode });
 });
 
@@ -2775,6 +2903,39 @@ app.post("/api/session/attempt", async (c) => {
   });
 });
 
+// «Esta pregunta está mal»: el niño marca un ejercicio que acaba de responder. Solo se puede marcar lo
+// que ya ha intentado, y su respuesta y el veredicto los copia el SERVIDOR de `attempts` (no el cliente).
+// Uno por (niño, ejercicio): volver a marcarlo lo reabre, así que no se puede inundar al tutor.
+app.post("/api/session/report", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = await c.req.json<{ profileId?: string; exerciseTemplateId?: string; reason?: string }>().catch(() => null);
+  if (!body?.profileId || !body.exerciseTemplateId) return c.json({ error: "invalid body" }, 400);
+  const reason = body.reason && Object.hasOwn(REPORT_REASON_ES, body.reason) ? body.reason : null;
+  if (!reason) return c.json({ error: "invalid_reason" }, 400);
+  const a = await childOrOwner(c, db, body.profileId);
+  if (typeof a !== "string") return a;
+  const [tpl] = await db
+    .select({ skillId: exerciseTemplates.skillId })
+    .from(exerciseTemplates)
+    .where(and(eq(exerciseTemplates.id, body.exerciseTemplateId), eq(exerciseTemplates.retired, false)))
+    .limit(1);
+  if (!tpl) return c.json({ error: "exercise not found" }, 404);
+  if (!(await childCanAttemptSkill(db, body.profileId, tpl.skillId))) return c.json({ error: "no_course_access" }, 403);
+  const [last] = await db
+    .select({ answer: attempts.answerGiven, correct: attempts.correct })
+    .from(attempts)
+    .where(and(eq(attempts.profileId, body.profileId), eq(attempts.exerciseTemplateId, body.exerciseTemplateId)))
+    .orderBy(desc(attempts.ts))
+    .limit(1);
+  if (!last) return c.json({ error: "not_attempted" }, 409);
+  const fila = { reason, answerGiven: last.answer ?? null, correct: last.correct, status: "open", createdAt: new Date().toISOString(), resolvedAt: null };
+  await db
+    .insert(exerciseReports)
+    .values({ profileId: body.profileId, exerciseTemplateId: body.exerciseTemplateId, ...fila })
+    .onConflictDoUpdate({ target: [exerciseReports.profileId, exerciseReports.exerciseTemplateId], set: fila });
+  return c.json({ ok: true });
+});
+
 app.get("/api/rewards", async (c) => {
   const db = getDb(c.env.DB);
   const kid = await currentChildId(c, db);
@@ -3092,9 +3253,40 @@ async function runDailyJobs(env: Env): Promise<void> {
       }
       lines.push(`<li><b>${kid.name}</b>: ${n} ejercicios, ${acc}% de aciertos${extra}.</li>`);
     }
-    const html = emailLayout("Resumen semanal", `Cómo ha ido la semana de tus niños:<ul>${lines.join("")}</ul>`, { url: APP_URL, label: "Ver el detalle" });
+    const [rep] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(exerciseReports)
+      .innerJoin(exerciseTemplates, eq(exerciseTemplates.id, exerciseReports.exerciseTemplateId))
+      .where(and(inArray(exerciseReports.profileId, kidsH.map((k) => k.id)), eq(exerciseReports.status, "open"), eq(exerciseTemplates.retired, false)));
+    const nRep = Number(rep?.n ?? 0);
+    const avisos =
+      nRep === 0
+        ? ""
+        : nRep === 1
+          ? "<p>Hay <b>1</b> pregunta marcada como errónea pendiente de revisar en el panel.</p>"
+          : `<p>Hay <b>${nRep}</b> preguntas marcadas como erróneas pendientes de revisar en el panel.</p>`;
+    const html = emailLayout("Resumen semanal", `Cómo ha ido la semana de tus niños:<ul>${lines.join("")}</ul>${avisos}`, { url: APP_URL, label: "Ver el detalle" });
     await sendEmail(env, tutor.email, "smartkids · resumen semanal", html);
     await db.update(parentAccounts).set({ digestAt: nowIso }).where(eq(parentAccounts.id, tutor.id));
+  }
+
+  // 3) Avisos de «pregunta mal» sobre el catálogo GLOBAL (el tutor no puede corregirlo): resumen a los
+  //    administradores con lo marcado desde la ejecución anterior (el cron es diario).
+  const dayAgo = new Date(now - 86400000).toISOString();
+  const globales = await db
+    .select({ id: exerciseTemplates.id, skillId: exerciseTemplates.skillId, stem: exerciseTemplates.stem, reason: exerciseReports.reason })
+    .from(exerciseReports)
+    .innerJoin(exerciseTemplates, eq(exerciseTemplates.id, exerciseReports.exerciseTemplateId))
+    .innerJoin(skills, eq(skills.id, exerciseTemplates.skillId))
+    .where(and(eq(exerciseReports.status, "open"), gte(exerciseReports.createdAt, dayAgo), isNull(skills.ownerId), eq(exerciseTemplates.retired, false)))
+    .limit(50);
+  if (globales.length) {
+    const admins = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.role, "admin"));
+    const items = globales
+      .map((g) => `<li><code>${escHtml(g.id)}</code> (${escHtml(g.skillId)}), ${REPORT_REASON_ES[g.reason] ?? escHtml(g.reason)}: ${escHtml(g.stem.slice(0, 160))}</li>`)
+      .join("");
+    const html = emailLayout("Preguntas del catálogo marcadas como erróneas", `En las últimas 24 horas:<ul>${items}</ul>Corrige el módulo en <code>content/</code> y republica.`);
+    for (const ad of admins) await sendEmail(env, ad.email, "smartkids · preguntas marcadas como erróneas", html);
   }
 }
 

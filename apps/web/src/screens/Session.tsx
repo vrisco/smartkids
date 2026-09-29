@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, ApiError, type Answer, type AttemptResult, type Exercise } from "../api";
+import { api, ApiError, type Answer, type AttemptResult, type Exercise, type ReportReason } from "../api";
 import { ExerciseInput, FillBlanks, correctAnswerString } from "../components/ExerciseInput";
 import { ExerciseFigure } from "../components/ExerciseFigure";
 import { Icon } from "../components/Icon";
@@ -13,6 +13,7 @@ const MAX_DOTS = 12; // a partir de aquí, barra de progreso en vez de puntos (m
 const REVIEW_EXTRA = 3; // margen de reintentos sobre el nº de fallos, para no frustrar
 
 type Phase = "main" | "reviewIntro" | "review" | "summary";
+const REPORT_REASONS: ReportReason[] = ["wrong_answer", "unclear", "other"];
 
 /** Baraja una copia (Fisher-Yates): el repaso no sigue el orden en que se fallaron. */
 function shuffled<T>(arr: T[]): T[] {
@@ -426,6 +427,53 @@ export function Session({
           )}
         </button>
       )}
+      {result && <ReportQuestion key={exercise.id} profileId={profileId} templateId={exercise.id} />}
+    </div>
+  );
+}
+
+// «¿Esta pregunta está mal?»: tras responder (ya ve la solución), el niño puede avisar a su tutor.
+// El contenido lo genera una IA: así los errores que se cuelen salen a la luz en vez de frustrarle.
+function ReportQuestion({ profileId, templateId }: { profileId: string; templateId: string }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<"idle" | "open" | "sending" | "sent" | "error">("idle");
+
+  async function send(reason: ReportReason) {
+    setState("sending");
+    try {
+      await api.reportExercise({ profileId, exerciseTemplateId: templateId, reason });
+      setState("sent");
+    } catch {
+      setState("error");
+    }
+  }
+
+  if (state === "sent")
+    return (
+      <p className="report-q done">
+        <Icon name="check" size={13} /> {t("session.reportThanks")}
+      </p>
+    );
+  if (state === "idle")
+    return (
+      <button type="button" className="report-q link" onClick={() => setState("open")}>
+        <Icon name="flag" size={13} /> {t("session.reportAsk")}
+      </button>
+    );
+  return (
+    <div className="report-q open">
+      <span className="report-q-title">{t("session.reportWhy")}</span>
+      <div className="report-q-reasons">
+        {REPORT_REASONS.map((r) => (
+          <button key={r} type="button" className="btn-ghost sm" disabled={state === "sending"} onClick={() => send(r)}>
+            {t(`session.reason_${r}`)}
+          </button>
+        ))}
+        <button type="button" className="btn-ghost sm" disabled={state === "sending"} onClick={() => setState("idle")}>
+          {t("common.cancel")}
+        </button>
+      </div>
+      {state === "error" && <p className="session-inline-error">{t("session.reportFailed")}</p>}
     </div>
   );
 }

@@ -15,6 +15,7 @@
 -- otra van antes que ella. Faltaban ocho y el seed fallaba a mitad sobre una base
 -- con datos, dejando el progreso ya borrado y el resto intacto.
 DELETE FROM coin_awards;
+DELETE FROM exercise_reports;
 DELETE FROM child_rewards;
 DELETE FROM child_skills;
 DELETE FROM child_courses;

@@ -1724,3 +1724,74 @@ button:focus-visible {
   text-transform: uppercase;
   color: var(--cyan);
 }
+
+/* ---------- «¿Esta pregunta está mal?» (sesión) y avisos del tutor ---------- */
+.report-q {
+  align-self: center;
+  margin: var(--sp-2) 0 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.report-q.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: 0;
+  padding: var(--sp-1) var(--sp-2);
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.report-q.done {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--cyan);
+}
+.report-q.open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+}
+.report-q-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.report-q-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+.report-intro {
+  margin: 0 0 var(--sp-3);
+  font-size: 0.85rem;
+}
+.report-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--gold);
+  margin-bottom: 0.3rem;
+}
+.report-solution {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.report-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+}
+.report-actions {
+  margin-top: var(--sp-2);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}

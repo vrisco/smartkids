@@ -106,6 +106,27 @@ export interface Mistake {
   correctAnswer: Answer | null;
 }
 
+// «Esta pregunta está mal»: motivo que elige el niño.
+export type ReportReason = "wrong_answer" | "unclear" | "other";
+
+// Aviso abierto de un niño del hogar sobre una pregunta (panel del tutor).
+export interface ExerciseReport {
+  profileId: string;
+  childName: string;
+  templateId: string;
+  skillName: LocaleText;
+  stem: string;
+  type: string;
+  render: RenderPayload | null;
+  given: Answer | null;
+  wasCorrect: boolean | null;
+  correctAnswer: Answer | null;
+  solution: string | null;
+  reason: ReportReason;
+  createdAt: string;
+  canHide: boolean; // solo el contenido privado del hogar; el global lo corrige el admin
+}
+
 // Preview del tutor: ejercicio COMPLETO (con solución) + estado de visibilidad.
 export interface PreviewExercise {
   templateId: string;
@@ -384,6 +405,8 @@ export const api = {
     ),
   attempt: (body: { profileId: string; exerciseTemplateId: string; answer: Answer; responseTimeMs?: number; clientAttemptId?: string }) =>
     j<AttemptResult>(`/api/session/attempt`, post(body)),
+  reportExercise: (body: { profileId: string; exerciseTemplateId: string; reason: ReportReason }) =>
+    j<{ ok: boolean }>(`/api/session/report`, post(body)),
   // Reserva un ejercicio CONCRETO por id (reintentar el mismo / repaso dirigido a los fallos).
   retryExercise: (exerciseId: string, profileId: string) =>
     j<Exercise>(`/api/session/next?profile=${encodeURIComponent(profileId)}&exercise=${encodeURIComponent(exerciseId)}`),
@@ -454,6 +477,9 @@ export const api = {
   tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
   householdSummary: () => j<ChildSummary[]>(`/api/tutor/summary`),
   childMistakes: (childId: string) => j<Mistake[]>(`/api/tutor/children/${encodeURIComponent(childId)}/mistakes`),
+  tutorReports: () => j<ExerciseReport[]>(`/api/tutor/reports`),
+  resolveReport: (templateId: string, profileId: string, action: "hide" | "dismiss") =>
+    j<{ ok: boolean }>(`/api/tutor/reports/${encodeURIComponent(templateId)}/resolve`, post({ profileId, action })),
 
   // Web Push
   pushKey: () => j<{ publicKey: string | null }>(`/api/push/key`),

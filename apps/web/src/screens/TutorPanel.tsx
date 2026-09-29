@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GRADE_BANDS, isGradeBand } from "../grades";
-import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type ExerciseReport, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { ContentPreview } from "../components/ContentPreview";
 import { correctAnswerString } from "../components/ExerciseInput";
@@ -82,6 +82,8 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
         <InstallCard />
 
         <PendingRedemptions />
+
+        <ExerciseReports />
 
         <div className="panel-head">
           <h2 className="screen-title">{t("tutor.myKids")}</h2>
@@ -976,6 +978,91 @@ function PendingRedemptions() {
             </button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Preguntas que los niños han marcado como erróneas: el tutor ve su respuesta y la esperada, y decide
+// si ocultar la pregunta (solo contenido propio) o descartar el aviso porque estaba bien.
+function ExerciseReports() {
+  const { t } = useTranslation();
+  const [items, setItems] = useState<ExerciseReport[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api
+      .tutorReports()
+      .then(setItems)
+      .catch(() => setItems([]));
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function act(r: ExerciseReport, action: "hide" | "dismiss") {
+    setBusy(r.profileId + r.templateId);
+    try {
+      await api.resolveReport(r.templateId, r.profileId, action);
+      load();
+    } catch {
+      /* noop */
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!items || items.length === 0) return null;
+  const ans = (r: ExerciseReport, a: ExerciseReport["given"]) => (r.render && a ? correctAnswerString(r.render, a) : "—");
+  return (
+    <div className="panel-section">
+      <div className="panel-head">
+        <h2 className="screen-title">{t("reports.title")}</h2>
+      </div>
+      <p className="muted report-intro">{t("reports.intro")}</p>
+      <div className="mistake-list">
+        {items.map((r) => {
+          const k = r.profileId + r.templateId;
+          return (
+            <div className="mistake" key={k}>
+              <div className="mistake-skill">
+                {r.childName} · {tx(r.skillName)}
+              </div>
+              <div className="report-reason">
+                <Icon name="flag" size={12} /> {t(`reports.reason_${r.reason}`)}
+              </div>
+              <div className="mistake-stem">
+                <MathText text={r.stem} />
+              </div>
+              <div className="mistake-answers">
+                {r.given && (
+                  <span className={`mistake-a ${r.wasCorrect ? "ok" : "wrong"}`}>
+                    {t("reports.childAnswer")}: <MathText text={ans(r, r.given)} />
+                  </span>
+                )}
+                <span className="mistake-a ok">
+                  <Icon name="check" size={12} /> <MathText text={ans(r, r.correctAnswer)} />
+                </span>
+              </div>
+              {r.solution && (
+                <div className="report-solution">
+                  <MathText text={r.solution} />
+                </div>
+              )}
+              {!r.canHide && <p className="muted report-note">{t("reports.globalNote")}</p>}
+              <div className="row-actions report-actions">
+                {r.canHide && (
+                  <button className="btn-primary sm" type="button" disabled={busy === k} onClick={() => act(r, "hide")}>
+                    <Icon name="eyeOff" size={14} /> {t("reports.hide")}
+                  </button>
+                )}
+                <button className="btn-ghost sm" type="button" disabled={busy === k} onClick={() => act(r, "dismiss")}>
+                  {t("reports.dismiss")}
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

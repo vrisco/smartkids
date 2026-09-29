@@ -350,6 +350,28 @@ export const coinAwards = sqliteTable(
   (t) => [primaryKey({ columns: [t.profileId, t.exerciseTemplateId] }), index("coin_awards_template_idx").on(t.exerciseTemplateId)],
 );
 
+/** «Esta pregunta está mal»: un niño marca un ejercicio como erróneo tras responderlo. Uno por
+ *  (niño, ejercicio); volver a marcarlo lo reabre. Lo revisa el tutor del hogar (ocultar la pregunta
+ *  o descartar el aviso); si el ejercicio es del catálogo global, el cron avisa además al admin. */
+export const exerciseReports = sqliteTable(
+  "exercise_reports",
+  {
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => childProfiles.id),
+    exerciseTemplateId: text("exercise_template_id")
+      .notNull()
+      .references(() => exerciseTemplates.id),
+    reason: text("reason").notNull(), // 'wrong_answer' | 'unclear' | 'other'
+    answerGiven: text("answer_given", { mode: "json" }), // última respuesta del niño (la copia el SERVIDOR de attempts)
+    correct: integer("correct", { mode: "boolean" }), // cómo la corrigió el servidor
+    status: text("status").notNull().default("open"), // 'open' | 'dismissed' | 'hidden'
+    createdAt: text("created_at").notNull(),
+    resolvedAt: text("resolved_at"),
+  },
+  (t) => [primaryKey({ columns: [t.profileId, t.exerciseTemplateId] }), index("exercise_reports_template_idx").on(t.exerciseTemplateId)],
+);
+
 /** Fichero subido para una solicitud (imagen o documento). El binario vive en R2. */
 export const contentRequestAssets = sqliteTable("content_request_assets", {
   id: text("id").primaryKey(),

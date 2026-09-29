@@ -31,7 +31,8 @@ export type IconName =
   | "chevronLeft"
   | "chevronRight"
   | "eye"
-  | "eyeOff";
+  | "eyeOff"
+  | "flag";
 
 const STROKE: Partial<Record<IconName, ReactElement>> = {
   lock: (
@@ -61,6 +62,12 @@ const STROKE: Partial<Record<IconName, ReactElement>> = {
     </>
   ),
   play: <path d="M8 5l11 7-11 7z" />,
+  flag: (
+    <>
+      <path d="M5 21V4" />
+      <path d="M5 4h12l-2.5 4.5L17 13H5" />
+    </>
+  ),
   back: <path d="M15 5l-7 7 7 7" />,
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
   plus: <path d="M12 5v14M5 12h14" />,

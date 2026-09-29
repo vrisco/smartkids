@@ -8,6 +8,10 @@ import { MathText, renderMath } from "./MathText";
 
 type Narrow<T extends RenderPayload["type"]> = Extract<RenderPayload, { type: T }>;
 
+// El teclado del móvil no debe «ayudar» en una respuesta: el autocorrector cambiaría una forma mal
+// escrita por la buena (p. ej. «catched» por «caught») y el subrayado del corrector chivaría el error.
+const NO_AUTOCORRECT = { autoComplete: "off", autoCorrect: "off", autoCapitalize: "none", spellCheck: false } as const;
+
 interface CtrlProps<T extends RenderPayload["type"]> {
   render: Narrow<T>;
   answer: Answer | null;
@@ -107,6 +111,7 @@ function NumericInput({ render, onChange, result }: CtrlProps<"numeric">) {
       <input
         type="text"
         inputMode="decimal"
+        {...NO_AUTOCORRECT}
         className="answer-field"
         value={text}
         disabled={Boolean(result)}
@@ -151,6 +156,7 @@ export function FillBlanks({
     return (
       <input
         key={"blank" + i}
+        {...NO_AUTOCORRECT}
         className={cls}
         disabled={Boolean(result)}
         value={vals[i] ?? ""}
@@ -277,6 +283,7 @@ function StepProblem({ render, onChange, result }: CtrlProps<"step_problem">) {
             <input
               type="text"
               inputMode={st.kind === "numeric" ? "decimal" : "text"}
+              {...NO_AUTOCORRECT}
               className="answer-field"
               disabled={Boolean(result)}
               value={vals[st.id] ?? ""}
