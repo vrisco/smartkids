@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { GRADE_BANDS, isGradeBand } from "../grades";
 import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { ContentPreview } from "../components/ContentPreview";
@@ -97,7 +98,15 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
                 <Avatar name={ch.avatar} size={38} />
                 <div className="list-main">
                   <b>{ch.displayName}</b>
-                  <span>@{ch.username}</span>
+                  <span>
+                    @{ch.username}
+                    {isGradeBand(ch.gradeBand) ? ` · ${t(`grades.${ch.gradeBand}`)}` : ""}
+                  </span>
+                  {!isGradeBand(ch.gradeBand) && (
+                    <span className="grade-unset">
+                      <Icon name="book" size={12} /> {t("tutor.schoolYearUnset")}
+                    </span>
+                  )}
                   {s && (
                     <span className="muted" style={{ display: "inline-flex", gap: "0.7rem", alignItems: "center", flexWrap: "wrap", fontSize: "0.8rem", marginTop: "0.15rem" }}>
                       <span style={{ display: "inline-flex", gap: "0.25rem", alignItems: "center" }}>
@@ -326,6 +335,8 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
   const [pin, setPin] = useState("");
   const [avatar, setAvatar] = useState<string>(avatarKeyOf(child?.avatar));
   const [birthYear, setBirthYear] = useState<string>(child?.birthYear != null ? String(child.birthYear) : "");
+  // Curso escolar: lo usa la generación de contenido para adaptar temario y dificultad.
+  const [grade, setGrade] = useState<string>(isGradeBand(child?.gradeBand) ? child!.gradeBand : "");
   const [consent, setConsent] = useState(false);
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -350,13 +361,14 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
       let id = child?.id;
       const by = birthYear ? parseInt(birthYear, 10) : null;
       if (editing) {
-        const patch: { displayName: string; avatar: string; username: string; pin?: string; birthYear?: number | null } = { displayName: name, avatar, username };
+        const patch: { displayName: string; avatar: string; username: string; pin?: string; birthYear?: number | null; gradeBand?: string } = { displayName: name, avatar, username };
         if (pin.length >= 4) patch.pin = pin;
         if (by) patch.birthYear = by;
+        if (grade) patch.gradeBand = grade;
         await api.updateChild(child!.id, patch);
       } else {
         if (pin.length < 4) throw new Error(t("tutor.pinError"));
-        const r = await api.createChild({ displayName: name, username, avatar, gradeBand: "ESO-5", pin, courseIds: sel, birthYear: by, consent });
+        const r = await api.createChild({ displayName: name, username, avatar, gradeBand: grade, pin, courseIds: sel, birthYear: by, consent });
         id = r.profile.id;
       }
       if (id) await api.setChildCourses(id, sel);
@@ -408,6 +420,17 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
           value={birthYear}
           onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
         />
+        <div className="course-label">{t("tutor.schoolYear")}</div>
+        <select className="field" value={grade} onChange={(e) => setGrade(e.target.value)}>
+          <option value="" disabled>
+            {t("tutor.schoolYearPh")}
+          </option>
+          {GRADE_BANDS.map((g) => (
+            <option key={g} value={g}>
+              {t(`grades.${g}`)}
+            </option>
+          ))}
+        </select>
         <div className="avatar-pick">
           {AVATAR_KEYS.map((k) => (
             <button key={k} type="button" className={"ava" + (k === avatar ? " on" : "")} onClick={() => setAvatar(k)}>
@@ -417,12 +440,15 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
         </div>
         <div className="course-label">{t("tutor.coursesAccess")}</div>
         <div className="course-checks">
-          {courses.map((cr) => (
-            <label className={"course-check" + (sel.includes(cr.id) ? " on" : "")} key={cr.id}>
-              <input type="checkbox" checked={sel.includes(cr.id)} onChange={() => toggle(cr.id)} />
-              {tx(cr.nameI18n)}
-            </label>
-          ))}
+          {[...courses]
+            .sort((a, b) => Number(b.gradeBand === grade) - Number(a.gradeBand === grade))
+            .map((cr) => (
+              <label className={"course-check" + (sel.includes(cr.id) ? " on" : "")} key={cr.id}>
+                <input type="checkbox" checked={sel.includes(cr.id)} onChange={() => toggle(cr.id)} />
+                {tx(cr.nameI18n)}
+                {grade && cr.gradeBand === grade && <span className="course-tag">{t("tutor.ofSchoolYear")}</span>}
+              </label>
+            ))}
           {courses.length === 0 && <span className="muted">{t("tutor.noCourses")}</span>}
         </div>
         {!editing && (
@@ -441,7 +467,7 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
           <button className="btn-ghost" type="button" onClick={onClose}>
             {t("common.cancel")}
           </button>
-          <button className="btn-primary" type="button" onClick={save} disabled={busy || !name || username.length < 3 || (!editing && !consent)}>
+          <button className="btn-primary" type="button" onClick={save} disabled={busy || !name || username.length < 3 || (!editing && (!consent || !grade))}>
             {t("common.save")}
           </button>
         </div>
@@ -961,6 +987,7 @@ function ContentSection({ me }: { me: Me }) {
   const [content, setContent] = useState<PrivateSkill[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState<ContentRequest | null>(null);
+  const [regenerating, setRegenerating] = useState<ContentRequest | null>(null);
   const [preview, setPreview] = useState<PrivateSkill | null>(null);
   const [showOld, setShowOld] = useState(false);
   const contentRef = useRef<PrivateSkill[]>([]);
@@ -993,6 +1020,13 @@ function ContentSection({ me }: { me: Me }) {
     api.assignSkill(skillId, ids).catch(() => load());
   }
 
+  function setMissionLength(skillId: string, sessionLength: number) {
+    const next = contentRef.current.map((s) => (s.id === skillId ? { ...s, sessionLength } : s));
+    contentRef.current = next;
+    setContent(next);
+    api.setSkillSessionLength(skillId, sessionLength).catch(() => load());
+  }
+
   async function delRequest(id: string) {
     if (!window.confirm(t("content.deleteRequestConfirm"))) return;
     try {
@@ -1012,6 +1046,12 @@ function ContentSection({ me }: { me: Me }) {
       /* noop */
     }
   }
+
+  // Solicitud de la que sale un contenido, si se puede regenerar (ya procesada, no pendiente).
+  const regenerableOf = (requestId?: string | null) => {
+    const r = requestId ? (reqs ?? []).find((x) => x.id === requestId) : undefined;
+    return r && (r.status === "published" || r.status === "failed") ? r : undefined;
+  };
 
   return (
     <div className="panel-section">
@@ -1052,6 +1092,11 @@ function ContentSection({ me }: { me: Me }) {
                             {t("common.edit")}
                           </button>
                         )}
+                        {r.status === "failed" && (
+                          <button className="btn-ghost sm" type="button" onClick={() => setRegenerating(r)}>
+                            {t("content.regenerate")}
+                          </button>
+                        )}
                         <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
                           {t("common.delete")}
                         </button>
@@ -1079,6 +1124,9 @@ function ContentSection({ me }: { me: Me }) {
                                 {r.exerciseCount ? ` · ${r.exerciseCount}` : ""}
                               </span>
                             </div>
+                            <button className="btn-ghost sm" type="button" onClick={() => setRegenerating(r)}>
+                              {t("content.regenerate")}
+                            </button>
                             <button className="btn-ghost sm danger" type="button" onClick={() => delRequest(r.id)}>
                               {t("common.delete")}
                             </button>
@@ -1093,47 +1141,68 @@ function ContentSection({ me }: { me: Me }) {
           })()}
           {(content ?? []).length > 0 && (
             <div className="list">
-              {(content ?? []).map((s) => (
-                <div className="list-row col" key={s.id}>
-                  <div className="content-row-head">
-                    <div className="list-main">
-                      <b>{tx(s.nameI18n)}</b>
-                      <span>
-                        {s.exercises} {t("content.exercises")}
-                      </span>
+              {(content ?? []).map((s) => {
+                const regen = regenerableOf(s.requestId);
+                return (
+                  <div className="list-row col" key={s.id}>
+                    <div className="content-row-head">
+                      <div className="list-main">
+                        <b>{tx(s.nameI18n)}</b>
+                        <span>
+                          {s.exercises} {t("content.exercises")} · {t("content.perMission", { count: s.sessionLength })}
+                        </span>
+                      </div>
+                      <button className="btn-ghost sm" type="button" onClick={() => setPreview(s)}>
+                        {t("content.preview")}
+                      </button>
+                      {regen && (
+                        <button className="btn-ghost sm" type="button" onClick={() => setRegenerating(regen)}>
+                          {t("content.regenerate")}
+                        </button>
+                      )}
+                      <button className="btn-ghost sm danger" type="button" onClick={() => delContent(s.id)}>
+                        {t("common.delete")}
+                      </button>
                     </div>
-                    <button className="btn-ghost sm" type="button" onClick={() => setPreview(s)}>
-                      {t("content.preview")}
-                    </button>
-                    <button className="btn-ghost sm danger" type="button" onClick={() => delContent(s.id)}>
-                      {t("common.delete")}
-                    </button>
+                    <div className="course-checks">
+                      {me.children.map((ch) => (
+                        <label className={"course-check" + (s.childIds.includes(ch.id) ? " on" : "")} key={ch.id}>
+                          <input type="checkbox" checked={s.childIds.includes(ch.id)} onChange={(e) => assign(s.id, ch.id, e.target.checked)} />
+                          {ch.displayName}
+                        </label>
+                      ))}
+                    </div>
+                    <label className="mission-len">
+                      <span>{t("content.sessionLength")}</span>
+                      <select className="field" value={s.sessionLength} onChange={(e) => setMissionLength(s.id, Number(e.target.value))}>
+                        {withValue(SESSION_LENGTHS, s.sessionLength).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                  <div className="course-checks">
-                    {me.children.map((ch) => (
-                      <label className={"course-check" + (s.childIds.includes(ch.id) ? " on" : "")} key={ch.id}>
-                        <input type="checkbox" checked={s.childIds.includes(ch.id)} onChange={(e) => assign(s.id, ch.id, e.target.checked)} />
-                        {ch.displayName}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
       )}
-      {(uploading || editing) && (
+      {(uploading || editing || regenerating) && (
         <UploadContent
           kids={me.children}
-          request={editing ?? undefined}
+          request={editing ?? regenerating ?? undefined}
+          mode={regenerating ? "regenerate" : editing ? "edit" : "create"}
           onClose={() => {
             setUploading(false);
             setEditing(null);
+            setRegenerating(null);
           }}
           onDone={() => {
             setUploading(false);
             setEditing(null);
+            setRegenerating(null);
             load();
           }}
         />
@@ -1143,22 +1212,69 @@ function ContentSection({ me }: { me: Me }) {
   );
 }
 
-function UploadContent({ kids, request, onClose, onDone }: { kids: Child[]; request?: ContentRequest; onClose: () => void; onDone: () => void }) {
+/* ---------- Formulario de solicitud de contenido (crear / editar / regenerar) ---------- */
+
+const QUESTION_COUNTS = [10, 20, 30, 50, 75, 100, 150, 200];
+const SESSION_LENGTHS = [5, 10, 15, 20, 25, 30];
+const GENERATION_EXTRA = 1.5; // igual que la API: se genera un 50 % más de lo pedido para variar cada tanda
+const QUESTION_TYPES = ["multiple_choice", "multiple_select", "true_false", "fill_in_blank", "numeric", "ordering", "matching", "step_problem"] as const;
+type QuestionType = (typeof QUESTION_TYPES)[number];
+/** Tipos sugeridos por materia: lo que mejor evalúa cada una sin corrección manual. */
+const TYPE_PRESETS: Record<string, QuestionType[]> = {
+  math: ["numeric", "multiple_choice", "fill_in_blank", "true_false", "step_problem", "ordering"],
+  language: ["multiple_choice", "multiple_select", "fill_in_blank", "true_false", "ordering", "matching"],
+  foreign: ["fill_in_blank", "matching", "multiple_choice", "ordering", "true_false"],
+  science: ["multiple_choice", "multiple_select", "true_false", "matching", "ordering", "fill_in_blank", "numeric"],
+  social: ["multiple_choice", "multiple_select", "true_false", "ordering", "matching", "fill_in_blank"],
+  all: [...QUESTION_TYPES],
+};
+
+/** Opciones de un select + el valor actual si no está entre ellas (datos antiguos), ordenadas. */
+function withValue(opts: number[], v: number | null | undefined): number[] {
+  return v != null && !opts.includes(v) ? [...opts, v].sort((a, b) => a - b) : opts;
+}
+
+function UploadContent({
+  kids,
+  request,
+  mode,
+  onClose,
+  onDone,
+}: {
+  kids: Child[];
+  request?: ContentRequest;
+  mode: "create" | "edit" | "regenerate";
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
-  const editingReq = Boolean(request);
   const [title, setTitle] = useState(request?.title ?? "");
   const [instructions, setInstructions] = useState(request?.instructions ?? "");
   const [childId, setChildId] = useState(request?.childId ?? kids[0]?.id ?? "");
+  const gradeOf = (id: string) => {
+    const g = kids.find((k) => k.id === id)?.gradeBand;
+    return isGradeBand(g) ? g : "";
+  };
+  // Nivel del contenido: por defecto el curso escolar del niño; si el tutor lo cambia a mano, se respeta.
+  const [level, setLevel] = useState<string>(isGradeBand(request?.gradeBand) ? request!.gradeBand! : gradeOf(childId));
+  const [levelTouched, setLevelTouched] = useState(Boolean(request?.gradeBand));
   const [files, setFiles] = useState<FileList | null>(null);
   const [assets, setAssets] = useState<ContentAsset[]>(request?.assets ?? []);
-  const [numQuestions, setNumQuestions] = useState(String(request?.numQuestions ?? 20));
+  const [numQuestions, setNumQuestions] = useState(request?.numQuestions ?? 20);
+  const [sessionLength, setSessionLength] = useState(request?.sessionLength ?? 10);
   const [points, setPoints] = useState(String(request?.pointsPerCorrect ?? 10));
   const [modules, setModules] = useState(String(request?.modules ?? 1));
+  const [types, setTypes] = useState<string[]>(request?.questionTypes ?? []);
+  const [regenMode, setRegenMode] = useState<"replace" | "copy">("replace");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hasNewFiles = Boolean(files && files.length > 0);
   const canSave = Boolean(title.trim() || instructions.trim() || hasNewFiles || assets.length > 0);
+
+  function toggleType(ty: string, on: boolean) {
+    setTypes((cur) => (on ? QUESTION_TYPES.filter((x) => x === ty || cur.includes(x)) : cur.filter((x) => x !== ty)));
+  }
 
   async function removeAsset(assetId: string) {
     if (!request) return;
@@ -1179,11 +1295,17 @@ function UploadContent({ kids, request, onClose, onDone }: { kids: Child[]; requ
       form.set("title", title.trim());
       form.set("instructions", instructions.trim());
       if (childId) form.set("childId", childId);
-      form.set("numQuestions", numQuestions);
+      form.set("gradeBand", level); // vacío = el curso escolar del niño (lo resuelve la API)
+      form.set("numQuestions", String(numQuestions));
+      form.set("sessionLength", String(sessionLength));
       form.set("pointsPerCorrect", points);
       form.set("modules", modules);
+      form.set("questionTypes", types.join(",")); // vacío = variados
       if (files) for (const f of Array.from(files)) form.append("files", f);
-      if (request) await api.updateContentRequest(request.id, form);
+      if (mode === "regenerate" && request) {
+        form.set("mode", regenMode);
+        await api.regenerateContentRequest(request.id, form);
+      } else if (mode === "edit" && request) await api.updateContentRequest(request.id, form);
       else await api.createContentRequest(form);
       onDone();
     } catch (e) {
@@ -1192,52 +1314,155 @@ function UploadContent({ kids, request, onClose, onDone }: { kids: Child[]; requ
     }
   }
 
+  const heading = mode === "regenerate" ? t("content.regenerateTitle") : mode === "edit" ? t("content.editTitle") : t("content.uploadTitle");
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{editingReq ? t("content.editTitle") : t("content.uploadTitle")}</h3>
-        <p className="muted">{t("content.uploadHint")}</p>
+      <div className="modal upload-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{heading}</h3>
+        <p className="muted">{mode === "regenerate" ? t("content.regenerateHint") : t("content.uploadHint")}</p>
+
+        {mode === "regenerate" && (
+          <>
+            <div className="course-label">{t("content.regenMode")}</div>
+            <div className="course-checks">
+              {(["replace", "copy"] as const).map((m) => (
+                <label className={"course-check option-card" + (regenMode === m ? " on" : "")} key={m}>
+                  <input type="radio" name="regenMode" checked={regenMode === m} onChange={() => setRegenMode(m)} />
+                  <span className="option-text">
+                    <b>{m === "replace" ? t("content.regenReplace") : t("content.regenCopy")}</b>
+                    <span>{m === "replace" ? t("content.regenReplaceHint") : t("content.regenCopyHint")}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
         <input className="field" placeholder={t("content.titlePh")} value={title} onChange={(e) => setTitle(e.target.value)} />
         <textarea className="field" rows={5} placeholder={t("content.instructionsPh")} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
         <div className="course-label">{t("content.forChild")}</div>
-        <select className="field" value={childId} onChange={(e) => setChildId(e.target.value)}>
+        <select
+          className="field"
+          value={childId}
+          onChange={(e) => {
+            setChildId(e.target.value);
+            if (!levelTouched) setLevel(gradeOf(e.target.value));
+          }}
+        >
           {kids.map((ch) => (
             <option key={ch.id} value={ch.id}>
               {ch.displayName}
             </option>
           ))}
         </select>
-        <div className="course-label">{t("content.numQuestions")}</div>
-        <select className="field" value={numQuestions} onChange={(e) => setNumQuestions(e.target.value)}>
-          <option value="10">10</option>
-          <option value="20">20</option>
-          <option value="30">30</option>
+        <div className="course-label">{t("content.level")}</div>
+        <select
+          className="field"
+          value={level}
+          onChange={(e) => {
+            setLevel(e.target.value);
+            setLevelTouched(true);
+          }}
+        >
+          <option value="">{t("content.levelUnset")}</option>
+          {GRADE_BANDS.map((g) => (
+            <option key={g} value={g}>
+              {t(`grades.${g}`)}
+            </option>
+          ))}
         </select>
-        <div className="course-label">{t("content.pointsPerCorrect")}</div>
-        <select className="field" value={points} onChange={(e) => setPoints(e.target.value)}>
-          <option value="5">5</option>
-          <option value="10">10</option>
-          <option value="20">20</option>
-        </select>
-        <div className="course-label">{t("content.structure")}</div>
-        <select className="field" value={modules} onChange={(e) => setModules(e.target.value)}>
-          <option value="1">{t("content.single")}</option>
-          <option value="2">{t("content.path2")}</option>
-          <option value="3">{t("content.path3")}</option>
-        </select>
-        {assets.length > 0 && (
-          <div className="asset-list">
-            {assets.map((as) => (
-              <div className="asset-row" key={as.id}>
-                <span className="asset-name">{as.filename}</span>
-                <button className="asset-x" type="button" onClick={() => removeAsset(as.id)} aria-label={t("common.delete")}>
-                  <Icon name="close" size={12} />
-                </button>
-              </div>
+        <p className="reward-hint">{t("content.levelHint")}</p>
+
+        <div className="form-grid-2">
+          <label className="form-cell">
+            <span className="course-label">{t("content.numQuestions")}</span>
+            <select className="field" value={numQuestions} onChange={(e) => setNumQuestions(Number(e.target.value))}>
+              {withValue(QUESTION_COUNTS, numQuestions).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-cell">
+            <span className="course-label">{t("content.sessionLength")}</span>
+            <select className="field" value={sessionLength} onChange={(e) => setSessionLength(Number(e.target.value))}>
+              {withValue(SESSION_LENGTHS, sessionLength).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-cell">
+            <span className="course-label">{t("content.pointsPerCorrect")}</span>
+            <select className="field" value={points} onChange={(e) => setPoints(e.target.value)}>
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+            </select>
+          </label>
+          <label className="form-cell">
+            <span className="course-label">{t("content.structure")}</span>
+            <select className="field" value={modules} onChange={(e) => setModules(e.target.value)}>
+              <option value="1">{t("content.single")}</option>
+              {[2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={String(n)}>
+                  {t("content.pathN", { count: n })}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="reward-hint">{t("content.numQuestionsHint", { count: Math.ceil(numQuestions * GENERATION_EXTRA) })}</p>
+
+        <div className="course-label">{t("content.questionTypes")}</div>
+        <div className="type-presets">
+          <span className="reward-hint">{t("content.suggestFor")}</span>
+          <div className="seg wrap">
+            {Object.keys(TYPE_PRESETS).map((k) => (
+              <button type="button" key={k} onClick={() => setTypes([...TYPE_PRESETS[k]!])}>
+                {t(`content.subj_${k}`)}
+              </button>
             ))}
           </div>
+        </div>
+        <div className="type-checks">
+          {QUESTION_TYPES.map((ty) => {
+            const on = types.includes(ty);
+            return (
+              <label className={"course-check option-card" + (on ? " on" : "")} key={ty}>
+                <input type="checkbox" checked={on} onChange={(e) => toggleType(ty, e.target.checked)} />
+                <span className="option-text">
+                  <b>{t(`content.qt_${ty}`)}</b>
+                  <span>{t(`content.qtd_${ty}`)}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="reward-hint">{t("content.questionTypesHint")}</p>
+
+        {assets.length > 0 && (
+          <>
+            {mode === "regenerate" && <div className="course-label">{t("content.keptFiles")}</div>}
+            <div className="asset-list">
+              {assets.map((as) => (
+                <div className="asset-row" key={as.id}>
+                  <span className="asset-name">{as.filename}</span>
+                  {/* Al regenerar, el material ya subido se reutiliza tal cual: no se quita desde aquí. */}
+                  {mode === "edit" && (
+                    <button className="asset-x" type="button" onClick={() => removeAsset(as.id)} aria-label={t("common.delete")}>
+                      <Icon name="close" size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
-        <div className="course-label">{editingReq ? t("content.addFiles") : t("content.filesOptional")}</div>
+        <div className="course-label">{mode === "create" ? t("content.filesOptional") : t("content.addFiles")}</div>
         <input className="field" type="file" multiple accept="image/*,application/pdf,text/plain,.md" onChange={(e) => setFiles(e.target.files)} />
         {error && <div className="auth-error">{error}</div>}
         <div className="modal-actions">
@@ -1245,7 +1470,7 @@ function UploadContent({ kids, request, onClose, onDone }: { kids: Child[]; requ
             {t("common.cancel")}
           </button>
           <button className="btn-primary" type="button" onClick={save} disabled={busy || !canSave}>
-            {busy ? "…" : editingReq ? t("common.save") : t("content.send")}
+            {busy ? "…" : mode === "regenerate" ? t("content.regenerate") : mode === "edit" ? t("common.save") : t("content.send")}
           </button>
         </div>
       </div>

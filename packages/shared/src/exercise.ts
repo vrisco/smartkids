@@ -13,6 +13,7 @@ export type LocaleText = z.infer<typeof LocaleTextSchema>;
 
 export const ExerciseTypeSchema = z.enum([
   "multiple_choice",
+  "multiple_select",
   "numeric",
   "fill_in_blank",
   "true_false",
@@ -28,11 +29,16 @@ export const DifficultySchema = z.object({
 });
 export type Difficulty = z.infer<typeof DifficultySchema>;
 
-/** Feedback que se muestra tras responder. `solution` = explicación/solución trabajada opcional. */
+/**
+ * Feedback que se muestra tras responder. `solution` = explicación/solución trabajada opcional.
+ * `theory` = el trocito de teoría que explica el concepto ("Recuerda: ..."), breve y reutilizable;
+ * se enseña sobre todo al FALLAR, para que el niño entienda el porqué y no solo la respuesta.
+ */
 export const FeedbackSchema = z.object({
   correct: z.string(),
   incorrect: z.string(),
   solution: z.string().optional(),
+  theory: z.string().optional(),
 });
 export type Feedback = z.infer<typeof FeedbackSchema>;
 
@@ -87,6 +93,14 @@ export const MultipleChoiceSchema = BaseExercise.extend({
   options: z.array(z.object({ id: z.string(), text: z.string(), isCorrect: z.boolean() })).min(2),
 });
 export type MultipleChoiceExercise = z.infer<typeof MultipleChoiceSchema>;
+
+/** Selección múltiple ("marca TODAS las correctas"): una o varias opciones correctas. Se acierta
+ *  solo si se marca exactamente el conjunto correcto (ni una de más ni una de menos). */
+export const MultipleSelectSchema = BaseExercise.extend({
+  type: z.literal("multiple_select"),
+  options: z.array(z.object({ id: z.string(), text: z.string(), isCorrect: z.boolean() })).min(3),
+});
+export type MultipleSelectExercise = z.infer<typeof MultipleSelectSchema>;
 
 /** Respuesta numérica con tolerancia (operaciones, matemáticas). */
 export const NumericSchema = BaseExercise.extend({
@@ -173,9 +187,10 @@ export const StepProblemSchema = BaseExercise.extend({
 });
 export type StepProblemExercise = z.infer<typeof StepProblemSchema>;
 
-/** Unión discriminada por `type` — los 7 tipos. */
+/** Unión discriminada por `type` — los 8 tipos. */
 export const ExerciseSchema = z.discriminatedUnion("type", [
   MultipleChoiceSchema,
+  MultipleSelectSchema,
   NumericSchema,
   FillInBlankSchema,
   TrueFalseSchema,
@@ -189,6 +204,7 @@ export type Exercise = z.infer<typeof ExerciseSchema>;
 
 export const AnswerSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("multiple_choice"), optionId: z.string() }),
+  z.object({ type: z.literal("multiple_select"), optionIds: z.array(z.string()) }),
   z.object({ type: z.literal("numeric"), value: z.number() }),
   z.object({ type: z.literal("fill_in_blank"), values: z.array(z.string()) }),
   z.object({ type: z.literal("true_false"), value: z.boolean() }),

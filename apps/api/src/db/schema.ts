@@ -60,6 +60,7 @@ export const skills = sqliteTable("skills", {
   pathId: text("path_id"), // agrupa módulos de un mismo "path"; null = ficha suelta
   pathName: text("path_name", { mode: "json" }).$type<LocaleText>(), // nombre del path (si es módulo de uno)
   moduleIndex: integer("module_index").notNull().default(0), // orden del módulo dentro del path
+  sessionLength: integer("session_length"), // preguntas por misión (null = valor por defecto de la app)
 }, (t) => [
   index("skills_owner_idx").on(t.ownerId), // contenido privado del hogar
   index("skills_subject_grade_idx").on(t.subjectId, t.gradeBand), // catálogo por curso
@@ -320,6 +321,9 @@ export const contentRequests = sqliteTable("content_requests", {
   numQuestions: integer("num_questions"), // preguntas a generar (null = por defecto)
   pointsPerCorrect: integer("points_per_correct"), // puntos por acierto
   modules: integer("modules"), // 1 = ficha única; >1 = path con N módulos
+  questionTypes: text("question_types", { mode: "json" }).$type<string[]>(), // tipos de ejercicio pedidos (null = variados)
+  sessionLength: integer("session_length"), // preguntas por misión del contenido generado
+  sourceRequestId: text("source_request_id"), // si es una copia regenerada: la solicitud de la que sale (y sus ficheros)
   status: text("status").notNull().default("uploaded"), // uploaded | processing | published | failed
   note: text("note"), // nota/error del procesado
   skillId: text("skill_id"), // skill privado publicado al terminar

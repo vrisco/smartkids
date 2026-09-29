@@ -1,4 +1,4 @@
-// Inputs y correcciones para los 7 tipos de ejercicio. Recibe el `render` (sin
+// Inputs y correcciones para los 8 tipos de ejercicio. Recibe el `render` (sin
 // solución) y reporta un `Answer | null` hacia arriba; `null` = aún incompleto.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -34,6 +34,42 @@ function MultipleChoice({ render, answer, onChange, result }: CtrlProps<"multipl
         );
       })}
     </div>
+  );
+}
+
+/* ---------- Casillas: marcar TODAS las correctas ---------- */
+function MultipleSelect({ render, answer, onChange, result }: CtrlProps<"multiple_select">) {
+  const { t } = useTranslation();
+  const selected = answer?.type === "multiple_select" ? answer.optionIds : [];
+  const correctIds = result?.correctAnswer?.type === "multiple_select" ? result.correctAnswer.optionIds : [];
+  const toggle = (id: string) => {
+    const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
+    onChange(next.length > 0 ? { type: "multiple_select", optionIds: next } : null);
+  };
+  return (
+    <>
+      <p className="select-all-hint">{t("session.selectAll")}</p>
+      <div className="checks">
+        {render.options.map((o) => {
+          const on = selected.includes(o.id);
+          let cls = "check-opt";
+          if (result) {
+            const good = correctIds.includes(o.id);
+            // Tras corregir: verde lo que había que marcar; rojo lo marcado de más.
+            if (good) cls += " correct";
+            else if (on) cls += " wrong";
+          } else if (on) cls += " sel";
+          return (
+            <button key={o.id} type="button" className={cls} aria-pressed={on} disabled={Boolean(result)} onClick={() => toggle(o.id)}>
+              <span className="check-box">{(result ? correctIds.includes(o.id) : on) && <Icon name="check" size={14} />}</span>
+              <span className="check-text">
+                <MathText text={o.text} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -275,6 +311,8 @@ export function ExerciseInput({
   switch (render.type) {
     case "multiple_choice":
       return <MultipleChoice render={render} answer={answer} onChange={onChange} result={result} />;
+    case "multiple_select":
+      return <MultipleSelect render={render} answer={answer} onChange={onChange} result={result} />;
     case "true_false":
       return <TrueFalse render={render} answer={answer} onChange={onChange} result={result} />;
     case "numeric":
@@ -297,6 +335,10 @@ export function correctAnswerString(render: RenderPayload, ca: Answer): string {
     case "multiple_choice": {
       if (ca.type !== "multiple_choice") return "";
       return render.options.find((o) => o.id === ca.optionId)?.text ?? "";
+    }
+    case "multiple_select": {
+      if (ca.type !== "multiple_select") return "";
+      return ca.optionIds.map((id) => render.options.find((o) => o.id === id)?.text ?? id).join("  ·  ");
     }
     case "numeric":
       return ca.type === "numeric" ? `${ca.value}${render.unit ? " " + render.unit : ""}` : "";

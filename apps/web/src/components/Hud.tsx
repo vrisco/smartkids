@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { isGradeBand } from "../grades";
 import { Icon } from "./Icon";
 
 export function Hud({
@@ -21,7 +22,7 @@ export function Hud({
       </button>
       <div className="who">
         <b>{profile.displayName}</b>
-        <span>{profile.gradeBand}</span>
+        {isGradeBand(profile.gradeBand) && <span>{t(`grades.${profile.gradeBand}`)}</span>}
       </div>
       <span className="stat flame" title={t("hud.streak", { count: streak })}>
         <Icon name="flame" size={14} /> {streak}

@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { api, type FullExercise, type PreviewExercise } from "../api";
 import { ExerciseFigure } from "./ExerciseFigure";
 import { Icon } from "./Icon";
-import { MathText } from "./MathText";
+import { MathText, renderMath } from "./MathText";
 
 export function ContentPreview({ skillId, title, onClose }: { skillId: string; title: string; onClose: () => void }) {
   const { t } = useTranslation();
@@ -138,22 +138,48 @@ export function ContentPreview({ skillId, title, onClose }: { skillId: string; t
   );
 }
 
-/** Visor read-only de un ejercicio completo: enunciado + respuesta correcta + solución. */
+/** Visor read-only de un ejercicio completo: enunciado + respuesta correcta + solución + teoría. */
 function PreviewExerciseView({ ex }: { ex: FullExercise }) {
   const { t } = useTranslation();
   return (
     <div className="preview-ex">
       <div className="preview-stem">
-        <MathText text={ex.stem} />
+        {ex.type === "fill_in_blank" ? <BlankStem ex={ex} /> : <MathText text={ex.stem} />}
       </div>
-      <Answer ex={ex} />
+      {/* En "rellenar huecos" la respuesta ya va DENTRO del enunciado: no la repitas debajo. */}
+      {ex.type !== "fill_in_blank" && <Answer ex={ex} />}
       {ex.feedback?.solution && (
         <div className="preview-solution">
           <span className="preview-label">{t("content.solution")}</span>
           <MathText text={ex.feedback.solution} />
         </div>
       )}
+      {ex.feedback?.theory && (
+        <div className="preview-solution">
+          <span className="preview-label">{t("content.theory")}</span>
+          <MathText text={ex.feedback.theory} />
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Enunciado de "rellenar huecos" con la respuesta esperada EN SU SITIO. El stem lleva los
+ * marcadores {{1}}, {{2}}… y aquí se sustituyen por la respuesta aceptada, así el tutor lee
+ * la frase entera en vez de un hueco vacío y una lista de respuestas sueltas debajo.
+ */
+function BlankStem({ ex }: { ex: Extract<FullExercise, { type: "fill_in_blank" }> }) {
+  return (
+    <>
+      {renderMath(ex.stem, {
+        blank: (n) => (
+          <span key={"blank" + n} className="preview-chip">
+            {ex.blanks[n - 1]?.accept[0] ?? "?"}
+          </span>
+        ),
+      })}
+    </>
   );
 }
 
@@ -161,6 +187,7 @@ function Answer({ ex }: { ex: FullExercise }) {
   const { t } = useTranslation();
   switch (ex.type) {
     case "multiple_choice":
+    case "multiple_select":
       return (
         <div className="preview-opts">
           {ex.options.map((o) => (

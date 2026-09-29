@@ -8,8 +8,21 @@ import { MathText } from "../components/MathText";
 import { Orbi } from "../components/Orbi";
 import { keepAwake, vibrate } from "../pwa";
 
-const QUESTIONS_PER_SESSION = 5;
+const DEFAULT_SESSION_LENGTH = 5; // si el servidor no dice otra cosa (skills antiguos)
+const MAX_DOTS = 12; // a partir de aquí, barra de progreso en vez de puntos (misiones largas)
 const REVIEW_EXTRA = 3; // margen de reintentos sobre el nº de fallos, para no frustrar
+
+type Phase = "main" | "reviewIntro" | "review" | "summary";
+
+/** Baraja una copia (Fisher-Yates): el repaso no sigue el orden en que se fallaron. */
+function shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
 
 export function Session({
   profileId,
@@ -26,11 +39,14 @@ export function Session({
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [result, setResult] = useState<AttemptResult | null>(null);
-  const [phase, setPhase] = useState<"main" | "review">("main");
+  const [phase, setPhase] = useState<Phase>("main");
+  const [sessionLength, setSessionLength] = useState<number | null>(null); // preguntas de la tanda (lo fija el skill)
   const [mainDone, setMainDone] = useState(0);
+  const [mainCorrect, setMainCorrect] = useState(0);
   const [failedIds, setFailedIds] = useState<string[]>([]); // ejercicios fallados en la tanda principal
   const [reviewQueue, setReviewQueue] = useState<string[]>([]); // ids pendientes de repasar (los fallados)
   const [reviewBudget, setReviewBudget] = useState(0); // tope de reintentos de repaso
+  const [reviewFixed, setReviewFixed] = useState(0); // fallados que se acertaron en el repaso
   const [hintsShown, setHintsShown] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [error, setError] = useState<null | "red" | "permanente">(null); // fallo al CARGAR: de red (reintentable) o definitivo
@@ -58,6 +74,8 @@ export function Session({
         try {
           const ex = await run();
           if (gen !== cargaId.current) return; // llegó tarde: ya hay otra carga en curso
+          // La longitud de la misión la decide el skill (llega con el primer ejercicio y no cambia).
+          if (ex.sessionLength) setSessionLength((cur) => cur ?? ex.sessionLength ?? null);
           setExercise(ex);
           attemptId.current = crypto.randomUUID();
           setStartedAt(Date.now());
@@ -121,6 +139,17 @@ export function Session({
     }
   }
 
+  const total = sessionLength ?? DEFAULT_SESSION_LENGTH;
+
+  function startReview() {
+    const queue = shuffled([...new Set(failedIds)]);
+    setPhase("review");
+    setReviewQueue(queue);
+    setReviewBudget(queue.length + REVIEW_EXTRA);
+    setReviewFixed(0);
+    loadId(queue[0]!);
+  }
+
   function advance() {
     if (!result || !exercise) return;
     const ok = result.correct;
@@ -129,33 +158,70 @@ export function Session({
       const failed = ok ? failedIds : [...failedIds, exercise.id];
       setMainDone(nd);
       setFailedIds(failed);
-      if (nd >= QUESTIONS_PER_SESSION) {
-        // Fin de la tanda: si hubo fallos, se REPASAN esos mismos ejercicios (no otros al azar).
-        const queue = [...new Set(failed)];
-        if (queue.length > 0) {
-          setPhase("review");
-          setReviewQueue(queue);
-          setReviewBudget(queue.length + REVIEW_EXTRA);
-          loadId(queue[0]!);
-        } else {
-          onExit();
-        }
+      if (ok) setMainCorrect((n) => n + 1);
+      if (nd >= total) {
+        // Fin de la tanda: si hubo fallos, pantalla de transición y SESIÓN DE REPASO con esos mismos
+        // ejercicios (barajados); si no, directamente el resumen.
+        setPhase(failed.length > 0 ? "reviewIntro" : "summary");
         return;
       }
       loadNext();
-    } else {
+    } else if (phase === "review") {
       // Repaso: acertar saca el ejercicio de la cola; fallar lo manda al final para reintentarlo.
       const rest = reviewQueue.filter((id) => id !== exercise.id);
       const queue = ok ? rest : [...rest, exercise.id];
       const budget = reviewBudget - 1;
+      if (ok) setReviewFixed((n) => n + 1);
       if (queue.length === 0 || budget <= 0) {
-        onExit();
+        setPhase("summary");
         return;
       }
       setReviewQueue(queue);
       setReviewBudget(budget);
       loadId(queue[0]!);
     }
+  }
+
+  // Transición al repaso y resumen final: pantallas propias, sin ejercicio en curso.
+  if (phase === "reviewIntro" || phase === "summary") {
+    const failedCount = new Set(failedIds).size;
+    return (
+      <div className="session-screen">
+        <div className="session-top">
+          <button className="icon-btn" onClick={onExit} aria-label={t("session.exitMission")}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        <div className="session-state">
+          <Orbi className="session-state-orbi float" />
+          {phase === "reviewIntro" ? (
+            <>
+              <h2 className="session-state-title">{t("session.reviewIntroTitle")}</h2>
+              <p className="session-state-text">{t("session.reviewIntroBody", { correct: mainCorrect, total, count: failedCount })}</p>
+              <button className="btn-primary" onClick={startReview}>
+                <Icon name="target" size={16} /> {t("session.startReview")}
+              </button>
+            </>
+          ) : (
+            <>
+              <h2 className="session-state-title">{t("session.summaryTitle")}</h2>
+              {failedCount === 0 ? (
+                <p className="session-state-text">{t("session.summaryPerfect", { correct: mainCorrect, total })}</p>
+              ) : (
+                <>
+                  <p className="session-state-text">{t("session.summaryFirst", { correct: mainCorrect, total })}</p>
+                  <p className="session-state-text">{t("session.summaryReview", { fixed: Math.min(reviewFixed, failedCount), count: failedCount })}</p>
+                  {reviewFixed < failedCount && <p className="session-state-text">{t("session.summaryPending")}</p>}
+                </>
+              )}
+              <button className="btn-primary" onClick={onExit}>
+                {t("session.backHome")}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
   }
 
   // Ni el error ni la carga pueden dejar al niño sin salida: se pintan DENTRO del layout de
@@ -205,20 +271,24 @@ export function Session({
           ? t("session.match")
           : render.type === "fill_in_blank"
             ? t("session.complete")
-            : t("session.solve");
+            : render.type === "multiple_select"
+              ? t("session.selectAll")
+              : t("session.solve");
 
-  const showCorrectText =
-    Boolean(result && !result.correct && result.correctAnswer) &&
-    render.type !== "multiple_choice" &&
-    render.type !== "true_false";
+  // En selección / verdadero-falso / casillas la respuesta buena ya se marca en verde sobre las opciones.
+  const highlighted = render.type === "multiple_choice" || render.type === "true_false" || render.type === "multiple_select";
+  const failed = Boolean(result && !result.correct);
+  const correctText = failed && result?.correctAnswer && !highlighted ? correctAnswerString(render, result.correctAnswer) : "";
+  const showExplain = failed && Boolean(correctText || result?.theory || result?.solution);
 
   const hints = exercise.hints ?? [];
 
-  // ¿El botón termina la misión? Simula la transición de `advance()`.
+  // ¿El botón cierra una fase (fin de tanda o fin del repaso)? Simula la transición de `advance()`.
   let willFinish = false;
   if (result) {
     if (phase === "main") {
-      willFinish = mainDone + 1 >= QUESTIONS_PER_SESSION && (result.correct ? failedIds.length : failedIds.length + 1) === 0;
+      // Con fallos, tras la última pregunta viene el repaso: el botón no "termina" nada todavía.
+      willFinish = mainDone + 1 >= total && (result.correct ? failedIds.length : failedIds.length + 1) === 0;
     } else {
       const rest = reviewQueue.filter((id) => id !== exercise.id);
       const queue = result.correct ? rest : [...rest, exercise.id];
@@ -233,11 +303,20 @@ export function Session({
           <Icon name="close" size={16} />
         </button>
         {phase === "main" ? (
-          <div className="dots">
-            {Array.from({ length: QUESTIONS_PER_SESSION }, (_, i) => (
-              <i key={i} className={i < mainDone ? "on" : i === mainDone ? "cur" : ""} />
-            ))}
-          </div>
+          total <= MAX_DOTS ? (
+            <div className="dots">
+              {Array.from({ length: total }, (_, i) => (
+                <i key={i} className={i < mainDone ? "on" : i === mainDone ? "cur" : ""} />
+              ))}
+            </div>
+          ) : (
+            <div className="session-progress" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={mainDone}>
+              <div className="session-progress-bar">
+                <i style={{ width: `${(mainDone / total) * 100}%` }} />
+              </div>
+              <span className="session-progress-label">{t("session.progress", { done: Math.min(mainDone + 1, total), total })}</span>
+            </div>
+          )
         ) : (
           <div className="review-badge">
             <Icon name="target" size={14} /> {t("session.reviewLeft", { count: reviewQueue.length })}
@@ -259,6 +338,32 @@ export function Session({
 
       {render.type !== "fill_in_blank" && (
         <ExerciseInput key={exercise.id} render={render} answer={answer} onChange={setAnswer} result={result} />
+      )}
+
+      {/* Al fallar: la respuesta buena y el PORQUÉ (teoría + cómo se resuelve), no solo un "casi". */}
+      {showExplain && result && (
+        <div className="explain-card">
+          {correctText && (
+            <div className="explain-answer">
+              <span className="explain-label">{t("session.correctAnswer")}</span>
+              <MathText text={correctText} />
+            </div>
+          )}
+          {result.theory && (
+            <div className="explain-block theory">
+              <span className="explain-label">
+                <Icon name="book" size={13} /> {t("session.theory")}
+              </span>
+              <MathText text={result.theory} />
+            </div>
+          )}
+          {result.solution && (
+            <div className="explain-block">
+              <span className="explain-label">{t("session.howTo")}</span>
+              <MathText text={result.solution} />
+            </div>
+          )}
+        </div>
       )}
 
       {!result && hints.length > 0 && (
@@ -290,12 +395,7 @@ export function Session({
               )}
             </b>{" "}
             {result.feedback ?? (result.correct ? t("session.correct") : t("session.almost"))}
-            {showCorrectText && result.correctAnswer && (
-              <div className="correct-line">
-                {t("session.correctAnswer")}: <MathText text={correctAnswerString(render, result.correctAnswer)} />
-              </div>
-            )}
-            {result.solution && <div className="solution-line">{result.solution}</div>}
+            {result.correct && result.solution && <div className="solution-line">{result.solution}</div>}
           </div>
         ) : (
           <div className="bubble">

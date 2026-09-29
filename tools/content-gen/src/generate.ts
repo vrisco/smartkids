@@ -50,8 +50,8 @@ const DEFAULT_SPEC: Spec = SpecSchema.parse({
   skillId: "MATH.ESO5.MIX.DEMO",
   skillName: { es: "Repaso variado", en: "Mixed practice" },
   language: "es",
-  types: ["multiple_choice", "numeric", "true_false", "fill_in_blank", "ordering", "matching", "step_problem"],
-  count: 7,
+  types: ["multiple_choice", "multiple_select", "numeric", "true_false", "fill_in_blank", "ordering", "matching", "step_problem"],
+  count: 8,
   packageId: "pkg_math_eso5_mix_demo_v1",
   version: "1.0.0",
 });
@@ -76,7 +76,7 @@ function mockByType(type: ExerciseType, spec: Spec): Record<string, unknown> {
     language: spec.language,
     skillId: spec.skillId,
     difficulty: { level: "easy" as const, numeric: 0.3 },
-    feedback: { correct: "Muy bien.", incorrect: "Revisa el procedimiento.", solution: "Solucion paso a paso." },
+    feedback: { correct: "Muy bien.", incorrect: "Revisa el procedimiento.", solution: "Solucion paso a paso.", theory: "Recuerda la regla del tema." },
   };
   switch (type) {
     case "multiple_choice":
@@ -85,6 +85,13 @@ function mockByType(type: ExerciseType, spec: Spec): Record<string, unknown> {
         { id: "b", text: "1/4", isCorrect: false },
         { id: "c", text: "2/4", isCorrect: false },
         { id: "d", text: "3/8", isCorrect: false },
+      ] };
+    case "multiple_select":
+      return { ...base, type, stem: "Marca los numeros pares.", options: [
+        { id: "a", text: "4", isCorrect: true },
+        { id: "b", text: "7", isCorrect: false },
+        { id: "c", text: "10", isCorrect: true },
+        { id: "d", text: "15", isCorrect: false },
       ] };
     case "numeric":
       return { ...base, type, stem: "Cuanto es 12 x 8?", answer: { value: 96, tolerance: 0 } };
@@ -131,6 +138,7 @@ Reglas OBLIGATORIAS:
 - Usa skillId="${spec.skillId}", packageId="${spec.packageId}", language="${spec.language}" en todos.
 - Cada ejercicio del tipo indicado en su campo "type".
 - multiple_choice: 4 opciones, EXACTAMENTE una con isCorrect:true; los distractores deben reflejar ERRORES TÍPICOS del alumno, no aleatorios; ninguno equivalente a la solución.
+- multiple_select ("marca todas las correctas"): 4-6 opciones, al menos 2 con isCorrect:true y al menos 1 con isCorrect:false; el enunciado debe dejar claro que puede haber varias.
 - numeric: answer.value correcto; usa tolerance>0 solo si la respuesta es decimal.
 - fill_in_blank: marca los huecos en el "stem" con {{1}}, {{2}}... y da en cada hueco la lista de respuestas aceptadas (incluye variantes válidas).
 - true_false: answer.value booleano correcto.
@@ -138,7 +146,7 @@ Reglas OBLIGATORIAS:
 - matching: "left", "right" y "correctPairs" (cada left emparejado una vez).
 - step_problem: "steps" en orden, cada uno numeric o short_text con su respuesta.
 - NOTACIÓN MATEMÁTICA (en stem, opciones y prompts): potencias con "^" (2^5, x^2, 2^(-3)), raíces con "√" o "sqrt(...)" (√81, √(9 + 16)), fracciones con "/" (1/2, x/2), multiplicación con "·". El exponente puede llevar paréntesis (10^(-3)) y un hueco puede ir en el exponente (2^{{1}}). NO uses LaTeX (\\frac, \\sqrt) ni superíndices Unicode (²³): la app renderiza esta notación en pantalla.
-- feedback.correct y feedback.incorrect breves; feedback.solution con la solución trabajada. Sin apóstrofos ni comillas raras.
+- feedback.correct y feedback.incorrect breves; feedback.solution con la solución trabajada; feedback.theory con la regla o concepto que explica el ejercicio (1-2 frases, lo que el alumno debe recordar). Sin apóstrofos ni comillas raras.
 - Opcional "hints": array de 1-3 pistas que GUÍEN sin dar la solución, de lo general a lo concreto (la última puede casi resolver). Ayudan al alumno atascado antes de responder.
 - difficulty.level en easy/medium/hard y difficulty.numeric entre 0 y 1, con variedad.
 - Las respuestas deben ser CORRECTAS. Revisa la aritmética/los datos.`;

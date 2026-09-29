@@ -524,7 +524,7 @@ code {
   width: 100%;
 }
 
-/* ---------- Inputs de ejercicio (7 tipos) + repaso ---------- */
+/* ---------- Inputs de ejercicio (8 tipos) + repaso ---------- */
 .review-badge {
   display: flex;
   align-items: center;
@@ -1512,4 +1512,215 @@ button:focus-visible {
   .stat-tiles {
     grid-template-columns: repeat(4, 1fr);
   }
+}
+
+/* ---------- Casillas: "marca todas las correctas" (multiple_select) ---------- */
+.select-all-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.check-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--btn-h);
+  border: 1.5px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 14px;
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.check-opt:disabled {
+  cursor: default;
+}
+.check-box {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: var(--on-accent);
+}
+.check-opt.sel {
+  border-color: var(--cyan);
+}
+.check-opt.sel .check-box {
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
+.check-opt.correct {
+  border-color: var(--green);
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.check-opt.correct .check-box {
+  background: var(--green);
+  border-color: var(--green);
+}
+.check-opt.wrong {
+  border-color: var(--coral);
+  color: var(--coral);
+  background: color-mix(in srgb, var(--coral) 10%, transparent);
+}
+
+/* ---------- Progreso de misiones largas (más de 12 preguntas) ---------- */
+.session-progress {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.session-progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.session-progress-bar i {
+  display: block;
+  height: 100%;
+  background: var(--cyan);
+  box-shadow: var(--glow-cyan);
+  transition: width 0.3s ease;
+}
+.session-progress-label {
+  font-family: var(--hud);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.session-state-title {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+/* ---------- Explicación al fallar: respuesta buena + teoría + solución ---------- */
+.explain-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--coral);
+  border-radius: var(--radius);
+  padding: var(--sp-4);
+  font-size: 0.95rem;
+}
+.explain-answer {
+  color: var(--green);
+  font-weight: 650;
+}
+.explain-block {
+  color: var(--text);
+}
+.explain-block.theory {
+  background: var(--gold-wash);
+  border-radius: 10px;
+  padding: var(--sp-3);
+}
+.explain-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+  font-family: var(--hud);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.explain-answer .explain-label {
+  color: var(--text-faint);
+}
+
+/* ---------- Formulario de contenido: config, tipos de pregunta, regenerar ---------- */
+.modal.upload-modal {
+  max-width: 520px;
+}
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+.form-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.type-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.type-checks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+}
+@media (min-width: 560px) {
+  .type-checks {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.course-check.option-card {
+  align-items: flex-start;
+}
+.course-check.option-card input {
+  margin-top: 0.2rem;
+}
+.option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.option-text span {
+  font-size: 0.76rem;
+  color: var(--text-faint);
+}
+.mission-len {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.mission-len .field {
+  width: auto;
+  min-width: 5.5rem;
+}
+
+/* ---------- Curso escolar del niño ---------- */
+.grade-unset {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  font-size: 0.78rem;
+  color: var(--gold);
+  margin-top: 0.15rem;
+}
+.course-tag {
+  margin-left: auto;
+  font-family: var(--hud);
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cyan);
 }

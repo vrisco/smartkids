@@ -92,6 +92,7 @@ export interface Exercise {
   hints?: string[] | null; // pistas/andamiaje que se revelan una a una antes de responder
   contentVersion: string;
   render: RenderPayload;
+  sessionLength?: number; // preguntas por misión del skill (solo en la carga normal, no en el repaso)
 }
 
 // Un error reciente del niño (revisión de errores del tutor).
@@ -117,6 +118,7 @@ export interface AttemptResult {
   parts?: boolean[] | null;
   feedback?: string | null;
   solution?: string | null;
+  theory?: string | null; // el trocito de teoría que explica el concepto (se enseña al fallar)
   coinsAwarded: number;
   balance: number;
   masteryScore: number;
@@ -189,6 +191,9 @@ export interface ContentRequest {
   numQuestions?: number | null;
   pointsPerCorrect?: number | null;
   modules?: number | null;
+  questionTypes?: string[] | null; // null = tipos variados
+  sessionLength?: number | null; // preguntas por misión
+  sourceRequestId?: string | null; // copia regenerada: solicitud de la que sale
   exerciseCount?: number | null;
   skillId?: string | null;
   createdAt: string;
@@ -203,6 +208,8 @@ export interface PrivateSkill {
   gradeBand: string;
   exercises: number;
   childIds: string[];
+  sessionLength: number; // preguntas por misión
+  requestId?: string | null; // solicitud de origen (permite "Regenerar")
 }
 
 export interface StatsOverview {
@@ -346,7 +353,7 @@ export const api = {
   courses: () => j<Course[]>(`/api/courses`),
   createChild: (data: { displayName: string; username: string; avatar: string; gradeBand: string; pin: string; courseIds: string[]; birthYear?: number | null; consent: boolean }) =>
     j<{ profile: Child }>(`/api/profiles`, post(data)),
-  updateChild: (id: string, data: { displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number | null }) =>
+  updateChild: (id: string, data: { displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number | null; gradeBand?: string }) =>
     j<{ profile: Child }>(`/api/profiles/${id}/update`, post(data)),
   adjustWallet: (childId: string, delta: number, reason: string) =>
     j<{ ok: boolean; balance: number; applied: number }>(`/api/tutor/children/${encodeURIComponent(childId)}/wallet`, post({ delta, reason })),
@@ -425,6 +432,21 @@ export const api = {
     }
     return (await res.json()) as { ok: boolean };
   },
+  // Relanzar la generación de una solicitud ya procesada con otra config (sin volver a subir el material).
+  regenerateContentRequest: async (id: string, form: FormData): Promise<{ ok: boolean; requestId: string; mode: string }> => {
+    const res = await fetch(`/api/tutor/content-requests/${id}/regenerate`, { method: "POST", body: form });
+    if (!res.ok) {
+      let m = `${res.status}`;
+      try {
+        const b = (await res.json()) as { detail?: string; message?: string; error?: string };
+        m = b.detail ?? b.message ?? b.error ?? m;
+      } catch {
+        /* sin cuerpo */
+      }
+      throw new Error(m);
+    }
+    return (await res.json()) as { ok: boolean; requestId: string; mode: string };
+  },
   deleteRequestAsset: (reqId: string, assetId: string) =>
     j<{ ok: boolean }>(`/api/tutor/content-requests/${reqId}/assets/${assetId}`, { method: "DELETE" }),
   // Estadísticas / seguimiento
@@ -452,6 +474,8 @@ export const api = {
     j<{ ok: boolean; hidden: boolean }>(`/api/tutor/exercises/${encodeURIComponent(templateId)}/hidden`, post({ hidden })),
   assignSkill: (skillId: string, childIds: string[]) =>
     j<{ ok: boolean; childIds: string[] }>(`/api/tutor/skills/${skillId}/assign`, post({ childIds })),
+  setSkillSessionLength: (skillId: string, sessionLength: number) =>
+    j<{ ok: boolean; sessionLength: number }>(`/api/tutor/skills/${encodeURIComponent(skillId)}/settings`, post({ sessionLength })),
   deleteContentSkill: (skillId: string) => j<{ ok: boolean }>(`/api/tutor/skills/${skillId}`, { method: "DELETE" }),
   deleteContentRequest: (id: string) => j<{ ok: boolean }>(`/api/tutor/content-requests/${id}`, { method: "DELETE" }),
 };

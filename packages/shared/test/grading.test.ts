@@ -14,7 +14,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { normalizeText, grade, validateExercise } from "../src/grading.ts";
+import { normalizeText, grade, redactForClient, validateExercise } from "../src/grading.ts";
 import { ExerciseSchema, FillInBlankSchema } from "../src/exercise.ts";
 
 /* ---------- normalizeText ---------- */
@@ -97,6 +97,46 @@ describe("fill_in_blank", () => {
     assert.equal(grade(ex, answer("3x2")).correct, true);
     const frac = blanks(["3/4", "3 / 4"]);
     assert.equal(grade(frac, answer("3/4")).correct, true);
+  });
+});
+
+/* ---------- multiple_select ("marca todas las correctas") ---------- */
+
+function multi(correct: string[], ids = ["a", "b", "c", "d"]) {
+  return ExerciseSchema.parse({
+    exerciseId: "ex_ms",
+    packageId: "pkg_test",
+    skillId: "SK.TEST",
+    language: "es",
+    stem: "Marca los números pares",
+    difficulty: { level: "easy", numeric: 0.3 },
+    type: "multiple_select",
+    options: ids.map((id) => ({ id, text: id.toUpperCase(), isCorrect: correct.includes(id) })),
+  });
+}
+const sel = (optionIds: string[]) => ({ type: "multiple_select" as const, optionIds });
+
+describe("multiple_select", () => {
+  it("acierta solo con el conjunto exacto, sin importar el orden", () => {
+    const ex = multi(["a", "c"]);
+    assert.equal(grade(ex, sel(["c", "a"])).correct, true);
+    assert.equal(grade(ex, sel(["a"])).correct, false); // se queda corto
+    assert.equal(grade(ex, sel(["a", "b", "c"])).correct, false); // marca de más
+    assert.equal(grade(ex, sel(["a", "b", "c", "d"])).correct, false); // marcar todo no es un atajo
+    assert.equal(grade(ex, sel([])).correct, false);
+  });
+
+  it("el self-check exige al menos una correcta y al menos un distractor", () => {
+    assert.equal(validateExercise(multi(["a", "b"])).ok, true);
+    assert.equal(validateExercise(multi([])).ok, false);
+    assert.equal(validateExercise(multi(["a", "b", "c", "d"])).ok, false);
+    assert.equal(validateExercise(multi(["a"], ["a", "a", "b"])).ok, false);
+  });
+
+  it("la redacción para el cliente no filtra cuáles son correctas", () => {
+    const render = redactForClient(multi(["a", "c"]));
+    assert.equal(render.type, "multiple_select");
+    assert.equal(JSON.stringify(render).includes("isCorrect"), false);
   });
 });
 

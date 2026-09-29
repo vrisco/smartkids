@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { getDb, schema } from "./db";
 import {
   clearAttempts,
@@ -32,6 +33,7 @@ import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simp
 import {
   AnswerSchema,
   ExerciseSchema,
+  ExerciseTypeSchema,
   canonicalAnswer,
   exerciseFromRow,
   grade,
@@ -222,13 +224,14 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
 /** Borra un skill PRIVADO con su paquete, plantillas y todo lo que las referencia. */
 async function deletePrivateSkillCascade(db: DB, skillId: string, household: string[]): Promise<void> {
   const pkgRows = await db.selectDistinct({ pkg: exerciseTemplates.packageId }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
-  const tplRows = await db.select({ id: exerciseTemplates.id }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
-  const tplIds = tplRows.map((r) => r.id);
   // Sin ON DELETE cascade: hay que respetar el orden de las FKs (coin_awards antes que las plantillas).
   await db.delete(attempts).where(eq(attempts.skillId, skillId));
   await db.delete(skillProgress).where(eq(skillProgress.skillId, skillId));
   await db.delete(childSkills).where(eq(childSkills.skillId, skillId));
-  if (tplIds.length) await db.delete(coinAwards).where(inArray(coinAwards.exerciseTemplateId, tplIds));
+  // Subconsulta, NO una lista de ids: con bancos grandes (y las plantillas retiradas que se acumulan
+  // al republicar) la lista superaba el límite de variables ligadas de D1 y el borrado daba 500.
+  const plantillasDelSkill = db.select({ id: exerciseTemplates.id }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
+  await db.delete(coinAwards).where(inArray(coinAwards.exerciseTemplateId, plantillasDelSkill));
   await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
   await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
   for (const { pkg } of pkgRows) {
@@ -238,20 +241,13 @@ async function deletePrivateSkillCascade(db: DB, skillId: string, household: str
   await db.delete(skills).where(eq(skills.id, skillId));
 }
 
-/** Borra una solicitud de contenido, sus metadatos de fichero y los objetos en R2. */
+/** Borra una solicitud de contenido, sus metadatos de fichero y los objetos en R2 que ya nadie usa
+ *  (una copia regenerada comparte los objetos de su original). */
 async function deleteContentRequestCascade(env: Env, db: DB, reqId: string): Promise<void> {
-  const assets = await db.select().from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
-  if (env.UPLOADS) {
-    for (const as of assets) {
-      try {
-        await env.UPLOADS.delete(as.r2Key);
-      } catch {
-        /* el objeto pudo no existir; seguimos */
-      }
-    }
-  }
+  const assets = await db.select({ r2Key: contentRequestAssets.r2Key }).from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
   await db.delete(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
   await db.delete(contentRequests).where(eq(contentRequests.id, reqId));
+  for (const key of new Set(assets.map((as) => as.r2Key))) await deleteR2IfUnreferenced(env, db, key);
 }
 
 /** Borra una recompensa y sus asignaciones (child_rewards) y canjes (redemptions). */
@@ -273,6 +269,107 @@ async function householdIds(db: DB, parentId: string): Promise<string[]> {
 function clampInt(v: unknown, lo: number, hi: number, def: number): number {
   const n = parseInt(String(v ?? ""), 10);
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
+}
+
+/* ---------- Curso escolar del niño (LOMLOE) ---------- */
+
+/** Códigos de curso escolar: Primaria 1-6, ESO 1-4, Bachillerato 1-2 (mismo formato que courses.grade_band).
+ *  Un valor fuera de la lista (p. ej. el "ESO-5" que se fijaba antes a todos) cuenta como "sin definir". */
+const GRADE_BAND_RE = /^(PRI-[1-6]|ESO-[1-4]|BACH-[12])$/;
+function parseGradeBand(v: unknown): string | null {
+  const g = String(v ?? "").trim().toUpperCase();
+  return GRADE_BAND_RE.test(g) ? g : null;
+}
+
+/** Curso escolar válido de un niño (o null si no está definido). */
+async function childGradeBand(db: DB, childId: string | null): Promise<string | null> {
+  if (!childId) return null;
+  const [ch] = await db.select({ gradeBand: childProfiles.gradeBand }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
+  return parseGradeBand(ch?.gradeBand);
+}
+
+/* ---------- Config de generación de contenido (Vía B) ---------- */
+
+/** Preguntas que puede pedir el tutor. Se GENERAN un 50 % más (GENERATION_EXTRA) para que cada
+ *  tanda del curso salga distinta: el banco es mayor que lo que el niño ve en una pasada. */
+const REQ_MAX_QUESTIONS = 200;
+const GENERATION_EXTRA = 1.5;
+/** Preguntas por misión (sesión del niño). null en el skill = SESSION_LENGTH_DEFAULT. */
+const SESSION_LENGTH_DEFAULT = 5;
+const SESSION_LENGTH_MIN = 3;
+const SESSION_LENGTH_MAX = 30;
+const EXERCISE_TYPES: readonly string[] = ExerciseTypeSchema.options;
+
+/** Lista de tipos de ejercicio pedidos ("a,b,c" o campo repetido). Vacía o inválida = null (= variados). */
+function parseQuestionTypes(v: unknown): string[] | null {
+  const raw = (Array.isArray(v) ? v : [v]).flatMap((x) => String(x ?? "").split(","));
+  const out = [...new Set(raw.map((x) => x.trim()).filter((x) => EXERCISE_TYPES.includes(x)))];
+  return out.length > 0 ? out : null;
+}
+
+/** Nº de ejercicios a GENERAR para una solicitud: lo pedido + el 50 % de variedad. */
+function targetExercises(numQuestions: number | null): number {
+  return Math.ceil((numQuestions ?? 20) * GENERATION_EXTRA);
+}
+
+type RequestRow = typeof contentRequests.$inferSelect;
+
+/** Config de generación del multipart del formulario del tutor; lo que no venga se hereda de `prev`. */
+function requestConfigFromForm(form: Record<string, unknown>, prev?: RequestRow) {
+  const has = (k: string) => form[k] !== undefined && form[k] !== "";
+  return {
+    numQuestions: has("numQuestions") ? clampInt(form["numQuestions"], 5, REQ_MAX_QUESTIONS, 20) : (prev?.numQuestions ?? null),
+    pointsPerCorrect: has("pointsPerCorrect") ? clampInt(form["pointsPerCorrect"], 1, 50, 10) : (prev?.pointsPerCorrect ?? null),
+    modules: has("modules") ? clampInt(form["modules"], 1, 6, 1) : (prev?.modules ?? null),
+    sessionLength: has("sessionLength")
+      ? clampInt(form["sessionLength"], SESSION_LENGTH_MIN, SESSION_LENGTH_MAX, SESSION_LENGTH_DEFAULT)
+      : (prev?.sessionLength ?? null),
+    // Presente pero vacío = "variados" (null); ausente = se conserva lo que hubiera.
+    questionTypes: form["questionTypes"] !== undefined ? parseQuestionTypes(form["questionTypes"]) : (prev?.questionTypes ?? null),
+  };
+}
+
+/**
+ * Skills PRIVADOS publicados por una solicitud: el que apunta `skill_id` y todos los módulos de su
+ * path (por convención `path_<requestId>`, o el path del propio `skill_id`). Es lo que una
+ * regeneración EN SITIO debe reutilizar o retirar.
+ */
+async function requestSkills(db: DB, req: RequestRow) {
+  const pathIds = [`path_${req.id}`];
+  if (req.skillId) {
+    const [sk] = await db.select({ pathId: skills.pathId }).from(skills).where(eq(skills.id, req.skillId)).limit(1);
+    if (sk?.pathId) pathIds.push(sk.pathId);
+  }
+  const household = await householdIds(db, req.ownerId);
+  const deLaSolicitud = or(inArray(skills.pathId, pathIds), req.skillId ? eq(skills.id, req.skillId) : undefined);
+  const rows = await db
+    .select({ id: skills.id, nameI18n: skills.nameI18n, pathId: skills.pathId, pathName: skills.pathName, moduleIndex: skills.moduleIndex, sessionLength: skills.sessionLength })
+    .from(skills)
+    .where(and(isNotNull(skills.ownerId), inArray(skills.ownerId, household), deLaSolicitud))
+    .orderBy(asc(skills.moduleIndex));
+  const out: Array<(typeof rows)[number] & { packageIds: string[]; exercises: number }> = [];
+  for (const r of rows) {
+    const pk = await db
+      .select({ pkg: exerciseTemplates.packageId, n: sql<number>`count(*)` })
+      .from(exerciseTemplates)
+      .where(and(eq(exerciseTemplates.skillId, r.id), eq(exerciseTemplates.retired, false)))
+      .groupBy(exerciseTemplates.packageId);
+    out.push({ ...r, packageIds: pk.map((p) => p.pkg), exercises: pk.reduce((acc, p) => acc + (p.n ?? 0), 0) });
+  }
+  return out;
+}
+
+/** Borra un objeto de R2 SOLO si ya ninguna fila de fichero lo referencia: las copias de una
+ *  solicitud regenerada comparten los objetos del original en vez de duplicarlos. */
+async function deleteR2IfUnreferenced(env: Env, db: DB, r2Key: string): Promise<void> {
+  if (!env.UPLOADS) return;
+  const [ref] = await db.select({ n: sql<number>`count(*)` }).from(contentRequestAssets).where(eq(contentRequestAssets.r2Key, r2Key));
+  if ((ref?.n ?? 0) > 0) return;
+  try {
+    await env.UPLOADS.delete(r2Key);
+  } catch {
+    /* el objeto pudo no existir; seguimos */
+  }
 }
 
 /** Año de nacimiento válido (entre hace 100 años y este año) o null. */
@@ -808,7 +905,7 @@ app.post("/api/profiles", async (c) => {
     parentId,
     displayName,
     avatar: body.avatar ?? "orbi",
-    gradeBand: body.gradeBand ?? "ESO-5",
+    gradeBand: parseGradeBand(body.gradeBand) ?? "", // "" = sin definir (el tutor lo puede fijar luego)
     loginPinHash: await hashSecret(pin),
     username,
     preferredLocale: "es",
@@ -823,7 +920,7 @@ app.post("/api/profiles", async (c) => {
     const valid = new Set((await db.select({ id: courses.id }).from(courses)).map((v) => v.id));
     for (const cid of requested) if (valid.has(cid)) await db.insert(childCourses).values({ childId: id, courseId: cid });
   }
-  return c.json({ profile: { id, displayName, username, avatar: body.avatar ?? "orbi", gradeBand: body.gradeBand ?? "ESO-5" } });
+  return c.json({ profile: { id, displayName, username, avatar: body.avatar ?? "orbi", gradeBand: parseGradeBand(body.gradeBand) ?? "" } });
 });
 
 app.post("/api/profiles/:id/update", async (c) => {
@@ -832,14 +929,19 @@ app.post("/api/profiles/:id/update", async (c) => {
   const parentId = await requireParent(c, db);
   if (typeof parentId !== "string") return parentId;
   if (!(await ownsProfile(db, parentId, id))) return c.json({ error: "forbidden" }, 403);
-  const body = await c.req.json<{ displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number }>();
-  const patch: { displayName?: string; avatar?: string; loginPinHash?: string; username?: string; birthYear?: number } = {};
+  const body = await c.req.json<{ displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number; gradeBand?: string }>();
+  const patch: { displayName?: string; avatar?: string; loginPinHash?: string; username?: string; birthYear?: number; gradeBand?: string } = {};
   if (body.displayName?.trim()) patch.displayName = body.displayName.trim();
   if (body.avatar) patch.avatar = body.avatar;
   if (body.pin != null && String(body.pin).length >= 4) patch.loginPinHash = await hashSecret(String(body.pin));
   if (body.birthYear !== undefined) {
     const by = parseBirthYear(body.birthYear);
     if (by !== null) patch.birthYear = by;
+  }
+  if (body.gradeBand !== undefined) {
+    const g = parseGradeBand(body.gradeBand);
+    if (!g) return c.json({ error: "invalid", message: "Curso escolar inválido." }, 400);
+    patch.gradeBand = g;
   }
   if (body.username?.trim()) {
     const u = body.username.trim().toLowerCase();
@@ -968,7 +1070,10 @@ app.get("/api/child/me", async (c) => {
     .orderBy(asc(skills.moduleIndex));
   const customContent: Array<{ skillId: string; nameI18n: unknown; exercises: number; pathId: string | null; pathName: unknown; moduleIndex: number }> = [];
   for (const s of privRows) {
-    const [cnt] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, s.id));
+    const [cnt] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(exerciseTemplates)
+      .where(and(eq(exerciseTemplates.skillId, s.id), eq(exerciseTemplates.retired, false), eq(exerciseTemplates.hidden, false)));
     customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0, pathId: s.pathId, pathName: s.pathName, moduleIndex: s.moduleIndex });
   }
   return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, streak, courses: crs, customContent });
@@ -1753,13 +1858,22 @@ app.post("/api/admin/content/import", async (c) => {
       pathId?: string | null;
       pathName?: LocaleTextIn | null;
       moduleIndex?: number;
+      sessionLength?: number | null;
     };
     package: { id: string; subjectId: string; gradeBand?: string | null; version: string; ownerId?: string | null };
     exercises: unknown[];
     assign?: { childIds: string[] };
     requestId?: string;
+    /** Publicación TROCEADA de un paquete grande: posición del primer ejercicio de este lote (0 = primer lote).
+     *  Solo el lote con offset 0 retira lo anterior; los siguientes solo añaden. */
+    offset?: number;
+    /** Regeneración EN SITIO: retira TODO el contenido previo del skill (de cualquier paquete), no solo el del paquete. */
+    replaceSkillContent?: boolean;
+    /** Solo en la llamada que CIERRA una regeneración: skills de la publicación anterior que ya no se usan (se borran). */
+    retireSkillIds?: string[];
   }>();
   if (!body?.package?.id || !Array.isArray(body?.exercises)) return c.json({ error: "invalid body" }, 400);
+  const offset = Math.max(0, Math.floor(Number(body.offset ?? 0)) || 0);
 
   // Validación estricta de TODOS los ejercicios con el modelo unificado + self-check.
   const parsed: Exercise[] = [];
@@ -1780,6 +1894,11 @@ app.post("/api/admin/content/import", async (c) => {
   if (body.skill) {
     // Acota los puntos por acierto a un entero razonable (el import es privilegiado pero no de fiar ciegamente).
     const skillCoins = body.skill.coinsPerCorrect == null ? null : Math.max(1, Math.min(1000, Math.round(body.skill.coinsPerCorrect)));
+    // Preguntas por misión: solo se toca si el lote la trae (la Vía A/C no la mandan y no deben pisar el ajuste del tutor).
+    const sessionSet =
+      body.skill.sessionLength === undefined
+        ? {}
+        : { sessionLength: body.skill.sessionLength == null ? null : clampInt(body.skill.sessionLength, SESSION_LENGTH_MIN, SESSION_LENGTH_MAX, SESSION_LENGTH_DEFAULT) };
     await db
       .insert(skills)
       .values({
@@ -1794,6 +1913,7 @@ app.post("/api/admin/content/import", async (c) => {
         pathId: body.skill.pathId ?? null,
         pathName: body.skill.pathName ?? null,
         moduleIndex: body.skill.moduleIndex ?? 0,
+        ...sessionSet,
       })
       .onConflictDoUpdate({
         target: skills.id,
@@ -1803,6 +1923,7 @@ app.post("/api/admin/content/import", async (c) => {
           pathId: body.skill.pathId ?? null,
           pathName: body.skill.pathName ?? null,
           moduleIndex: body.skill.moduleIndex ?? 0,
+          ...sessionSet,
         },
       });
   }
@@ -1824,47 +1945,62 @@ app.post("/api/admin/content/import", async (c) => {
   // Plantillas: UPSERT por id, NUNCA delete+insert. `attempts` y `coin_awards` referencian
   // exercise_templates con FK sin ON DELETE, así que borrarlas hacía imposible republicar un
   // paquete en cuanto UN niño había respondido un solo ejercicio (fallo de clave ajena → 500).
-  // Se retira TODO el paquete ANTES de insertar; cada upsert reactiva lo que sí viene en el lote
-  // (el objeto `campos` lleva retired:false). Así no hace falta un NOT IN con la lista entera, que
-  // en un paquete grande superaría el límite de parámetros ligados de D1.
-  await db.update(exerciseTemplates).set({ retired: true }).where(eq(exerciseTemplates.packageId, body.package.id));
-  let i = 0;
-  for (const ex of parsed) {
-    i += 1;
-    const id = `${body.package.id}_${i}`;
+  // El PRIMER lote (offset 0) retira TODO el paquete antes de insertar; cada upsert reactiva lo
+  // que sí viene (el objeto `campos` lleva retired:false). Así no hace falta un NOT IN con la lista
+  // entera, que en un paquete grande superaría el límite de parámetros ligados de D1. Los lotes
+  // siguientes de una publicación troceada (offset > 0) solo añaden.
+  const targetSkillId = body.skill?.id ?? parsed[0]!.skillId;
+  if (offset === 0) {
+    await db.update(exerciseTemplates).set({ retired: true }).where(eq(exerciseTemplates.packageId, body.package.id));
+    // Regeneración en sitio: lo anterior pudo vivir en OTRO paquete del mismo skill; también se retira.
+    if (body.replaceSkillContent) await db.update(exerciseTemplates).set({ retired: true }).where(eq(exerciseTemplates.skillId, targetSkillId));
+  }
+  // Todo en `db.batch` por tandas: con cientos de ejercicios, una consulta por ejercicio agotaba las
+  // subpeticiones y el tiempo de la invocación (plan Free: 1000 subpeticiones, 10 ms de CPU).
+  const TANDA = 50; // <= 100 parámetros ligados por consulta en D1 (el IN de ids de abajo)
+  for (let base = 0; base < parsed.length; base += TANDA) {
+    const tanda = parsed.slice(base, base + TANDA);
+    const ids = tanda.map((_, k) => `${body.package.id}_${offset + base + k + 1}`);
     // El id de plantilla es POSICIONAL (`<paquete>_<n>`), así que reeditar un ejercicio en sitio
     // reutiliza el id y `coin_awards` sigue diciendo "ya cobrado": el niño resolvería contenido
     // NUEVO por cero monedas. Si el contenido cambia, se borra el registro de cobro.
-    const [previa] = await db
-      .select({ stem: exerciseTemplates.stem, payload: exerciseTemplates.payload })
+    const previas = await db
+      .select({ id: exerciseTemplates.id, stem: exerciseTemplates.stem, payload: exerciseTemplates.payload })
       .from(exerciseTemplates)
-      .where(eq(exerciseTemplates.id, id))
-      .limit(1);
-    const campos = {
-      skillId: ex.skillId,
-      type: ex.type,
-      language: ex.language,
-      contentVersion: body.package.version,
-      stem: ex.stem,
-      payload: toStoredPayload(ex),
-      difficultyNumeric: ex.difficulty.numeric,
-      difficultyLevel: ex.difficulty.level,
-      retired: false, // vuelve a estar en el lote: deja de estar retirada
-    };
-    await db
-      .insert(exerciseTemplates)
-      .values({ id, packageId: body.package.id, ...campos })
-      // `hidden` queda FUERA del SET a propósito: es curación manual del tutor y republicar
-      // no debe deshacerla en silencio.
-      .onConflictDoUpdate({ target: exerciseTemplates.id, set: campos });
-    const cambio = previa && (previa.stem !== campos.stem || JSON.stringify(previa.payload) !== JSON.stringify(campos.payload));
-    if (cambio) await db.delete(coinAwards).where(eq(coinAwards.exerciseTemplateId, id));
+      .where(inArray(exerciseTemplates.id, ids));
+    const previaDe = new Map(previas.map((p) => [p.id, p]));
+    const stmts: BatchItem<"sqlite">[] = [];
+    tanda.forEach((ex, k) => {
+      const id = ids[k]!;
+      const campos = {
+        skillId: ex.skillId,
+        type: ex.type,
+        language: ex.language,
+        contentVersion: body.package.version,
+        stem: ex.stem,
+        payload: toStoredPayload(ex),
+        difficultyNumeric: ex.difficulty.numeric,
+        difficultyLevel: ex.difficulty.level,
+        retired: false, // vuelve a estar en el lote: deja de estar retirada
+      };
+      stmts.push(
+        db
+          .insert(exerciseTemplates)
+          .values({ id, packageId: body.package.id, ...campos })
+          // `hidden` queda FUERA del SET a propósito: es curación manual del tutor y republicar
+          // no debe deshacerla en silencio.
+          .onConflictDoUpdate({ target: exerciseTemplates.id, set: campos }),
+      );
+      const previa = previaDe.get(id);
+      const cambio = previa && (previa.stem !== campos.stem || JSON.stringify(previa.payload) !== JSON.stringify(campos.payload));
+      if (cambio) stmts.push(db.delete(coinAwards).where(eq(coinAwards.exerciseTemplateId, id)));
+    });
+    if (stmts.length > 0) await db.batch(stmts as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
   }
 
   // Asignar el skill privado a los niños destino.
   const assigned = body.assign?.childIds ?? [];
-  const targetSkillId = body.skill?.id;
-  if (targetSkillId && assigned.length > 0) {
+  if (body.skill?.id && assigned.length > 0) {
     for (const childId of assigned) {
       await db.insert(childSkills).values({ childId, skillId: targetSkillId }).onConflictDoNothing();
     }
@@ -1874,9 +2010,26 @@ app.post("/api/admin/content/import", async (c) => {
   if (body.requestId) {
     const [req] = await db.select().from(contentRequests).where(eq(contentRequests.id, body.requestId)).limit(1);
     if (req) {
+      // Regeneración: los skills de la publicación anterior que ya no se usan (p. ej. al pasar de 3
+      // módulos a 2) se borran. Solo se aceptan skills que SEAN de esta solicitud y nunca el actual.
+      const propios = await requestSkills(db, req);
+      const propiosIds = new Set(propios.map((p) => p.id));
+      const retirar = (body.retireSkillIds ?? []).filter((id) => propiosIds.has(id) && id !== targetSkillId);
+      if (retirar.length > 0) {
+        const hogar = await householdIds(db, req.ownerId);
+        for (const id of retirar) await deletePrivateSkillCascade(db, id, hogar);
+      }
+      // Total de la solicitud (todos sus módulos, sin lo retirado), no solo el del último lote.
+      const vivos = propios.map((p) => p.id).filter((id) => !retirar.includes(id));
+      if (!vivos.includes(targetSkillId)) vivos.push(targetSkillId);
+      const [cnt] = await db
+        .select({ n: sql<number>`count(*)` })
+        .from(exerciseTemplates)
+        .where(and(inArray(exerciseTemplates.skillId, vivos), eq(exerciseTemplates.retired, false)));
+      const exerciseCount = cnt?.n ?? parsed.length;
       await db
         .update(contentRequests)
-        .set({ status: "published", skillId: targetSkillId ?? null, packageId: body.package.id, exerciseCount: parsed.length, publishedAt: now })
+        .set({ status: "published", skillId: targetSkillId, packageId: body.package.id, exerciseCount, publishedAt: now })
         .where(eq(contentRequests.id, body.requestId));
       const [owner] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, req.ownerId)).limit(1);
       if (owner) {
@@ -1884,7 +2037,7 @@ app.post("/api/admin/content/import", async (c) => {
           c.env,
           owner.email,
           "Tu contenido esta listo · smartkids",
-          emailLayout("Contenido listo", `Ya hemos generado "${req.title}" (${parsed.length} ejercicios). Entra para asignarlo o revisarlo.`, {
+          emailLayout("Contenido listo", `Ya hemos generado "${req.title}" (${exerciseCount} ejercicios). Entra para asignarlo o revisarlo.`, {
             url: "https://app.smart-kids.uk",
             label: "Abrir smartkids",
           }),
@@ -1895,7 +2048,7 @@ app.post("/api/admin/content/import", async (c) => {
     }
   }
 
-  return c.json({ ok: true, packageId: body.package.id, skillId: targetSkillId ?? null, exercises: parsed.length, assigned: assigned.length });
+  return c.json({ ok: true, packageId: body.package.id, skillId: targetSkillId, exercises: parsed.length, offset, assigned: assigned.length });
 });
 
 // Contenido privado del hogar: lista de skills propios con conteo y niños asignados.
@@ -1905,16 +2058,55 @@ app.get("/api/tutor/content", async (c) => {
   if (typeof a !== "string") return a;
   const household = await householdIds(db, a);
   const rows = await db
-    .select({ id: skills.id, nameI18n: skills.nameI18n, subjectId: skills.subjectId, gradeBand: skills.gradeBand })
+    .select({ id: skills.id, nameI18n: skills.nameI18n, subjectId: skills.subjectId, gradeBand: skills.gradeBand, pathId: skills.pathId, sessionLength: skills.sessionLength })
     .from(skills)
     .where(inArray(skills.ownerId, household));
-  const out: Array<{ id: string; nameI18n: unknown; subjectId: string; gradeBand: string; exercises: number; childIds: string[] }> = [];
+  // Solicitud de la que sale cada skill (para ofrecer "Regenerar" desde el propio contenido).
+  const reqs = await db.select({ id: contentRequests.id, skillId: contentRequests.skillId }).from(contentRequests).where(inArray(contentRequests.ownerId, household));
+  const reqBySkill = new Map(reqs.filter((r) => r.skillId).map((r) => [r.skillId!, r.id]));
+  const reqIds = new Set(reqs.map((r) => r.id));
+  const reqByPath = new Map<string, string>();
   for (const s of rows) {
-    const [cnt] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.skillId, s.id));
+    const rid = reqBySkill.get(s.id);
+    if (s.pathId && rid) reqByPath.set(s.pathId, rid);
+  }
+  const out: Array<Record<string, unknown>> = [];
+  for (const s of rows) {
+    // Solo lo VIGENTE: al republicar, lo retirado se queda en la tabla (lo referencian los intentos).
+    const [cnt] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(exerciseTemplates)
+      .where(and(eq(exerciseTemplates.skillId, s.id), eq(exerciseTemplates.retired, false)));
     const kids = await db.select({ childId: childSkills.childId }).from(childSkills).where(eq(childSkills.skillId, s.id));
-    out.push({ ...s, exercises: cnt?.n ?? 0, childIds: kids.map((k) => k.childId) });
+    const byConvention = s.pathId?.startsWith("path_") && reqIds.has(s.pathId.slice(5)) ? s.pathId.slice(5) : null;
+    const requestId = reqBySkill.get(s.id) ?? (s.pathId ? (reqByPath.get(s.pathId) ?? byConvention) : null);
+    out.push({
+      id: s.id,
+      nameI18n: s.nameI18n,
+      subjectId: s.subjectId,
+      gradeBand: s.gradeBand,
+      sessionLength: s.sessionLength ?? SESSION_LENGTH_DEFAULT,
+      requestId,
+      exercises: cnt?.n ?? 0,
+      childIds: kids.map((k) => k.childId),
+    });
   }
   return c.json(out);
+});
+
+// Ajustes de un skill PRIVADO del hogar que no requieren regenerar: preguntas por misión.
+app.post("/api/tutor/skills/:skillId/settings", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const skillId = c.req.param("skillId");
+  const household = await householdIds(db, a);
+  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
+  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const body = await c.req.json<{ sessionLength?: number }>().catch(() => ({}) as { sessionLength?: number });
+  const sessionLength = clampInt(body.sessionLength, SESSION_LENGTH_MIN, SESSION_LENGTH_MAX, SESSION_LENGTH_DEFAULT);
+  await db.update(skills).set({ sessionLength }).where(eq(skills.id, skillId));
+  return c.json({ ok: true, sessionLength });
 });
 
 // Reasignar un skill privado del hogar a un conjunto de niños del hogar.
@@ -2057,10 +2249,7 @@ app.post("/api/tutor/content-requests", async (c) => {
   const instructions = String(form["instructions"] ?? "").trim();
   const childId = form["childId"] ? String(form["childId"]) : null;
   const subjectId = form["subjectId"] ? String(form["subjectId"]) : null;
-  const gradeBand = form["gradeBand"] ? String(form["gradeBand"]) : null;
-  const numQuestions = form["numQuestions"] ? clampInt(form["numQuestions"], 5, 40, 20) : null;
-  const pointsPerCorrect = form["pointsPerCorrect"] ? clampInt(form["pointsPerCorrect"], 1, 50, 10) : null;
-  const modules = form["modules"] ? clampInt(form["modules"], 1, 6, 1) : null;
+  const cfg = requestConfigFromForm(form);
 
   const household = await householdIds(db, a);
   if (childId) {
@@ -2078,9 +2267,11 @@ app.post("/api/tutor/content-requests", async (c) => {
     if (f.size > UPLOAD_MAX_BYTES) return c.json({ error: "file_too_large", detail: f.name }, 400);
   }
 
+  // Nivel del contenido: el que elija el tutor o, por defecto, el curso escolar del niño.
+  const gradeBand = parseGradeBand(form["gradeBand"]) ?? (await childGradeBand(db, childId));
   const requestId = `creq_${crypto.randomUUID()}`;
   const now = new Date().toISOString();
-  await db.insert(contentRequests).values({ id: requestId, ownerId: a, childId, subjectId, gradeBand, title, instructions, numQuestions, pointsPerCorrect, modules, status: "uploaded", createdAt: now });
+  await db.insert(contentRequests).values({ id: requestId, ownerId: a, childId, subjectId, gradeBand, title, instructions, ...cfg, status: "uploaded", createdAt: now });
 
   const stored: Array<{ id: string; filename: string; kind: string }> = [];
   for (const file of files) {
@@ -2110,9 +2301,7 @@ app.post("/api/tutor/content-requests/:id", async (c) => {
   const title = String(form["title"] ?? "").trim();
   const instructions = String(form["instructions"] ?? "").trim();
   const childId = form["childId"] ? String(form["childId"]) : null;
-  const numQuestions = form["numQuestions"] ? clampInt(form["numQuestions"], 5, 40, 20) : req.numQuestions;
-  const pointsPerCorrect = form["pointsPerCorrect"] ? clampInt(form["pointsPerCorrect"], 1, 50, 10) : req.pointsPerCorrect;
-  const modules = form["modules"] ? clampInt(form["modules"], 1, 6, 1) : req.modules;
+  const cfg = requestConfigFromForm(form, req);
   if (childId) {
     const [ch] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
     if (!ch || !household.includes(ch.parentId)) return c.json({ error: "child_forbidden" }, 403);
@@ -2128,7 +2317,8 @@ app.post("/api/tutor/content-requests/:id", async (c) => {
   }
 
   const now = new Date().toISOString();
-  await db.update(contentRequests).set({ title, instructions, childId, numQuestions, pointsPerCorrect, modules }).where(eq(contentRequests.id, reqId));
+  const gradeBand = form["gradeBand"] !== undefined ? (parseGradeBand(form["gradeBand"]) ?? (await childGradeBand(db, childId))) : req.gradeBand;
+  await db.update(contentRequests).set({ title, instructions, childId, gradeBand, ...cfg }).where(eq(contentRequests.id, reqId));
   for (const file of newFiles) {
     const kind = UPLOAD_KINDS[file.type]!;
     const assetId = `asset_${crypto.randomUUID()}`;
@@ -2155,15 +2345,87 @@ app.delete("/api/tutor/content-requests/:id/assets/:assetId", async (c) => {
     .where(and(eq(contentRequestAssets.id, c.req.param("assetId")), eq(contentRequestAssets.requestId, reqId)))
     .limit(1);
   if (!asset) return c.json({ error: "not_found" }, 404);
-  if (c.env.UPLOADS) {
-    try {
-      await c.env.UPLOADS.delete(asset.r2Key);
-    } catch {
-      /* noop */
+  await db.delete(contentRequestAssets).where(eq(contentRequestAssets.id, asset.id));
+  await deleteR2IfUnreferenced(c.env, db, asset.r2Key); // puede compartirlo otra solicitud (copia regenerada)
+  return c.json({ ok: true });
+});
+
+// Relanzar la generación de una solicitud YA procesada con otra configuración, SIN volver a subir el
+// material (los ficheros siguen en R2):
+//  - mode=replace: reabre la MISMA solicitud (vuelve a 'uploaded'). La skill republica sobre los
+//    MISMOS skills (el niño conserva asignación y progreso) y retira el contenido anterior.
+//  - mode=copy: crea una solicitud NUEVA que reutiliza los ficheros (mismos objetos de R2, sin
+//    duplicarlos) y genera contenido aparte; el anterior se queda como está.
+// Se pueden cambiar título/instrucciones/config y AÑADIR ficheros en la misma llamada.
+app.post("/api/tutor/content-requests/:id/regenerate", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  if (!c.env.UPLOADS) return c.json({ error: "uploads_unavailable" }, 503);
+  const reqId = c.req.param("id");
+  const household = await householdIds(db, a);
+  const [req] = await db.select().from(contentRequests).where(eq(contentRequests.id, reqId)).limit(1);
+  if (!req || !household.includes(req.ownerId)) return c.json({ error: "forbidden" }, 403);
+  // Una pendiente se EDITA, no se regenera (aún no hay nada generado que relanzar).
+  if (req.status === "uploaded" || req.status === "processing") return c.json({ error: "not_processed", message: "La solicitud aún no se ha procesado: edítala." }, 409);
+
+  const form = await c.req.parseBody({ all: true });
+  const mode = String(form["mode"] ?? "") === "copy" ? "copy" : "replace";
+  const title = form["title"] !== undefined ? String(form["title"]).trim() : req.title;
+  const instructions = form["instructions"] !== undefined ? String(form["instructions"]).trim() : req.instructions;
+  const childId = form["childId"] ? String(form["childId"]) : req.childId;
+  const cfg = requestConfigFromForm(form, req);
+  const gradeBand = form["gradeBand"] !== undefined ? (parseGradeBand(form["gradeBand"]) ?? (await childGradeBand(db, childId))) : req.gradeBand;
+  if (childId) {
+    const [ch] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
+    if (!ch || !household.includes(ch.parentId)) return c.json({ error: "child_forbidden" }, 403);
+  }
+  const raw = form["files"];
+  const newFiles = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File);
+  const prevAssets = await db.select().from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
+  if (prevAssets.length + newFiles.length > UPLOAD_MAX_FILES) return c.json({ error: "too_many_files" }, 400);
+  for (const f of newFiles) {
+    if (!UPLOAD_KINDS[f.type]) return c.json({ error: "unsupported_type", detail: `${f.name}: ${f.type}` }, 400);
+    if (f.size > UPLOAD_MAX_BYTES) return c.json({ error: "file_too_large", detail: f.name }, 400);
+  }
+  if (!title && !instructions && prevAssets.length + newFiles.length === 0) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
+
+  const now = new Date().toISOString();
+  let targetId = reqId;
+  if (mode === "replace") {
+    // skill_id/package_id se CONSERVAN: son el puntero a la publicación que se va a sustituir.
+    await db
+      .update(contentRequests)
+      .set({ title, instructions, childId, gradeBand, ...cfg, status: "uploaded", note: null, exerciseCount: null, publishedAt: null, notifiedAt: null })
+      .where(eq(contentRequests.id, reqId));
+  } else {
+    targetId = `creq_${crypto.randomUUID()}`;
+    await db.insert(contentRequests).values({
+      id: targetId,
+      ownerId: req.ownerId,
+      childId,
+      subjectId: req.subjectId,
+      gradeBand,
+      title,
+      instructions,
+      ...cfg,
+      sourceRequestId: req.id,
+      status: "uploaded",
+      createdAt: now,
+    });
+    // Mismos objetos de R2 (sin copiar bytes); el borrado cuenta referencias (deleteR2IfUnreferenced).
+    for (const as of prevAssets) {
+      await db.insert(contentRequestAssets).values({ ...as, id: `asset_${crypto.randomUUID()}`, requestId: targetId, createdAt: now });
     }
   }
-  await db.delete(contentRequestAssets).where(eq(contentRequestAssets.id, asset.id));
-  return c.json({ ok: true });
+  for (const file of newFiles) {
+    const kind = UPLOAD_KINDS[file.type]!;
+    const assetId = `asset_${crypto.randomUUID()}`;
+    const key = `requests/${targetId}/${assetId}`;
+    await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
+    await db.insert(contentRequestAssets).values({ id: assetId, requestId: targetId, r2Key: key, filename: file.name, contentType: file.type, kind, size: file.size, createdAt: now });
+  }
+  return c.json({ ok: true, requestId: targetId, mode });
 });
 
 // Máquina (skill/pipeline): lista de solicitudes con sus assets, filtrable por estado.
@@ -2181,7 +2443,14 @@ app.get("/api/admin/content-requests", async (c) => {
       .select({ id: contentRequestAssets.id, filename: contentRequestAssets.filename, contentType: contentRequestAssets.contentType, kind: contentRequestAssets.kind, size: contentRequestAssets.size })
       .from(contentRequestAssets)
       .where(eq(contentRequestAssets.requestId, r.id));
-    out.push({ ...r, assets });
+    // `targetExercises` = lo que hay que GENERAR (lo pedido + 50 % de variedad). `previousSkills` solo
+    // viene en una regeneración EN SITIO (pendiente con publicación anterior): los skills a reutilizar.
+    const previousSkills = r.status === "uploaded" && r.skillId ? await requestSkills(db, r) : [];
+    // Contexto del niño destino para adaptar el nivel (sin datos personales: ni nombre ni edad).
+    const child = r.childId
+      ? { gradeBand: await childGradeBand(db, r.childId), courses: await childCoursesOf(db, r.childId) }
+      : null;
+    out.push({ ...r, targetExercises: targetExercises(r.numQuestions), regenerate: previousSkills.length > 0, previousSkills, child, assets });
   }
   return c.json(out);
 });
@@ -2255,42 +2524,98 @@ app.get("/api/session/next", async (c) => {
   // El niño solo puede practicar skills de un curso al que tiene acceso.
   if (!(await childCanAttemptSkill(db, profileId, skillId))) return c.json({ error: "no_course_access" }, 403);
 
-  // Banco de plantillas del skill (con un tope de seguridad); ya no solo las 10 primeras.
+  // Banco LIGERO del skill: solo id + tipo, sin payload. Con bancos de cientos de ejercicios, traer
+  // y parsear todos los payloads en cada pregunta se comía la CPU de la invocación.
   // Excluye las ocultas por el tutor y las retiradas al republicar: el niño no las recibe.
-  const rows = await db
-    .select()
+  const bank = await db
+    .select({ id: exerciseTemplates.id, type: exerciseTemplates.type })
     .from(exerciseTemplates)
     .where(and(eq(exerciseTemplates.skillId, skillId), eq(exerciseTemplates.hidden, false), eq(exerciseTemplates.retired, false)))
-    .limit(200);
-  if (rows.length === 0) return c.json({ error: "no exercise found" }, 404);
+    .limit(1000);
+  if (bank.length === 0) return c.json({ error: "no exercise found" }, 404);
+  const typeOf = new Map(bank.map((b) => [b.id, b.type]));
 
-  // Evitar repetición: excluye lo que pida el cliente (repaso / sesión en curso) y lo visto hace poco.
-  const excludeSet = new Set(
-    (c.req.query("exclude") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-  );
-  const recent = await db
-    .select({ tid: attempts.exerciseTemplateId })
+  // Lo ya servido en ESTA sesión, en orden (lo manda el cliente): no se repite y marca la variedad de tipos.
+  const served = (c.req.query("exclude") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const servedSet = new Set(served);
+  const typeCount = new Map<string, number>();
+  for (const id of served) {
+    const t = typeOf.get(id);
+    if (t) typeCount.set(t, (typeCount.get(t) ?? 0) + 1);
+  }
+  const lastType = typeOf.get(served[served.length - 1] ?? "");
+
+  // Historial del niño en este skill, por plantilla: nº de fallos, cuándo la vio por última vez y si
+  // esa ÚLTIMA respuesta fue buena (columna "desnuda" junto a un único max(): SQLite la toma de la
+  // fila que da el máximo).
+  const hist = await db
+    .select({
+      tid: attempts.exerciseTemplateId,
+      fails: sql<number>`sum(case when ${attempts.correct} = 1 then 0 else 1 end)`,
+      lastTs: sql<string>`max(${attempts.ts})`,
+      lastCorrect: sql<number>`${attempts.correct}`,
+    })
     .from(attempts)
     .where(and(eq(attempts.profileId, profileId), eq(attempts.skillId, skillId)))
-    .orderBy(desc(attempts.ts))
-    .limit(20);
-  const recentSet = new Set(recent.map((r) => r.tid));
+    .groupBy(attempts.exerciseTemplateId);
+  const histOf = new Map(hist.map((h) => [h.tid, h]));
+  const recent = new Set([...hist].sort((x, y) => (x.lastTs < y.lastTs ? 1 : -1)).slice(0, 20).map((h) => h.tid));
+  const isDebt = (id: string) => {
+    const h = histOf.get(id);
+    return Boolean(h && Number(h.lastCorrect) !== 1); // la última vez lo falló: pendiente de repaso
+  };
 
-  const notExcluded = rows.filter((r) => !excludeSet.has(r.id));
-  let pool = notExcluded.filter((r) => !recentSet.has(r.id));
-  if (pool.length === 0) pool = notExcluded.length > 0 ? notExcluded : rows;
+  // Selección ALEATORIA pero PRIORIZADA (nunca un orden fijo):
+  //  1) Con probabilidad PRIORIDAD_FALLOS se sortea entre los ejercicios "pendientes" (falló la
+  //     última vez), con más peso cuantos más fallos acumula.
+  //  2) Si no, entre el resto: lo fallado alguna vez pesa más que lo nuevo, y lo nuevo más que lo
+  //     siempre acertado; lo visto hace poco descansa.
+  //  En ambos casos se penaliza repetir tipo para que la misión alterne formatos.
+  const variedad = (type: string) => Math.pow(0.6, typeCount.get(type) ?? 0) * (type === lastType ? 0.5 : 1);
+  const pesoPendiente = (b: { id: string; type: string }) => (1 + Math.min(Number(histOf.get(b.id)?.fails ?? 1), 5)) * variedad(b.type);
+  const pesoResto = (b: { id: string; type: string }) => {
+    const h = histOf.get(b.id);
+    let w = !h ? 2 : Number(h.fails) > 0 ? 3 : 1;
+    if (recent.has(b.id)) w *= 0.15;
+    return w * variedad(b.type);
+  };
+  let candidatos = bank.filter((b) => !servedSet.has(b.id));
+  if (candidatos.length === 0) candidatos = [...bank]; // banco agotado en esta sesión: se permite repetir
 
-  // Baraja el pool (Fisher-Yates) y sirve la primera plantilla que parsee al modelo unificado.
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
-  }
-  for (const ex of pool) {
-    const out = buildClientExercise(ex);
-    if (out) return c.json(out); // la primera plantilla que parsea al modelo unificado
+  while (candidatos.length > 0) {
+    const pendientes = candidatos.filter((b) => isDebt(b.id));
+    const resto = candidatos.filter((b) => !isDebt(b.id));
+    const usarPendientes = pendientes.length > 0 && (resto.length === 0 || Math.random() < PRIORIDAD_FALLOS);
+    const elegido = usarPendientes ? sorteoPonderado(pendientes, pesoPendiente) : sorteoPonderado(resto, pesoResto);
+    if (!elegido) break;
+    const [row] = await db.select().from(exerciseTemplates).where(eq(exerciseTemplates.id, elegido.id)).limit(1);
+    const out = row ? buildClientExercise(row) : null;
+    if (out) {
+      const [sk] = await db.select({ sessionLength: skills.sessionLength }).from(skills).where(eq(skills.id, skillId)).limit(1);
+      // Nunca más preguntas por misión que ejercicios tiene el banco: la tanda repetiría preguntas.
+      return c.json({ ...out, sessionLength: Math.min(sk?.sessionLength ?? SESSION_LENGTH_DEFAULT, bank.length) });
+    }
+    candidatos = candidatos.filter((b) => b.id !== elegido.id); // no parsea al modelo: se descarta
   }
   return c.json({ error: "no exercise found" }, 404);
 });
+
+/** Proporción de preguntas que salen de lo pendiente (fallado la última vez) mientras quede algo. */
+const PRIORIDAD_FALLOS = 0.7;
+
+/** Elige un elemento al azar con probabilidad proporcional a su peso. */
+function sorteoPonderado<T>(items: T[], peso: (x: T) => number): T | undefined {
+  if (items.length === 0) return undefined;
+  const pesos = items.map((x) => Math.max(0, peso(x)));
+  const total = pesos.reduce((acc, w) => acc + w, 0);
+  if (!(total > 0)) return items[Math.floor(Math.random() * items.length)];
+  let r = Math.random() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= pesos[i]!;
+    if (r <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
 
 app.post("/api/session/attempt", async (c) => {
   const db = getDb(c.env.DB);
@@ -2356,6 +2681,7 @@ app.post("/api/session/attempt", async (c) => {
     parts: result.parts ?? null,
     feedback: correct ? (exercise.feedback?.correct ?? null) : (exercise.feedback?.incorrect ?? null),
     solution: exercise.feedback?.solution ?? null,
+    theory: exercise.feedback?.theory ?? null, // el porqué: se enseña sobre todo al fallar
   };
 
   // Idempotencia: tras un microcorte de red el cliente puede reenviar el MISMO intento. Usamos
