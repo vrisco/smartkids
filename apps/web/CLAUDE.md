@@ -50,6 +50,22 @@ render condicional por sesión, en este orden: cargando → **niño** (`KidApp`)
 funciona por el proxy de Vite; en prod por mismo origen. Un despliegue cross-origin rompería la sesión. Errores:
 `j<T>()` lanza `Error(message)`; cada pantalla hace `try/catch` y muestra `e.message` (varias listas degradan a `[]`).
 
+## Sesión del niño y contenido del hogar
+
+- **`screens/Session.tsx`** — fases `main` → `reviewIntro` → `review` → `summary`. La longitud de la tanda la marca
+  el skill (`sessionLength` que devuelve `api.nextExercise`; 5 si no viene); con más de 12 preguntas se pinta barra
+  de progreso en vez de puntos. Al fallar, tarjeta con la respuesta correcta, la teoría (`theory`, «Recuerda») y
+  cómo se resuelve (`solution`). Si hubo fallos, pantalla de transición y SESIÓN DE REPASO con esos mismos
+  ejercicios barajados (`api.retryExercise` → `?exercise=<id>`; fallar lo reencola, tope = fallos + 3); al final,
+  resumen. La corrección y las monedas siguen siendo del servidor.
+- **`components/ExerciseInput.tsx`** — inputs de los 8 tipos; `multiple_select` son casillas y envía
+  `{ type:"multiple_select", optionIds }`.
+- **`screens/TutorPanel.tsx`** — formulario de solicitud (Vía B): nº de preguntas 10..200 con aviso del 50 % extra
+  que se genera, preguntas por misión (5..30), 1..6 módulos y casillas de tipos de pregunta con presets por materia
+  (`TYPE_PRESETS`); en modo «Regenerar» elige sustituir (`replace`) o crear uno nuevo (`copy`) y llama a
+  `api.regenerateContentRequest`. Cada contenido del hogar ofrece «Regenerar» (si su solicitud está procesada) y un
+  selector de preguntas por misión (`api.setSkillSessionLength`).
+
 ## Gotchas / código a no imitar
 
 - `Hud` pinta la **inicial** del nombre (no el `<Avatar>` SVG) y la racha está **hardcodeada a `7`**.

@@ -1,8 +1,8 @@
 # API de smartkids
 
-> **Nota (M9):** este catálogo no incluye los endpoints del sistema de contenido: `/api/session/*` (endurecidos),
-> `/api/admin/content/import`, `/api/tutor/content`, `/api/tutor/skills/:id/assign` + `DELETE`,
-> `/api/tutor/content-requests` (GET/POST/PATCH-editar/DELETE + assets). Para el catálogo vivo, lee las rutas en
+> **Nota:** los endpoints del sistema de contenido están en su propia sección («Sistema de contenido», abajo). Este
+> catálogo aún NO incluye `/api/auth/passkey/*`, `/api/push/*`, `/api/child/stats`, `/api/tutor/summary`,
+> `/api/tutor/children/:id/*` ni `/api/tutor/spouse/invite|resend`. Para el catálogo vivo, lee las rutas en
 > `apps/api/src/index.ts`; la visión de conjunto está en `../CLAUDE.md` §8.
 
 Catálogo de todos los endpoints del Worker (`apps/api/src/index.ts`). Todos cuelgan de `/api/*` y responden JSON.
@@ -78,14 +78,42 @@ en el árbol de trabajo sin commitear según el momento.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/api/child/me` | Niño logado + balance + cursos. |
+| GET | `/api/child/me` | Niño logado + balance + cursos + `customContent` (skills privados del hogar asignados; `exercises` cuenta solo vigentes y visibles). |
 | GET | `/api/profiles/:id` | Perfil del niño + balance del wallet. |
 | GET | `/api/profiles/:id/courses` | Cursos del niño. |
 | GET | `/api/skills?profile=&course=` | Skills del curso (join con `skill_progress`). Exige `hasCourse` o 403 `no_course_access`. |
-| GET | `/api/session/next?profile=&skill=` | Una `exercise_template` aleatoria del skill (default `MATH.ESO5.FRAC.ADD`). |
-| POST | `/api/session/attempt` | Registra intento, actualiza `skill_progress`, otorga 10 monedas si `correct`, escribe `wallet_ledger`. |
+| GET | `/api/session/next?profile=&skill=&exclude=` | Un ejercicio del skill (sin solución, opciones barajadas), elegido al azar con prioridad a lo fallado la última vez y variedad de tipos; `exclude` = ids ya servidos en la sesión. Incluye `sessionLength` del skill (default 5). `skill` es obligatorio. Valida acceso (403 `no_course_access`). |
+| GET | `/api/session/next?profile=&exercise=` | Sirve un ejercicio CONCRETO (sesión de repaso de fallos). Excluye retirados y ocultos. |
+| POST | `/api/session/attempt` | `{ profileId, exerciseTemplateId, answer, responseTimeMs?, clientAttemptId? }`. Corrige EN SERVIDOR, actualiza `skill_progress`, otorga los puntos del skill una sola vez por ejercicio (`coin_awards`). Devuelve `correct`, `correctAnswer`, `parts`, `feedback`, `solution`, `theory`, `coinsAwarded`, `balance`, `masteryScore`, `status`. |
 | GET | `/api/rewards` | Niño: recompensas asignadas del hogar con `progress`/`claimable`/`redeemedInWindow`. Tutor: recompensas del hogar. |
 | POST | `/api/rewards/:id/redeem` | Canjea recompensa asignada del hogar. `goal` exige puntos ganados (no descuenta); `spend` descuenta el wallet atómicamente. |
+
+## Sistema de contenido
+
+Tutor (`requireParent`; todo se acota al hogar con `householdIds`, 403 `forbidden` si el skill/solicitud no es suyo):
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/tutor/content` | Skills PRIVADOS del hogar: `exercises` (solo plantillas vigentes), `childIds`, `sessionLength` y `requestId` (solicitud de origen, para ofrecer «Regenerar»). |
+| POST | `/api/tutor/skills/:skillId/settings` | `{ sessionLength }` (preguntas por misión, acotado 3..30) de un skill privado del hogar. |
+| POST | `/api/tutor/skills/:skillId/assign` | `{ childIds }`: reemplaza los niños asignados (solo niños del hogar). |
+| GET | `/api/tutor/skills/:skillId/exercises` | Preview del tutor: ejercicios vigentes (incluidos los ocultos) CON solución. |
+| POST | `/api/tutor/exercises/:templateId/hidden` | `{ hidden }`: oculta/muestra un ejercicio al niño. |
+| DELETE | `/api/tutor/skills/:skillId` | Borra el skill privado en cascada (`deletePrivateSkillCascade`). |
+| GET | `/api/tutor/content-requests` | Solicitudes del hogar con su estado, config y `assets`. |
+| POST | `/api/tutor/content-requests` | Multipart: `title?`, `instructions?`, `childId?`, `subjectId?`, `gradeBand?`, `files` (máx. 6, 15 MB, imagen/PDF/texto) y config: `numQuestions` (5..200), `sessionLength` (3..30), `modules` (1..6), `pointsPerCorrect` (1..50), `questionTypes` (lista separada por comas de los 8 tipos; vacío = variados; desconocidos se descartan). Crea la solicitud `uploaded`. |
+| POST | `/api/tutor/content-requests/:id` | Edita una solicitud AÚN `uploaded` (mismos campos; añade ficheros). 409 `not_editable` si ya se procesó. |
+| DELETE | `/api/tutor/content-requests/:id` | Borra la solicitud y sus ficheros de R2 que ya nadie referencia. No borra lo publicado. |
+| DELETE | `/api/tutor/content-requests/:id/assets/:assetId` | Quita un fichero de una solicitud `uploaded` (R2 solo si nadie más lo referencia). |
+| POST | `/api/tutor/content-requests/:id/regenerate` | Multipart. Solo si está `published` o `failed` (si no, 409 `not_processed`). Relanza la generación sin volver a subir el material; admite cambiar título/instrucciones/niño/config y AÑADIR ficheros. `mode=replace` (defecto) reabre la MISMA solicitud (vuelve a `uploaded`, conserva `skill_id`/`package_id`) y se republica sobre los MISMOS skills; `mode=copy` crea una solicitud nueva (`source_request_id`) que comparte los objetos de R2. Devuelve `{ requestId, mode }`. |
+
+Máquina (skill/pipeline: Bearer `CONTENT_IMPORT_TOKEN` **o** sesión de admin):
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/admin/content-requests?status=` | Solicitudes con `assets` y, por solicitud, `targetExercises` (`ceil(numQuestions * 1.5)`: lo que hay que GENERAR), `regenerate` (bool) y `previousSkills` (en una regeneración en sitio: `id`, `nameI18n`, `pathId`, `pathName`, `moduleIndex`, `sessionLength`, `packageIds` vigentes, `exercises`). |
+| GET | `/api/admin/content-requests/:id/assets/:assetId` | Descarga el binario del fichero desde R2. |
+| POST | `/api/admin/content/import` | Publica un lote: `subject?`, `skill?` (incl. `coinsPerCorrect`, `pathId`/`pathName`/`moduleIndex`, `sessionLength` opcional), `package`, `exercises` (validados con `ExerciseSchema` + `validateExercise`), `assign?`, `requestId?`, `offset?` (publicación TROCEADA; solo el lote 0 retira lo anterior; ids `<paquete>_<offset+n>`), `replaceSkillContent?` (regeneración en sitio: retira todo lo vigente del skill), `retireSkillIds?` (solo en la llamada que cierra una regeneración; el servidor solo borra los de esa solicitud y nunca el actual). UPSERT por id en `db.batch` de 50. Con `requestId` marca `published`, fija `exerciseCount` (total vigente de todos los módulos) y avisa al tutor. |
 
 ## Fallbacks
 

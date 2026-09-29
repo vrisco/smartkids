@@ -34,3 +34,8 @@ y añadir un tipo obligaba a tocar tres sitios inconsistentes. Además el motor 
 - (−) La dependencia de `allowImportingTsExtensions` acopla el build a esa opción (segura porque nada emite con `tsc`).
 
 Verificado end-to-end (los 7 tipos sirven, corrigen acierto/fallo y no filtran la solución).
+
+> **Nota posterior:** hoy son **8 tipos**. Se añadió `multiple_select` («casillas»: marcar TODAS las correctas; se
+> acierta solo con el conjunto exacto; `redactForClient` no revela cuántas son correctas) y `FeedbackSchema` ganó
+> `theory` opcional (teoría «Recuerda: ...» que se enseña al fallar). La decisión de este ADR no cambia: el tipo
+> nuevo se añadió solo en `packages/shared` y lo consumen API, web y pipeline.

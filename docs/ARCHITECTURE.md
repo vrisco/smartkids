@@ -1,9 +1,12 @@
 # Arquitectura de smartkids
 
-> **Nota (M9, 2026-07-12):** el **sistema de contenido** (7 tipos con modelo unificado en `packages/shared`,
+> **Nota (M9, 2026-07-12):** el **sistema de contenido** (hoy 8 tipos con modelo unificado en `packages/shared`,
 > generación en dos vías, contenido privado del hogar, anti-farm atómico) es posterior a partes de este documento.
 > Para el estado ACTUAL de contenido/economía la verdad viva es `../CLAUDE.md` §8, `docs/adr/` y `apps/api/src/db/schema.ts`
-> (24 tablas). Este documento conserva el modelo de datos base, la jerarquía de usuarios y los flujos de auth.
+> (27 tablas). Este documento conserva el modelo de datos base, la jerarquía de usuarios y los flujos de auth.
+> Migraciones al día hasta `0018` (preguntas por misión `skills.session_length`, y en `content_requests`
+> `question_types`, `session_length` y `source_request_id` para las copias regeneradas). La «sesión de juego» del §6
+> hoy sirve una tanda de `sessionLength` preguntas con selección priorizada y repaso de los fallos (ver `../CLAUDE.md` §8).
 
 Referencia profunda del sistema. Para la guía operativa breve, ver `../CLAUDE.md`. Para el catálogo de
 endpoints, ver `API.md`. Este documento describe el **modelo de datos**, la **jerarquía de usuarios**, la
@@ -28,7 +31,7 @@ Un **único Worker de Cloudflare** (`name = "app"`, `apps/api/src/index.ts`) ati
   y sin `credentials: "include"` en el cliente.
 - **Bindings** (`wrangler.toml`): `DB` (D1), `ASSETS` (Static Assets → `../web/dist`, `not_found_handling =
   single-page-application`). Variables de runtime: `RESEND_API_KEY?`, `EMAIL_FROM?`, `EMAIL_DEV_LINKS?`.
-- **No hay KV, R2 ni Durable Objects.** Todo el estado con vida (sesiones, tokens, rate-limit) se persiste en D1.
+- **No hay KV ni Durable Objects.** Todo el estado con vida (sesiones, tokens, rate-limit) se persiste en D1; R2 (`UPLOADS`) guarda solo el material que suben los tutores (Vía B).
 - En **local** (`pnpm dev`), Vite (`:5173`) sirve la SPA y proxya `/api/*` al `wrangler dev` (`:8787`), que corre
   el runtime real de Workers con D1/KV/R2 locales en `.wrangler/`.
 

@@ -50,7 +50,23 @@ borra las 27 tablas y crea cuentas demo con contraseñas publicadas en el repo, 
   y cada upsert reactiva lo suyo. `hidden` (curación del tutor) queda FUERA del SET; `retired` (retirada
   automática) es una columna distinta a propósito. Migración `0016`.
 - **Filtra `retired` y `hidden`** en cualquier consulta que sirva o acepte un ejercicio: los ids son adivinables
-  (`<paquete>_<n>`) y las retiradas se acumulan para siempre.
+  (`<paquete>_<n>`) y las retiradas se acumulan para siempre. Los conteos que ven tutor y niño (`GET
+  /api/tutor/content`, `GET /api/child/me`) cuentan solo plantillas vigentes (y visibles, en el del niño).
+- **Límites de D1 / plan Free** (1000 subpeticiones y 10 ms de CPU por invocación, ~100 parámetros ligados por
+  consulta): no metas listas de ids grandes en `inArray` (usa subconsulta, como `deletePrivateSkillCascade` con
+  `coin_awards`) y escribe en lote con `db.batch` por tandas (el import va de 50 en 50). Los paquetes grandes se
+  publican troceados (`offset` en el import; ids de plantilla `<paquete>_<offset+n>`; solo el lote 0 retira).
+- **Config de generación de la Vía B** en un único sitio: `requestConfigFromForm()` (lo que no venga se hereda de la
+  solicitud previa). Rangos: `numQuestions` 5..200, `sessionLength` 3..30, `modules` 1..6, `pointsPerCorrect` 1..50,
+  `questionTypes` = tipos válidos del `ExerciseTypeSchema` (vacío = variados, desconocidos se descartan). Se genera
+  `targetExercises = ceil(numQuestions * GENERATION_EXTRA)` con `GENERATION_EXTRA = 1.5`.
+- **R2 compartido entre solicitudes**: una copia regenerada (`mode=copy`) reutiliza los objetos de R2 del original.
+  Borra SIEMPRE con `deleteR2IfUnreferenced` (solo si ninguna fila de `content_request_assets` apunta al `r2_key`),
+  nunca con `UPLOADS.delete` directo.
+- **Regeneración en sitio** (`mode=replace`): la solicitud vuelve a `uploaded` conservando `skill_id`/`package_id`
+  (puntero a lo publicado); `GET /api/admin/content-requests` la marca `regenerate` con sus `previousSkills`. En el
+  import, `replaceSkillContent` retira todo lo vigente del skill (de cualquier paquete) y `retireSkillIds` (solo en
+  la llamada que cierra) borra skills sobrantes, filtrados a los de ESA solicitud y nunca el actual.
 
 ## Gotchas / cuidado
 
@@ -67,8 +83,12 @@ borra las 27 tablas y crea cuentas demo con contraseñas publicadas en el repo, 
   `@smartkids/shared`, valida acceso con `childCanAttemptSkill` (403 si no) y el anti-farm es ATÓMICO
   (`coin_awards`, `INSERT ON CONFLICT DO NOTHING RETURNING`). El cuerpo es `{ answer }` (`AnswerSchema`), con
   compat del viejo `selectedOptionId`. Las monedas por acierto salen de `skills.coins_per_correct` o el global.
-- **`GET /api/session/next`** valida el curso/skill (403 si no), NO envía la solución (`redactForClient`), baraja
-  opciones y evita plantillas vistas hace poco; `?exclude=` sirve a la fase de repaso. Modelo/lógica en `shared`.
+  La respuesta incluye `feedback`, `solution` y `theory` (la web los enseña al fallar).
+- **`GET /api/session/next`** valida el curso/skill (403 si no), NO envía la solución (`redactForClient`) y baraja
+  opciones (`shuffleRender`). Banco ligero (solo id+tipo, hasta 1000); selección aleatoria PRIORIZADA
+  (`PRIORIDAD_FALLOS = 0.7` hacia lo fallado la última vez, pesos por historial, lo reciente descansa, penaliza
+  repetir tipo). `?exclude=` = lo ya servido en la sesión (no repite y mide la variedad); `?exercise=<id>` sirve
+  uno concreto (la sesión de repaso de fallos). Devuelve `sessionLength` del skill (`SESSION_LENGTH_DEFAULT = 5`).
 - **Rate-limiting caro y con carrera**: cada check hace DELETE de poda + COUNT sobre `login_attempts`.
 - **`EMAIL_DEV_LINKS`** devuelve enlaces de reset en la respuesta HTTP: **jamás `true` en producción.**
 - Secrets de prod (`RESEND_API_KEY`, `EMAIL_FROM`) van por `wrangler secret put`, no en `wrangler.toml` ni `.dev.vars`.

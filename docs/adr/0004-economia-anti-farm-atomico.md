@@ -31,3 +31,8 @@ respuesta correcta y puede disparar N peticiones en paralelo.
       la corrección ni el progreso (`skill_progress` se actualiza en cada intento).
 
 Verificado en runtime: 1er acierto concede; 2º acierto del mismo ejercicio concede 0.
+
+> **Nota posterior:** el choque con la FK al re-importar ya no ocurre: el import hace UPSERT por id y retira
+> (`retired=1`) en vez de borrar (migración 0016); si cambia el contenido de una plantilla se libera su fila de
+> `coin_awards`. El borrado de un skill privado limpia `coin_awards` con subconsulta (una lista de ids superaba el
+> límite de variables de D1 con bancos grandes).

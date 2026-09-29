@@ -28,7 +28,7 @@ asignan cursos (asignatura+nivel) y recompensas. Cuenta de tutor = ancla legal (
 ## 2. Estado y roadmap
 
 Hitos M1–M9 hechos (ver `git log`, Conventional Commits en español con etiqueta `— M#`). **M9 = sistema de
-contenido** (lo más reciente): los **7 tipos de ejercicio** con modelo unificado en `packages/shared`, motor de
+contenido** (lo más reciente): los **8 tipos de ejercicio** con modelo unificado en `packages/shared`, motor de
 sesión endurecido (grading EN SERVIDOR + anti-farm ATÓMICO + aleatoriedad + repaso obligatorio), **dos vías de
 generación** (skill `smartkids_content`) y **contenido privado del hogar** (fichas/paths que el tutor genera para
 sus niños). Detalle en §8; el PORQUÉ en `docs/adr/`.
@@ -101,22 +101,24 @@ Consecuencia clave: **el binding `ASSETS` apunta a `apps/web/dist`**. En un clon
 
 ## 5. Modelo de datos
 
-Drizzle sobre D1/SQLite, **24 tablas**, esquema en `apps/api/src/db/schema.ts`. La frontera está marcada con
+Drizzle sobre D1/SQLite, **27 tablas**, esquema en `apps/api/src/db/schema.ts`. La frontera está marcada con
 comentarios de sección en el propio schema:
 
 - **CONTENIDO (inmutable, versionado):** `subjects`, `skills`, `skill_prerequisites`, `content_packages`,
   `exercise_templates`. IDs semánticos estables (`MATH.ESO5.FRAC.ADD`); versionado por `content_packages.version`
   y `exercise_templates.content_version`. El contenido **nunca se muta in-place**: se publican nuevas versiones.
   `skills`/`content_packages` llevan `owner_id` (null = catálogo GLOBAL; set = **PRIVADO del hogar** del tutor);
-  `skills` además `coins_per_correct` (puntos por acierto) y `path_id`/`path_name`/`module_index` (agrupar módulos).
+  `skills` además `coins_per_correct` (puntos por acierto), `session_length` (preguntas por misión; null = 5) y
+  `path_id`/`path_name`/`module_index` (agrupar módulos).
 - **PROGRESO (mutable, por niño):** `skill_progress`, `attempts`, `coin_awards` (registro ATÓMICO de "ya cobrado"
   por (niño, ejercicio), PK compuesta → anti-farm sin carrera), y la economía `wallets`, `wallet_ledger`,
   `redemptions`. Cada intento congela `content_version` para que el histórico no se corrompa si el contenido evoluciona.
 - **Identidad y acceso:** `parent_accounts` (tutores/admin, `role`), `child_profiles`, `courses`,
   `child_courses` (acceso niño↔curso), `child_rewards` (acceso niño↔recompensa), `child_skills`
   (acceso niño↔skill PRIVADO), `rewards`.
-- **Contenido a medida (Vía B):** `content_requests` (petición del tutor: material + config + estado) y
-  `content_request_assets` (metadatos de los ficheros; el binario vive en R2). Ver §8.
+- **Contenido a medida (Vía B):** `content_requests` (petición del tutor: material + config + estado;
+  `source_request_id` = copia regenerada que comparte los ficheros de su origen) y `content_request_assets`
+  (metadatos de los ficheros; el binario vive en R2). Ver §8.
 - **Seguridad:** `sessions` (tutor), `child_sessions` (niño), `auth_tokens` (verify/reset), `login_attempts` (rate-limit).
 
 **Hogar / cónyuge:** `parent_accounts.spouse_id` + `spouse_pending_from`. Un tutor puede compartir TODOS sus
@@ -175,38 +177,59 @@ Reglas que hay que respetar siempre:
 - **Cliente API (`src/api.ts`):** rutas **relativas** `/api/...`, cookies de mismo origen (sin `credentials:"include"`).
   Cualquier despliegue cross-origin rompería la sesión. Errores: cada pantalla hace `try/catch` y muestra `e.message`.
 
-## 8. Sistema de contenido (7 tipos + 3 vías de publicación)
+## 8. Sistema de contenido (8 tipos + 3 vías de publicación)
 
 **Modelo unificado del ejercicio = fuente ÚNICA de verdad en `packages/shared`** (`src/exercise.ts` esquemas Zod
-de los 7 tipos + `src/grading.ts` la lógica). Lo importan la API Y la web (se acabó la divergencia con D1).
-- 7 tipos: `multiple_choice`, `numeric`, `fill_in_blank` (huecos `{{1}}`), `true_false`, `ordering`, `matching`,
-  `step_problem`.
+de los 8 tipos + `src/grading.ts` la lógica). Lo importan la API Y la web (se acabó la divergencia con D1).
+- 8 tipos: `multiple_choice`, `multiple_select` («casillas»: marcar TODAS las correctas; `options` min 3, respuesta
+  `{ optionIds }`, acierta solo el conjunto EXACTO, marcar de más = fallo), `numeric`, `fill_in_blank` (huecos
+  `{{1}}`), `true_false`, `ordering`, `matching`, `step_problem`.
 - `grade(ex, answer)` corrige EN SERVIDOR; `redactForClient(ex)` quita la solución antes de enviar (el niño NUNCA
-  ve la respuesta); `toStoredPayload()/exerciseFromRow()` mapean a la columna `payload` JSON; `validateExercise()`
-  (self-check: la clave marcada corrige acierto) lo usa el pipeline.
+  ve la respuesta; en `multiple_select` tampoco cuántas son correctas) y `shuffleRender` baraja la presentación;
+  `toStoredPayload()/exerciseFromRow()` mapean a la columna `payload` JSON; `validateExercise()` (self-check: la
+  clave marcada corrige acierto; en `multiple_select` exige >=1 correcta, >=1 incorrecta e ids únicos) lo usa el
+  pipeline. `feedback` = `correct`/`incorrect` + opcionales `solution` (cómo se resuelve) y `theory` (trocito
+  «Recuerda: ...» que se enseña al fallar).
 - La web importa SOLO **tipos** de `shared` (`import type` → cero runtime, `zod` no entra en el bundle). En
   `tsconfig.base.json` está `allowImportingTsExtensions` para que el pipeline importe `shared` bajo
   `node --experimental-strip-types` (los imports internos de `shared` llevan extensión `.ts`).
 
 **Motor de sesión** (`GET /api/session/next` + `POST /api/session/attempt`, en `apps/api/src/index.ts`): corrige
-los 7 tipos en servidor, baraja opciones por servida, evita plantillas vistas hace poco, y tiene **fase de repaso
-obligatoria** (al fallar sirve ejercicios NUEVOS del mismo concepto hasta acertar, con tope; lógica en
-`apps/web/src/screens/Session.tsx`). El cuerpo de `attempt` es `{ answer }` (unión discriminada `AnswerSchema`),
-con compat del viejo `selectedOptionId`. Inputs de los 7 tipos en `apps/web/src/components/ExerciseInput.tsx`.
+los 8 tipos en servidor y baraja opciones por servida. `next` carga un banco LIGERO (solo id+tipo, hasta 1000) y
+elige de forma ALEATORIA PERO PRIORIZADA, nunca en orden fijo: con probabilidad 0.7 (`PRIORIDAD_FALLOS`) sortea
+entre los «pendientes» (falló la última vez; más peso cuantos más fallos) y si no entre el resto (fallado alguna
+vez 3 > nuevo 2 > siempre acertado 1; lo visto en los 20 últimos pesa x0.15), penalizando repetir tipo en la
+sesión. Devuelve además `sessionLength` del skill (preguntas por misión; default 5). `attempt` devuelve `solution`
+y `theory`: al fallar, la web muestra una tarjeta con la respuesta correcta, la teoría («Recuerda») y cómo se
+resuelve. Al acabar la tanda, si hubo fallos, pantalla de transición y **SESIÓN DE REPASO** con los MISMOS
+ejercicios fallados en orden aleatorio (`?exercise=<id>`; fallar lo manda al final de la cola, tope = fallos + 3)
+y un resumen final (lógica en `apps/web/src/screens/Session.tsx`). El cuerpo de `attempt` es `{ answer }` (unión
+discriminada `AnswerSchema`), con compat del viejo `selectedOptionId`. Inputs de los 8 tipos en
+`apps/web/src/components/ExerciseInput.tsx`.
 
 **Vía A — desde una descripción** (catálogo GLOBAL): `tools/content-gen/src/generate.ts` es spec-driven multi-tipo.
 Lee una **spec JSON** (`--spec <ruta>`, ver `spec.example.json`); `--mock` sin coste; real con `ANTHROPIC_API_KEY`
-(`claude-opus-4-8`, salida Zod). Valida con `validateExercise`, escribe `out/<pkg>.json`+`.sql` (**`out/` gitignored**)
-y se aplica con `wrangler d1 execute` (a mano; el `.sql` requiere la D1 ya sembrada).
+(`claude-opus-4-8`, salida Zod; el prompt y el mock cubren `multiple_select` y piden `feedback.theory`). Valida con
+`validateExercise`, escribe `out/<pkg>.json`+`.sql` (**`out/` gitignored**) y se aplica con `wrangler d1 execute`
+(a mano; el `.sql` requiere la D1 ya sembrada).
 
 **Vía B — desde material del tutor** (PRIVADO del hogar): el tutor sube fotos/PDF/texto **o solo una descripción**
 desde el panel → `POST /api/tutor/content-requests` (multipart, R2) crea una `content_requests` con su config
-(`num_questions`, `points_per_correct`, `modules`; título opcional). La skill lista las pendientes, descarga los
+(`num_questions` 5..200, `session_length` 3..30, `points_per_correct`, `modules` 1..6, `question_types` = lista de
+tipos, null = variados; título opcional). Se GENERA un 50 % más de lo pedido (`GENERATION_EXTRA = 1.5`, el listado
+de máquina da `targetExercises`) para que cada tanda salga distinta. La skill lista las pendientes, descarga los
 assets, genera, y publica vía `POST /api/admin/content/import` (auth: Bearer `CONTENT_IMPORT_TOKEN` **o** sesión de
 admin): crea skill PRIVADO (`owner_id`=tutor) + paquete + plantillas, lo asigna al niño (`child_skills`), marca la
-solicitud `published` y **envía email al tutor**. `modules>1` genera un **path** de N módulos. Una solicitud aún no
-procesada (status `uploaded`) es **editable** (`POST .../content-requests/:id` añade ficheros/campos;
-`DELETE .../:id/assets/:assetId` quita uno).
+solicitud `published` y **envía email al tutor**. `modules>1` genera un **path** de N módulos. Los paquetes grandes
+se publican TROCEADOS (`offset`; solo el lote 0 retira lo anterior) y las plantillas se escriben con `db.batch` por
+tandas de 50 (plan Free: 1000 subpeticiones y 10 ms de CPU por invocación). Una solicitud aún no procesada (status
+`uploaded`) es **editable** (`POST .../content-requests/:id` añade ficheros/campos; `DELETE .../:id/assets/:assetId`
+quita uno). Una ya procesada (`published`/`failed`) se **regenera** sin volver a subir el material
+(`POST .../content-requests/:id/regenerate`): `mode=replace` reabre la MISMA solicitud y la skill republica sobre los
+MISMOS skills (`previousSkills` + `replaceSkillContent`/`retireSkillIds`; el niño conserva asignación y progreso);
+`mode=copy` crea una solicitud nueva (`source_request_id`) que comparte los objetos de R2 del original (por eso
+R2 solo se borra cuando ninguna fila lo referencia: `deleteR2IfUnreferenced`). Las preguntas por misión de un
+contenido ya publicado se cambian con `POST /api/tutor/skills/:skillId/settings`.
 
 **Vía C — cursos fijos** (catálogo GLOBAL, redactados a mano y VERSIONADOS en el repo): a diferencia de la Vía A
 (que genera con IA a `out/` gitignored), estos cursos viven en **`content/<curso>/`** (fuente de verdad EDITABLE, en
@@ -242,8 +265,9 @@ Todo Cloudflare, free tier (ver `DEPLOY.md`). Config en `apps/api/wrangler.toml`
 - **Secrets de producción por `wrangler secret put`** (no en el toml ni en `.dev.vars`):
   `RESEND_API_KEY`, `EMAIL_FROM`, `CONTENT_IMPORT_TOKEN` (token de máquina para el endpoint de import de contenido).
   En local, `.dev.vars` (gitignored) define `EMAIL_DEV_LINKS=true` y el `CONTENT_IMPORT_TOKEN` local.
-- Migraciones D1 al día hasta **`0010`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
-  0010 = `coin_awards`). Migrar **producción**: `pnpm db:migrate:remote` (toca
+- Migraciones D1 al día hasta **`0018`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
+  0010 = `coin_awards`, 0016 = retirada de plantillas, 0017 = índices, 0018 = `question_types`/`session_length`/
+  `source_request_id` en solicitudes y `session_length` en skills). Migrar **producción**: `pnpm db:migrate:remote` (toca
   datos reales, cuidado). Los scripts `db:migrate`/`db:seed` del paquete api son **solo `--local`**.
 
 ## 10. Git e identidad — CRÍTICO
@@ -293,13 +317,13 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 | Iconos / avatares SVG | `apps/web/src/components/Icon.tsx`, `Avatar.tsx` |
 | Tokens de diseño y estilos | `apps/web/src/styles/` (`tokens.css` primero) |
 | i18n de la UI | `apps/web/src/i18n.ts` |
-| Modelo unificado del ejercicio (7 tipos) + grading | `packages/shared/src/exercise.ts`, `grading.ts` |
-| Inputs de ejercicio en la web (7 tipos) | `apps/web/src/components/ExerciseInput.tsx` |
+| Modelo unificado del ejercicio (8 tipos) + grading | `packages/shared/src/exercise.ts`, `grading.ts` |
+| Inputs de ejercicio en la web (8 tipos) | `apps/web/src/components/ExerciseInput.tsx` |
 | Pipeline de contenido (spec-driven, Vía A) | `tools/content-gen/src/generate.ts` |
 | Cursos fijos versionados (Vía C) + builder | `content/<curso>/`, `tools/content-gen/src/build-course.ts` |
 | Skill de generación de contenido | `.claude/skills/smartkids_content/SKILL.md` |
 | Cómo desplegar | `DEPLOY.md` |
-| Modelo de datos a fondo (24 tablas, auth, economía) | `docs/ARCHITECTURE.md` |
+| Modelo de datos a fondo (27 tablas, auth, economía) | `docs/ARCHITECTURE.md` |
 | Decisiones de arquitectura (el porqué) | `docs/adr/` |
 | Catálogo de endpoints por rol | `docs/API.md` |
 | Convenciones y gotchas del backend | `apps/api/CLAUDE.md` |

@@ -37,3 +37,9 @@ Alta latitud humana: la skill es una GUÍA para Claude Code (que hace de generad
 - (−) La skill vive en el repo pero Claude Code solo la descubre si el workspace se abre EN `smartkids/` (o con
       una copia personal en `~/.claude/skills/`). Documentado en `CLAUDE.md` §8.
 - Idempotencia: el import borra+reinserta las plantillas del paquete; re-lanzarlo es seguro (y reenvía el email).
+
+> **Nota posterior:** el import ya NO borra plantillas: hace UPSERT por id y marca `retired=1` lo que no viene
+> (migración 0016), porque `attempts`/`coin_awards` las referencian con FK. Además la Vía B admite **regenerar** una
+> solicitud procesada sin volver a subir el material (`POST /api/tutor/content-requests/:id/regenerate`: `replace`
+> republica sobre los mismos skills; `copy` crea una solicitud nueva que comparte los objetos de R2), publicación
+> troceada de paquetes grandes (`offset`) y config de tipos de pregunta y preguntas por misión (migración 0018).
