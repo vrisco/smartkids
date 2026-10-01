@@ -82,7 +82,7 @@ La frontera CONTENIDO / PROGRESO está marcada con comentarios de sección en el
 | `id` | text | PK | `kid_...` |
 | `parent_id` | text | FK → parent_accounts.id, NOT NULL | tutor propietario |
 | `display_name` | text | NOT NULL | nombre visible |
-| `avatar` | text | NOT NULL, def `'orbi'` | clave de avatar (ver Avatar.tsx) |
+| `avatar` | text | NOT NULL, def `'orbi'` | LEGADO: avatar antiguo, ya no se pinta (el avatar es `mascot`) |
 | `mascot` | text | NOT NULL, def `'orbi'` | compañero de viaje que ve el niño (ver Mascot.tsx) |
 | `birth_year` | integer | nullable | |
 | `grade_band` | text | NOT NULL | nivel, p.ej. `ESO-5` |
@@ -293,9 +293,9 @@ Ojo con las tres convenciones de nivel coexistiendo: `ESO-5` (columnas), `eso5` 
   `tx(LocaleText)` para contenido del servidor (vive en `api.ts`). Idioma en `localStorage.sk_lang`.
 - **Tema**: `data-theme` en `<html>` + `tokens.css`; `settings.ts` persiste en `sk_theme` y aplica antes del
   primer render.
-- **Diseño sin emojis**: iconos SVG (`Icon.tsx`, unión `IconName` de 23 nombres) y avatares por clave
-  (`Avatar.tsx`, `avatarKeyOf` normaliza el legado emoji). Todo el color/espaciado sale de tokens. El compañero
-  de viaje del niño (Orbi o un animal astronauta) sale de `Mascot.tsx` según `child_profiles.mascot`.
+- **Diseño sin emojis**: iconos SVG (`Icon.tsx`, unión `IconName`). Todo el color/espaciado sale de tokens. El
+  personaje del niño (su avatar y su compañero de viaje: Orbi o un animal astronauta) sale de `Mascot.tsx` según
+  `child_profiles.mascot`.
 
 Los gotchas concretos del frontend están en `../apps/web/CLAUDE.md`.
 

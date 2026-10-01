@@ -37,7 +37,9 @@ Notas:
 | POST | `/api/auth/reset` | Consume token `reset`, fija password (mín. 6), marca email verificado, borra sesiones del tutor. |
 | POST | `/api/child/login` | Login de niño (`username`+`pin`). Rate-limit por IP y usuario. Emite `sk_child`. Devuelve niño + cursos. |
 | POST | `/api/child/logout` | Destruye la sesión de niño. |
-| POST | `/api/child/mascot` | Solo sesión de niño: `{ mascot }` cambia su compañero de viaje (`orbi`, `redpanda`, `fox`, `cat`, `bunny`, `panda`, `penguin`; otro → 400). |
+| GET | `/api/child/progress` | Solo sesión de niño: por ámbito (`course:<id>`, `skill:<id>`, `path:<id>`) aciertos, tendencia, tiempo medio, avance y nº de pendientes. |
+| GET | `/api/child/review?scope=` | Solo sesión de niño: ids del top 10 de ejercicios PENDIENTES del ámbito (los que más falla primero) para «Repasar fallos». Ámbito ajeno = lista vacía. |
+| POST | `/api/child/mascot` | Solo sesión de niño: `{ mascot }` cambia su personaje (avatar y compañero de viaje) (`orbi`, `redpanda`, `fox`, `cat`, `bunny`, `panda`, `penguin`; otro → 400). |
 
 ## Sesión de tutor (`requireParent`)
 

@@ -30,14 +30,16 @@ render condicional por sesión, en este orden: cargando → **niño** (`KidApp`)
 
 ## Reglas de diseño (preferencias fijas del usuario)
 
-- **CERO emojis.** Iconos SVG vía `components/Icon.tsx` (unión cerrada `IconName`, 23 nombres); avatares vía
-  `components/Avatar.tsx` (claves `orbi/fox/panda/octo/unicorn/frog/tiger/robot`; `avatarKeyOf` normaliza el
-  legado emoji). Al añadir un icono, amplía `IconName`; no metas glifos emoji en la UI.
-- **Compañero de viaje** (`components/Mascot.tsx`): Orbi y animales con su mismo traje de astronauta, casco de
+- **CERO emojis.** Iconos SVG vía `components/Icon.tsx` (unión cerrada `IconName`). Al añadir un icono, amplía
+  `IconName`; no metas glifos emoji en la UI.
+- **Personaje del niño** (avatar y compañero de viaje, `components/Mascot.tsx`): Orbi y animales con su mismo traje de astronauta, casco de
   cristal y antena. `<Mascot />` sin `name` pinta el del niño vía `MascotContext` (lo provee `KidApp`); fuera de la
   app del niño pasa `name`. Ids de gradiente por instancia (`useId`): se pintan varios a la vez en `MascotPick`.
   Para añadir uno: clave en `MASCOT_KEYS` + `MASCOTS` de la API, dibujo en `ANIMALS`, color en `ACCENT` e i18n
-  `mascot.names.*` (es/en).
+  `mascot.names.*` (es/en). `<MascotAvatar>` es el busto redondo (barra superior del niño y lista del tutor).
+- **Progreso del niño** (`components/KidProgress.tsx`): `ProgressLine` (aciertos con tendencia, tiempo por pregunta,
+  avance) y `ReviewButton` («Repasar fallos» con sus pendientes) en las tarjetas de `KidApp` y en la cabecera de
+  `GalaxyMap`. `KidApp` recarga `api.childProgress()` al volver de cada misión.
 - **Solo tokens de diseño.** Todo color/espaciado sale de `styles/tokens.css` (`var(--...)`), nunca colores
   sueltos. Botones de **altura uniforme** (`--btn-h`, `--btn-h-sm`); usa `.btn-primary` / `.btn-ghost` /
   `.btn-danger` y el modificador `.sm`. Escala de espaciado `--sp-1..--sp-8` (la UI debe «respirar»).
@@ -83,7 +85,7 @@ funciona por el proxy de Vite; en prod por mismo origen. Un despliegue cross-ori
 
 ## Gotchas / código a no imitar
 
-- `Hud` pinta la **inicial** del nombre (no el `<Avatar>` SVG). La racha sí es real (`streak` de `/api/child/me`).
+- `Hud` pinta el personaje del niño (`<MascotAvatar>`); el botón sigue siendo «Cambiar de perfil». La racha es real (`streak` de `/api/child/me`).
 - Curso escolar: `grades.ts` (`GRADE_BANDS`, `isGradeBand`); cualquier otro valor (el antiguo `"ESO-5"`) = sin definir.
 - Inputs de texto de las respuestas: siempre con `NO_AUTOCORRECT` (`ExerciseInput.tsx`); el autocorrector del
   móvil cambiaría una respuesta mal escrita por la buena y el subrayado del corrector chivaría el error.

@@ -163,13 +163,14 @@ Reglas que hay que respetar siempre:
 - **No hay router.** Solo `/`, `/verify` y `/reset` son rutas físicas; el resto es render condicional por
   **rol/estado** en `apps/web/src/App.tsx` (prioridad: sesión de niño > admin > tutor > login). La navegación
   interna (KidApp: `map`/`session`/`reward`) es estado local, no URL-addressable.
-- **CERO emojis.** Todo icono es SVG vía `components/Icon.tsx` (unión cerrada `IconName`) y todo avatar vía
-  `components/Avatar.tsx` (claves `orbi/fox/panda/...`, normaliza legado emoji con `avatarKeyOf`). No metas emojis.
-- **Compañero de viaje** (mascota que acompaña al niño): `components/Mascot.tsx`, claves `MASCOT_KEYS`
+- **CERO emojis.** Todo icono es SVG vía `components/Icon.tsx` (unión cerrada `IconName`). No metas emojis.
+- **Personaje del niño** (su avatar Y el compañero que le acompaña): `components/Mascot.tsx`, claves `MASCOT_KEYS`
   (`orbi` + animales astronauta: `redpanda`, `fox`, `cat`, `bunny`, `panda`, `penguin`), guardado en
   `child_profiles.mascot`. Lo elige el tutor (ficha del niño) o el niño (pestaña Progreso → `POST /api/child/mascot`).
   `<Mascot />` sin `name` pinta el del niño (`MascotContext`, lo provee `KidApp`); el login muestra el último usado
   en el dispositivo (`sk_mascot`). La lista se repite en la API (`MASCOTS` en `index.ts`): añade claves en los dos.
+  Como avatar redondo (barra superior del niño, lista de niños del tutor) se usa `<MascotAvatar>` (busto). La
+  columna `child_profiles.avatar` es LEGADO: ya no se pinta ni se edita (los avatares redondos antiguos se retiraron).
 - **Tokens de diseño en `styles/tokens.css`.** Usa SOLO variables (`var(--...)`), nunca colores sueltos.
   Botones de **altura uniforme** (`--btn-h`, `--btn-h-sm`); escala de espaciado `--sp-1..--sp-8` para que la UI
   «respire»; breakpoints `760px` y `1080px`. Los valores del **tema oscuro están duplicados** en dos bloques
@@ -198,6 +199,13 @@ de los 8 tipos + `src/grading.ts` la lógica). Lo importan la API Y la web (se a
 - La web importa SOLO **tipos** de `shared` (`import type` → cero runtime, `zod` no entra en el bundle). En
   `tsconfig.base.json` está `allowImportingTsExtensions` para que el pipeline importe `shared` bajo
   `node --experimental-strip-types` (los imports internos de `shared` llevan extensión `.ts`).
+
+**Progreso del niño y «Repasar fallos»**: cada curso, ficha y path muestra al niño sus aciertos (con tendencia:
+últimas 20 respuestas frente a las 20 anteriores), su tiempo por pregunta y su avance (temas dominados o preguntas
+hechas), con `GET /api/child/progress` (`progresoDelNino` agrupa por ámbito `course:`/`skill:`/`path:`; el curso
+incluye los privados de su asignatura+nivel, igual que su galaxia). «Repasar fallos» (`GET /api/child/review?scope=`)
+lanza una tanda con el top 10 de sus PENDIENTES del ámbito, los que más falla primero (`Session` con `reviewIds`
+empieza directamente en la fase de repaso). Al corregirlos en otra tanda salen de la lista y el botón desaparece.
 
 **Motor de sesión** (`GET /api/session/next` + `POST /api/session/attempt`, en `apps/api/src/index.ts`): corrige
 los 8 tipos en servidor y baraja opciones por servida. `next` carga un banco LIGERO (solo id+tipo, hasta 1000) y
@@ -311,7 +319,7 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 - **No commitees** `out/`, `dist/`, `.wrangler/`, `.dev.vars` (ya gitignored).
 - Código muerto conocido: `apps/web/src/screens/FamilyHome.tsx` y `ParentPanel.tsx` son stubs (`export {}`); hay
   CSS de pantallas eliminadas en `app.css`/`auth.css`. No los tomes como referencia.
-- Detalles frágiles ya conocidos (no son bugs a arreglar sin pedirlo): `Hud` pinta la inicial en vez del avatar;
+- Detalles frágiles ya conocidos (no son bugs a arreglar sin pedirlo):
   `MathText` solo entiende fracciones `entero/entero`; el `Starfield` no reacciona al cambio de tema en caliente.
   (La racha ya es real, `computeStreak`; el curso escolar del niño lo elige el tutor, `""` = sin definir.)
 
@@ -330,8 +338,9 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 | Enrutado por rol de la SPA | `apps/web/src/App.tsx` |
 | Cliente API + `tx()` | `apps/web/src/api.ts` |
 | Pantallas | `apps/web/src/screens/` |
-| Iconos / avatares SVG | `apps/web/src/components/Icon.tsx`, `Avatar.tsx` |
-| Compañeros de viaje (Orbi + animales astronauta) | `apps/web/src/components/Mascot.tsx` |
+| Iconos SVG | `apps/web/src/components/Icon.tsx` |
+| Personajes del niño: avatar y compañero (Orbi + animales astronauta) | `apps/web/src/components/Mascot.tsx` |
+| Cómo va el niño en cada curso/ficha + «Repasar fallos» | `apps/web/src/components/KidProgress.tsx`, `progresoDelNino` en `index.ts` |
 | Tokens de diseño y estilos | `apps/web/src/styles/` (`tokens.css` primero) |
 | i18n de la UI | `apps/web/src/i18n.ts` |
 | Modelo unificado del ejercicio (8 tipos) + grading | `packages/shared/src/exercise.ts`, `grading.ts` |
