@@ -3,6 +3,7 @@
 import { useTranslation } from "react-i18next";
 import { tx, type ActivityDay, type ProfileStats, type SessionStat } from "../api";
 import { Icon, type IconName } from "./Icon";
+import { MathText } from "./MathText";
 
 function fmtTime(ms: number | null): string {
   if (ms == null || ms <= 0) return "—";
@@ -92,7 +93,7 @@ function ActivityChart({ data, locale }: { data: ActivityDay[]; locale: string }
   );
 }
 
-export function StatsView({ stats }: { stats: ProfileStats }) {
+export function StatsView({ stats, showSlowest = false }: { stats: ProfileStats; showSlowest?: boolean }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const o = stats.overview;
@@ -173,7 +174,9 @@ export function StatsView({ stats }: { stats: ProfileStats }) {
                     <b>{fmtDateTime(s.start, locale)}</b>
                     {s.skills && s.skills.length > 0 && <span className="stat-session-skill">{s.skills.map((n) => tx(n)).join(" · ")}</span>}
                     <span className="muted">
-                      {s.count} {t(s.count === 1 ? "stats.question" : "stats.questions")} · {fmtTime(s.timeMs)}
+                      {s.count} {t(s.count === 1 ? "stats.question" : "stats.questions")}
+                      {(s.durationMs ?? s.timeMs) > 0 && <> · {t("stats.sessionTotal", { time: fmtTime(s.durationMs ?? s.timeMs) })}</>}
+                      {s.avgMs != null && <> · {t("stats.perAnswer", { time: fmtTime(s.avgMs) })}</>}
                     </span>
                   </div>
                   <div className="stat-session-marks">
@@ -194,6 +197,33 @@ export function StatsView({ stats }: { stats: ProfileStats }) {
           </div>
         )}
       </div>
+
+      {showSlowest && stats.slowest && stats.slowest.length > 0 && (
+        <div className="stat-block">
+          <div className="stat-block-title">{t("stats.slowest")}</div>
+          <p className="muted small">{t("stats.slowestHint")}</p>
+          <div className="mistake-list">
+            {stats.slowest.map((q) => (
+              <div className="mistake" key={q.templateId}>
+                <div className="slow-head">
+                  <div className="mistake-skill">{tx(q.skillName)}</div>
+                  <span className="slow-time" title={t("stats.slowAvg")}>
+                    <Icon name="clock" size={13} /> {fmtTime(q.avgMs)}
+                  </span>
+                </div>
+                <div className="mistake-stem">
+                  <MathText text={q.stem} />
+                </div>
+                <div className="slow-meta">
+                  {q.attempts === 1 ? t("stats.slowOnce") : t("stats.slowTimes", { count: q.attempts })} ·{" "}
+                  {t("stats.slowCorrect", { correct: q.correct, count: q.attempts })}
+                  {q.attempts > 1 && <> · {t("stats.slowMax", { time: fmtTime(q.maxMs) })}</>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

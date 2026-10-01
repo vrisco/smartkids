@@ -198,7 +198,7 @@ function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void
         ) : !stats ? (
           <p className="muted screen-pad">{t("content.previewLoading")}</p>
         ) : (
-          <StatsView stats={stats} />
+          <StatsView stats={stats} showSlowest />
         )}
         <Mistakes childId={child.id} />
         <WalletAdjust childId={child.id} onDone={loadStats} />

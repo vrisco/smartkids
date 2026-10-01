@@ -208,7 +208,9 @@ vez 3 > nuevo 2 > siempre acertado 1; lo visto en los 20 últimos pesa x0.15), p
 sesión. Devuelve además `sessionLength` del skill (preguntas por misión; default 5). `attempt` devuelve `solution`
 y `theory`. Las estadísticas (`computeProfileStats`) reconstruyen las sesiones por huecos de 20 min y separan la
 primera vuelta (cada ejercicio una vez) del repaso: `failed`/`retried`/`fixed` = falladas, repasadas y corregidas
-en la sesión (la web lo pinta en `StatsView`). Al fallar, la web muestra una tarjeta con la respuesta correcta, la teoría («Recuerda») y cómo se
+en la sesión, además de `durationMs` (lo que duró la tanda) y `avgMs` (media por respuesta). Los tiempos de respuesta
+se recortan a 5 min (`RT_TOPE_MS`) en medias y en el top `slowest` (preguntas en las que más tarda), que solo se
+calcula para el tutor. La web lo pinta en `StatsView`. Al fallar, la web muestra una tarjeta con la respuesta correcta, la teoría («Recuerda») y cómo se
 resuelve. Al acabar la tanda, si hubo fallos, pantalla de transición y **SESIÓN DE REPASO** con los MISMOS
 ejercicios fallados en orden aleatorio (`?exercise=<id>`; fallar lo manda al final de la cola, tope = fallos + 3)
 y un resumen final (lógica en `apps/web/src/screens/Session.tsx`). Tras responder, el niño puede marcar

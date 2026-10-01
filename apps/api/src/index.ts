@@ -1112,6 +1112,13 @@ app.post("/api/child/mascot", async (c) => {
 /* ================= Estadísticas / seguimiento ================= */
 
 const SESSION_GAP_MS = 20 * 60 * 1000; // hueco que separa una "sesión" de la siguiente al reconstruirlas
+// Tope de una respuesta en las medias y el top de lentitud: si el niño deja la app abierta con una pregunta
+// en pantalla, ese intento registraría minutos y dominaría cualquier media.
+const RT_TOPE_MS = 5 * 60 * 1000;
+/** Tiempo de respuesta útil para estadísticas (recortado a RT_TOPE_MS), o null si no se midió. */
+function rtUtil(rt: number | null): number | null {
+  return typeof rt === "number" && rt > 0 ? Math.min(rt, RT_TOPE_MS) : null;
+}
 const DEFAULT_TZ = "Europe/Madrid"; // zona por defecto si el cliente no manda una válida
 
 /** yyyy-mm-dd del instante `ms` en la zona IANA `tz` (con horario de verano); cae a UTC si la zona no es válida. */
@@ -1195,7 +1202,7 @@ async function computeStreak(db: DB, profileId: string, tz: string, consume: boo
 
 // Agrega el progreso de un perfil desde attempts + wallet_ledger + skill_progress.
 // No hay tabla de sesiones: se RECONSTRUYEN agrupando los intentos por huecos de tiempo.
-async function computeProfileStats(db: DB, profileId: string, tz: string) {
+async function computeProfileStats(db: DB, profileId: string, tz: string, opts: { slowest?: boolean } = {}) {
   const now = Date.now();
   // Los 5000 intentos MÁS RECIENTES, en orden cronológico (con asc + limit se quedaban los más antiguos
   // y un niño muy activo dejaba de ver sus últimas sesiones).
@@ -1229,8 +1236,8 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
   const isRedeem = (r: string) => r.startsWith("redeem:");
   const total = attemptRows.length;
   const correct = attemptRows.filter((a) => a.correct).length;
-  const timed = attemptRows.filter((a) => typeof a.rt === "number");
-  const avgTimeMs = timed.length ? Math.round(timed.reduce((s, a) => s + (a.rt as number), 0) / timed.length) : null;
+  const timed = attemptRows.map((a) => rtUtil(a.rt)).filter((rt): rt is number => rt !== null);
+  const avgTimeMs = timed.length ? Math.round(timed.reduce((s, rt) => s + rt, 0) / timed.length) : null;
   const activeDays = new Set(attemptRows.map((a) => a.ts.slice(0, 10))).size;
   const sumEarnedSince = (fromMs: number) =>
     ledgerRows.filter((l) => isExercise(l.reason) && Date.parse(l.ts) >= fromMs).reduce((s, l) => s + l.delta, 0);
@@ -1243,8 +1250,9 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
     const g = bySkill.get(a.skillId) ?? { attempts: 0, correct: 0, rtSum: 0, rtN: 0 };
     g.attempts++;
     if (a.correct) g.correct++;
-    if (typeof a.rt === "number") {
-      g.rtSum += a.rt;
+    const rt = rtUtil(a.rt);
+    if (rt !== null) {
+      g.rtSum += rt;
       g.rtN++;
     }
     bySkill.set(a.skillId, g);
@@ -1279,10 +1287,12 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
     fixed: number;
     skills: unknown[];
     timeMs: number;
+    avgMs: number | null;
+    durationMs: number;
     points: number;
   }> = [];
   type Visto = { failed: boolean; retried: boolean; fixed: boolean };
-  let cur: { startT: number; endT: number; answers: number; first: number; firstOk: number; rtSum: number; seen: Map<string, Visto>; skills: Map<string, number> } | null = null;
+  let cur: { startT: number; endT: number; answers: number; first: number; firstOk: number; rtSum: number; rtN: number; seen: Map<string, Visto>; skills: Map<string, number> } | null = null;
   const flush = () => {
     if (!cur) return;
     const g = cur;
@@ -1300,7 +1310,9 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
       fixed: failed.filter((v) => v.fixed).length,
       // Temas practicados, el más trabajado primero.
       skills: [...g.skills.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([id]) => nameById.get(id) ?? { es: id }),
-      timeMs: g.rtSum,
+      timeMs: g.rtSum, // tiempo contestando (suma de respuestas)
+      avgMs: g.rtN ? Math.round(g.rtSum / g.rtN) : null, // media por respuesta
+      durationMs: g.endT - g.startT, // lo que duró la tanda: de la primera pregunta en pantalla a la última respuesta
       points,
     });
     cur = null;
@@ -1308,11 +1320,16 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
   for (const a of attemptRows) {
     const t = Date.parse(a.ts);
     if (cur && t - cur.endT > SESSION_GAP_MS) flush();
-    if (!cur) cur = { startT: t, endT: t, answers: 0, first: 0, firstOk: 0, rtSum: 0, seen: new Map(), skills: new Map() };
+    const rt = rtUtil(a.rt);
+    // El intento se guarda al RESPONDER: la tanda empezó cuando la primera pregunta apareció en pantalla.
+    if (!cur) cur = { startT: t - (rt ?? 0), endT: t, answers: 0, first: 0, firstOk: 0, rtSum: 0, rtN: 0, seen: new Map(), skills: new Map() };
     cur.endT = t;
     cur.answers++;
     cur.skills.set(a.skillId, (cur.skills.get(a.skillId) ?? 0) + 1);
-    if (typeof a.rt === "number") cur.rtSum += a.rt;
+    if (rt !== null) {
+      cur.rtSum += rt;
+      cur.rtN++;
+    }
     const visto = cur.seen.get(a.tid);
     if (!visto) {
       cur.seen.set(a.tid, { failed: !a.correct, retried: false, fixed: false });
@@ -1345,6 +1362,43 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
   }
 
   const streak = await computeStreak(db, profileId, tz, false);
+
+  // Preguntas en las que más tarda (media de sus respuestas, recortadas a RT_TOPE_MS). Solo lo pide el tutor.
+  const slowest: Array<{ templateId: string; stem: string; skillName: unknown; avgMs: number; maxMs: number; attempts: number; correct: number }> = [];
+  if (opts.slowest) {
+    const byTpl = new Map<string, { skillId: string; n: number; sum: number; max: number; ok: number }>();
+    for (const a of attemptRows) {
+      const rt = rtUtil(a.rt);
+      if (rt === null) continue;
+      const g = byTpl.get(a.tid) ?? { skillId: a.skillId, n: 0, sum: 0, max: 0, ok: 0 };
+      g.n++;
+      g.sum += rt;
+      g.max = Math.max(g.max, rt);
+      if (a.correct) g.ok++;
+      byTpl.set(a.tid, g);
+    }
+    const top = [...byTpl.entries()].sort((x, y) => y[1].sum / y[1].n - x[1].sum / x[1].n).slice(0, SLOWEST_TOP);
+    if (top.length) {
+      const stems = await db
+        .select({ id: exerciseTemplates.id, stem: exerciseTemplates.stem })
+        .from(exerciseTemplates)
+        .where(inArray(exerciseTemplates.id, top.map(([id]) => id)));
+      const stemById = new Map(stems.map((r) => [r.id, r.stem]));
+      for (const [id, g] of top) {
+        const stem = stemById.get(id);
+        if (stem === undefined) continue;
+        slowest.push({
+          templateId: id,
+          stem,
+          skillName: nameById.get(g.skillId) ?? { es: g.skillId },
+          avgMs: Math.round(g.sum / g.n),
+          maxMs: g.max,
+          attempts: g.n,
+          correct: g.ok,
+        });
+      }
+    }
+  }
 
   // Cobertura por curso asignado: skills GLOBALES del curso (asignatura+nivel) vs el progreso del niño.
   // Muestra lo que FALTA (temas sin empezar), no solo lo hecho.
@@ -1386,8 +1440,12 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
     sessions: sessions.slice(0, 30),
     activity,
     coverage,
+    slowest,
   };
 }
+
+/** Cuántas preguntas lista el top de lentitud del tutor. */
+const SLOWEST_TOP = 8;
 
 // El niño ve SUS propias estadísticas.
 app.get("/api/child/stats", async (c) => {
@@ -1406,7 +1464,7 @@ app.get("/api/tutor/children/:id/stats", async (c) => {
   const childId = c.req.param("id");
   if (!(await ownsProfile(db, a, childId))) return c.json({ error: "forbidden" }, 403);
   const [ch] = await db.select({ tz: childProfiles.timezone }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
-  return c.json(await computeProfileStats(db, childId, safeTz(ch?.tz)));
+  return c.json(await computeProfileStats(db, childId, safeTz(ch?.tz), { slowest: true }));
 });
 
 // El tutor da o quita puntos del monedero de un niño de su hogar (premiar/corregir fuera de la app).

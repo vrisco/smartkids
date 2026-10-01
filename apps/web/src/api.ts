@@ -271,8 +271,20 @@ export interface SessionStat {
   retried?: number;
   fixed?: number;
   skills?: LocaleText[];
-  timeMs: number;
+  timeMs: number; // tiempo contestando (suma de respuestas)
+  avgMs?: number | null; // media por respuesta
+  durationMs?: number; // lo que duró la tanda, de la primera pregunta a la última respuesta
   points: number;
+}
+// Pregunta en la que más tarda el niño (top del panel del tutor). Tiempos recortados a 5 min por respuesta.
+export interface SlowQuestion {
+  templateId: string;
+  stem: string;
+  skillName: LocaleText;
+  avgMs: number;
+  maxMs: number;
+  attempts: number;
+  correct: number;
 }
 export interface ActivityDay {
   date: string;
@@ -294,6 +306,7 @@ export interface ProfileStats {
   sessions: SessionStat[];
   activity: ActivityDay[];
   coverage: CourseCoverage[];
+  slowest?: SlowQuestion[]; // solo en las estadísticas que pide el tutor
 }
 
 // Resumen del hogar: una fila por niño para el panel de mando del tutor.

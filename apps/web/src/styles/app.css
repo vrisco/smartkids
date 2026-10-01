@@ -437,6 +437,27 @@ code {
   font-size: 0.98rem;
   margin-bottom: 0.35rem;
 }
+/* --- Preguntas en las que más tarda (panel del tutor; reutiliza las tarjetas de .mistake) --- */
+.slow-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.slow-time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+  font-family: var(--hud);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--gold);
+}
+.slow-meta {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
 .mistake-answers {
   display: flex;
   flex-wrap: wrap;
