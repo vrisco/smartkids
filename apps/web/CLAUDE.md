@@ -33,6 +33,11 @@ render condicional por sesión, en este orden: cargando → **niño** (`KidApp`)
 - **CERO emojis.** Iconos SVG vía `components/Icon.tsx` (unión cerrada `IconName`, 23 nombres); avatares vía
   `components/Avatar.tsx` (claves `orbi/fox/panda/octo/unicorn/frog/tiger/robot`; `avatarKeyOf` normaliza el
   legado emoji). Al añadir un icono, amplía `IconName`; no metas glifos emoji en la UI.
+- **Compañero de viaje** (`components/Mascot.tsx`): Orbi y animales con su mismo traje de astronauta, casco de
+  cristal y antena. `<Mascot />` sin `name` pinta el del niño vía `MascotContext` (lo provee `KidApp`); fuera de la
+  app del niño pasa `name`. Ids de gradiente por instancia (`useId`): se pintan varios a la vez en `MascotPick`.
+  Para añadir uno: clave en `MASCOT_KEYS` + `MASCOTS` de la API, dibujo en `ANIMALS`, color en `ACCENT` e i18n
+  `mascot.names.*` (es/en).
 - **Solo tokens de diseño.** Todo color/espaciado sale de `styles/tokens.css` (`var(--...)`), nunca colores
   sueltos. Botones de **altura uniforme** (`--btn-h`, `--btn-h-sm`); usa `.btn-primary` / `.btn-ghost` /
   `.btn-danger` y el modificador `.sm`. Escala de espaciado `--sp-1..--sp-8` (la UI debe «respirar»).

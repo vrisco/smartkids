@@ -37,6 +37,7 @@ Notas:
 | POST | `/api/auth/reset` | Consume token `reset`, fija password (mín. 6), marca email verificado, borra sesiones del tutor. |
 | POST | `/api/child/login` | Login de niño (`username`+`pin`). Rate-limit por IP y usuario. Emite `sk_child`. Devuelve niño + cursos. |
 | POST | `/api/child/logout` | Destruye la sesión de niño. |
+| POST | `/api/child/mascot` | Solo sesión de niño: `{ mascot }` cambia su compañero de viaje (`orbi`, `redpanda`, `fox`, `cat`, `bunny`, `panda`, `penguin`; otro → 400). |
 
 ## Sesión de tutor (`requireParent`)
 
@@ -51,7 +52,7 @@ Notas:
 | POST | `/api/tutor/spouse/reject` | Rechaza la invitación entrante. |
 | DELETE | `/api/tutor/spouse` | Desvincula (ambos lados si simétrico) y barre `child_rewards` cruzados. |
 | POST | `/api/profiles` | Crea un niño (valida `username` con `USERNAME_RE`, PIN 4+), crea wallet, asigna cursos válidos. |
-| POST | `/api/profiles/:id/update` | Actualiza niño (nombre/avatar/pin/username). Requiere `ownsProfile`. |
+| POST | `/api/profiles/:id/update` | Actualiza niño (nombre/avatar/`mascot`/pin/username). Requiere `ownsProfile`. `mascot` desconocido → 400. |
 | DELETE | `/api/profiles/:id` | Borra niño en cascada (`deleteChildCascade`). Requiere `ownsProfile`. |
 | POST | `/api/profiles/:id/courses` | Reemplaza el set de cursos del niño. Requiere `ownsProfile`. |
 | GET | `/api/tutor/rewards` | Recompensas del hogar con sus `childIds` asignados. |
@@ -78,7 +79,7 @@ en el árbol de trabajo sin commitear según el momento.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/api/child/me` | Niño logado + balance + cursos + `customContent` (skills privados del hogar asignados; `exercises` cuenta solo vigentes y visibles). |
+| GET | `/api/child/me` | Niño logado (con su `mascot`) + balance + cursos + `customContent` (skills privados del hogar asignados; `exercises` cuenta solo vigentes y visibles). |
 | GET | `/api/profiles/:id` | Perfil del niño + balance del wallet. |
 | GET | `/api/profiles/:id/courses` | Cursos del niño. |
 | GET | `/api/skills?profile=&course=` | Skills del curso (join con `skill_progress`). Exige `hasCourse` o 403 `no_course_access`. |

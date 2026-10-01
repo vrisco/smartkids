@@ -165,6 +165,11 @@ Reglas que hay que respetar siempre:
   interna (KidApp: `map`/`session`/`reward`) es estado local, no URL-addressable.
 - **CERO emojis.** Todo icono es SVG vía `components/Icon.tsx` (unión cerrada `IconName`) y todo avatar vía
   `components/Avatar.tsx` (claves `orbi/fox/panda/...`, normaliza legado emoji con `avatarKeyOf`). No metas emojis.
+- **Compañero de viaje** (mascota que acompaña al niño): `components/Mascot.tsx`, claves `MASCOT_KEYS`
+  (`orbi` + animales astronauta: `redpanda`, `fox`, `cat`, `bunny`, `panda`, `penguin`), guardado en
+  `child_profiles.mascot`. Lo elige el tutor (ficha del niño) o el niño (pestaña Progreso → `POST /api/child/mascot`).
+  `<Mascot />` sin `name` pinta el del niño (`MascotContext`, lo provee `KidApp`); el login muestra el último usado
+  en el dispositivo (`sk_mascot`). La lista se repite en la API (`MASCOTS` en `index.ts`): añade claves en los dos.
 - **Tokens de diseño en `styles/tokens.css`.** Usa SOLO variables (`var(--...)`), nunca colores sueltos.
   Botones de **altura uniforme** (`--btn-h`, `--btn-h-sm`); escala de espaciado `--sp-1..--sp-8` para que la UI
   «respire»; breakpoints `760px` y `1080px`. Los valores del **tema oscuro están duplicados** en dos bloques
@@ -271,9 +276,9 @@ Todo Cloudflare, free tier (ver `DEPLOY.md`). Config en `apps/api/wrangler.toml`
 - **Secrets de producción por `wrangler secret put`** (no en el toml ni en `.dev.vars`):
   `RESEND_API_KEY`, `EMAIL_FROM`, `CONTENT_IMPORT_TOKEN` (token de máquina para el endpoint de import de contenido).
   En local, `.dev.vars` (gitignored) define `EMAIL_DEV_LINKS=true` y el `CONTENT_IMPORT_TOKEN` local.
-- Migraciones D1 al día hasta **`0019`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
+- Migraciones D1 al día hasta **`0020`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
   0010 = `coin_awards`, 0016 = retirada de plantillas, 0017 = índices, 0018 = `question_types`/`session_length`/
-  `source_request_id` en solicitudes y `session_length` en skills, 0019 = `exercise_reports`). Migrar **producción**: `pnpm db:migrate:remote` (toca
+  `source_request_id` en solicitudes y `session_length` en skills, 0019 = `exercise_reports`, 0020 = `child_profiles.mascot`). Migrar **producción**: `pnpm db:migrate:remote` (toca
   datos reales, cuidado). Los scripts `db:migrate`/`db:seed` del paquete api son **solo `--local`**.
 
 ## 10. Git e identidad — CRÍTICO
@@ -321,6 +326,7 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 | Cliente API + `tx()` | `apps/web/src/api.ts` |
 | Pantallas | `apps/web/src/screens/` |
 | Iconos / avatares SVG | `apps/web/src/components/Icon.tsx`, `Avatar.tsx` |
+| Compañeros de viaje (Orbi + animales astronauta) | `apps/web/src/components/Mascot.tsx` |
 | Tokens de diseño y estilos | `apps/web/src/styles/` (`tokens.css` primero) |
 | i18n de la UI | `apps/web/src/i18n.ts` |
 | Modelo unificado del ejercicio (8 tipos) + grading | `packages/shared/src/exercise.ts`, `grading.ts` |

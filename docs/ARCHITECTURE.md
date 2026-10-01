@@ -4,9 +4,9 @@
 > generación en dos vías, contenido privado del hogar, anti-farm atómico) es posterior a partes de este documento.
 > Para el estado ACTUAL de contenido/economía la verdad viva es `../CLAUDE.md` §8, `docs/adr/` y `apps/api/src/db/schema.ts`
 > (28 tablas). Este documento conserva el modelo de datos base, la jerarquía de usuarios y los flujos de auth.
-> Migraciones al día hasta `0019` (0018: preguntas por misión `skills.session_length`, y en `content_requests`
+> Migraciones al día hasta `0020` (0018: preguntas por misión `skills.session_length`, y en `content_requests`
 > `question_types`, `session_length` y `source_request_id` para las copias regeneradas; 0019: `exercise_reports`,
-> los avisos «esta pregunta está mal» que el niño manda y el tutor revisa). La «sesión de juego» del §6
+> los avisos «esta pregunta está mal» que el niño manda y el tutor revisa; 0020: `child_profiles.mascot`). La «sesión de juego» del §6
 > hoy sirve una tanda de `sessionLength` preguntas con selección priorizada y repaso de los fallos (ver `../CLAUDE.md` §8).
 
 Referencia profunda del sistema. Para la guía operativa breve, ver `../CLAUDE.md`. Para el catálogo de
@@ -83,6 +83,7 @@ La frontera CONTENIDO / PROGRESO está marcada con comentarios de sección en el
 | `parent_id` | text | FK → parent_accounts.id, NOT NULL | tutor propietario |
 | `display_name` | text | NOT NULL | nombre visible |
 | `avatar` | text | NOT NULL, def `'orbi'` | clave de avatar (ver Avatar.tsx) |
+| `mascot` | text | NOT NULL, def `'orbi'` | compañero de viaje que ve el niño (ver Mascot.tsx) |
 | `birth_year` | integer | nullable | |
 | `grade_band` | text | NOT NULL | nivel, p.ej. `ESO-5` |
 | `login_pin_hash` | text | nullable | PIN de acceso (mismo PBKDF2 que el password) |
@@ -293,7 +294,8 @@ Ojo con las tres convenciones de nivel coexistiendo: `ESO-5` (columnas), `eso5` 
 - **Tema**: `data-theme` en `<html>` + `tokens.css`; `settings.ts` persiste en `sk_theme` y aplica antes del
   primer render.
 - **Diseño sin emojis**: iconos SVG (`Icon.tsx`, unión `IconName` de 23 nombres) y avatares por clave
-  (`Avatar.tsx`, `avatarKeyOf` normaliza el legado emoji). Todo el color/espaciado sale de tokens.
+  (`Avatar.tsx`, `avatarKeyOf` normaliza el legado emoji). Todo el color/espaciado sale de tokens. El compañero
+  de viaje del niño (Orbi o un animal astronauta) sale de `Mascot.tsx` según `child_profiles.mascot`.
 
 Los gotchas concretos del frontend están en `../apps/web/CLAUDE.md`.
 
