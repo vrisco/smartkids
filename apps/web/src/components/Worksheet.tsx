@@ -1,8 +1,8 @@
 // Ficha para imprimir: el tutor elige cuántas preguntas y de qué tipos de un contenido del hogar y la app
-// compone una hoja para hacerla a mano (con hoja de soluciones aparte para corregir). El PDF lo genera el
-// diálogo de impresión del navegador («Guardar como PDF»): sin dependencias, en vectorial y reutilizando
-// el render de fórmulas (MathText) y figuras (ExerciseFigure) de la app. La hoja se monta en un portal
-// fuera de #root y el CSS de impresión oculta todo lo demás (ver «Ficha imprimible» en app.css).
+// compone una hoja para hacerla a mano, con las soluciones al final en página aparte para corregir. El PDF
+// lo genera el diálogo de impresión del navegador («Guardar como PDF»): sin dependencias, en vectorial y
+// reutilizando el render de fórmulas (MathText) y figuras (ExerciseFigure) de la app. La hoja se monta en
+// un portal fuera de #root y el CSS de impresión oculta todo lo demás (ver «Ficha imprimible» en app.css).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -86,7 +86,6 @@ export function WorksheetDialog({ skillId, title, level, onClose }: { skillId: s
   const [error, setError] = useState(false);
   const [types, setTypes] = useState<ExType[]>([]);
   const [count, setCount] = useState(10);
-  const [withKey, setWithKey] = useState(true);
   const [workSpace, setWorkSpace] = useState(true);
   const [sheet, setSheet] = useState<PaperQuestion[] | null>(null);
   const prevTitle = useRef<string | null>(null);
@@ -200,13 +199,6 @@ export function WorksheetDialog({ skillId, title, level, onClose }: { skillId: s
 
             <div className="course-label">{t("worksheet.options")}</div>
             <div className="type-checks">
-              <label className={"course-check option-card" + (withKey ? " on" : "")}>
-                <input type="checkbox" checked={withKey} onChange={(e) => setWithKey(e.target.checked)} />
-                <span className="option-text">
-                  <b>{t("worksheet.withKey")}</b>
-                  <span>{t("worksheet.withKeyHint")}</span>
-                </span>
-              </label>
               <label className={"course-check option-card" + (workSpace ? " on" : "")}>
                 <input type="checkbox" checked={workSpace} onChange={(e) => setWorkSpace(e.target.checked)} />
                 <span className="option-text">
@@ -232,7 +224,7 @@ export function WorksheetDialog({ skillId, title, level, onClose }: { skillId: s
       {sheet &&
         createPortal(
           <div className="ws-print-root">
-            <Sheet title={title} level={level} questions={sheet} withKey={withKey} workSpace={workSpace} />
+            <Sheet title={title} level={level} questions={sheet} workSpace={workSpace} />
           </div>,
           document.body,
         )}
@@ -242,7 +234,7 @@ export function WorksheetDialog({ skillId, title, level, onClose }: { skillId: s
 
 /* ---------- La hoja (solo se ve al imprimir) ---------- */
 
-function Sheet({ title, level, questions, withKey, workSpace }: { title: string; level?: string; questions: PaperQuestion[]; withKey: boolean; workSpace: boolean }) {
+function Sheet({ title, level, questions, workSpace }: { title: string; level?: string; questions: PaperQuestion[]; workSpace: boolean }) {
   const { t } = useTranslation();
   const meta = [level, t("worksheet.questionsN", { count: questions.length })].filter(Boolean).join(" · ");
   return (
@@ -270,28 +262,23 @@ function Sheet({ title, level, questions, withKey, workSpace }: { title: string;
         <PaperQuestionView key={q.id} q={q} n={i + 1} workSpace={workSpace} />
       ))}
 
-      {withKey && (
-        <section className="ws-key">
-          <h2>
-            {t("worksheet.keyTitle")} · {title}
-          </h2>
-          <div className="ws-key-list">
-            {questions.map((q, i) => (
-              <div className="ws-key-item" key={q.id}>
-                <span className="ws-num">{i + 1}.</span>
-                <div className="ws-key-body">
-                  <KeyAnswer q={q} />
-                  {q.ex.feedback?.solution && (
-                    <div className="ws-key-sol">
-                      <MathText text={q.ex.feedback.solution} />
-                    </div>
-                  )}
-                </div>
+      {/* Soluciones: siempre, al final y en página aparte (para separarlas antes de dárselo al niño).
+          Sencillas a propósito: solo número y respuesta, sin explicaciones. */}
+      <section className="ws-key">
+        <h2>
+          {t("worksheet.keyTitle")} · {title}
+        </h2>
+        <div className="ws-key-list">
+          {questions.map((q, i) => (
+            <div className="ws-key-item" key={q.id}>
+              <span className="ws-num">{i + 1}.</span>
+              <div className="ws-key-body">
+                <KeyAnswer q={q} />
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

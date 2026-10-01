@@ -2014,24 +2014,26 @@ button:focus-visible {
   font-size: 8pt;
   color: var(--print-dim);
 }
+/* Soluciones: siempre en página nueva (el alias antiguo `page-break-before` lo necesita Safari). */
 .ws-key {
+  page-break-before: always;
   break-before: page;
 }
 .ws-key h2 {
-  font-size: 14pt;
+  font-size: 13pt;
   margin: 0 0 5mm;
   padding-bottom: 2mm;
-  border-bottom: 1.5pt solid var(--print-ink);
+  border-bottom: 1pt solid var(--print-ink);
 }
 .ws-key-list {
   columns: 2;
-  column-gap: 10mm;
-  font-size: 10.5pt;
+  column-gap: 12mm;
+  font-size: 11pt;
 }
 .ws-key-item {
   display: flex;
   gap: 2mm;
-  margin-bottom: 3mm;
+  margin-bottom: 2.5mm;
   break-inside: avoid;
 }
 .ws-key-body {
@@ -2041,10 +2043,4 @@ button:focus-visible {
   content: "·";
   margin: 0 1.5mm;
   color: var(--print-dim);
-}
-.ws-key-sol {
-  font-size: 9pt;
-  color: var(--print-dim);
-  margin-top: 0.5mm;
-  white-space: pre-line;
 }

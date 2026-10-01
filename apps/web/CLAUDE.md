@@ -67,7 +67,8 @@ funciona por el proxy de Vite; en prod por mismo origen. Un despliegue cross-ori
   `{ type:"multiple_select", optionIds }`.
 - **`components/Worksheet.tsx`** — «Ficha PDF» de cada contenido del hogar (botón en `TutorPanel`): el tutor elige
   tipos y nº de preguntas (tope 50; reparto por turnos entre tipos y de fácil a difícil, opciones/ítems barajados) y
-  se imprime con `window.print()` («Guardar como PDF»), con hoja de soluciones y recuadro de operaciones opcionales.
+  se imprime con `window.print()` («Guardar como PDF»). Las soluciones van SIEMPRE al final en página aparte y son
+  sencillas (solo nº y respuesta, sin explicaciones); el recuadro de operaciones es opcional.
   Sin dependencias ni endpoint nuevo: usa `api.skillExercises` (excluye los ocultos). La hoja va en un portal fuera
   de `#root` y el CSS `@media print` (`html.ws-printing`, tokens `--print-*`) oculta el resto de la app.
 - **`screens/TutorPanel.tsx`** — formulario de solicitud (Vía B): nº de preguntas 10..200 con aviso del 50 % extra
