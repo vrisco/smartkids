@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api, tx, type SkillNode } from "../api";
 import { Mascot } from "../components/Mascot";
@@ -17,12 +17,16 @@ export function GalaxyMap({
   courseName,
   onPlay,
   onBack,
+  progress,
+  review,
 }: {
   profileId: string;
   courseId: string;
   courseName?: string;
   onPlay: (skillId: string) => void;
   onBack?: () => void;
+  progress?: ReactNode; // cómo va en el curso (aciertos, tiempo, temas dominados)
+  review?: ReactNode; // botón "Repasar fallos" del curso
 }) {
   const { t } = useTranslation();
   const [skills, setSkills] = useState<SkillNode[] | null>(null);
@@ -48,6 +52,12 @@ export function GalaxyMap({
         )}
         <div className="screen-kicker">{t("galaxy.galaxy")}</div>
         <h2 className="screen-title">{courseName ?? t("galaxy.course")}</h2>
+        {(progress || review) && (
+          <div className="galaxy-progress">
+            {progress}
+            {review}
+          </div>
+        )}
       </div>
 
       <div className="nodes">

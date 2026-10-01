@@ -334,6 +334,8 @@ select.field option {
 /* ---------- HUD avatar como botón ---------- */
 .avatar-btn {
   border: 0;
+  padding: 0;
+  overflow: hidden;
   cursor: pointer;
   font: inherit;
 }
@@ -557,6 +559,75 @@ select.field option {
 }
 .course-emoji {
   font-size: 1.8rem;
+}
+/* ---------- Cómo va el niño en cada curso / ficha / path + "Repasar fallos" ---------- */
+.course-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.course-item .review-btn {
+  align-self: flex-end;
+}
+.kid-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  margin-top: var(--sp-1);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-align: left;
+}
+.kp-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.kp-stat.acc {
+  font-weight: 700;
+}
+.kp-stat.acc.good {
+  color: var(--green);
+}
+.kp-stat.acc.mid {
+  color: var(--gold);
+}
+.kp-stat.acc.low {
+  color: var(--coral);
+}
+.trend {
+  display: inline-flex;
+}
+.trend.up {
+  color: var(--green);
+}
+.trend.down {
+  color: var(--coral);
+}
+.review-btn {
+  gap: var(--sp-1);
+}
+.review-count {
+  min-width: 1.3rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--coral);
+  color: var(--on-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.3rem;
+  text-align: center;
+}
+.galaxy-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: 0 1.2rem;
+}
+.kid-review-error {
+  margin: var(--sp-3) 1.2rem 0;
 }
 .galaxy-head {
   padding-bottom: 0.2rem;

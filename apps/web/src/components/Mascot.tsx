@@ -61,6 +61,14 @@ export function Mascot({
   );
 }
 
+/** El personaje como avatar redondo (busto): barra superior del niño y lista de niños del tutor. */
+export function MascotAvatar({ name, size = 40, className }: { name?: string; size?: number; className?: string }) {
+  const { t } = useTranslation();
+  const ctx = useContext(MascotContext);
+  const key = name ? mascotKeyOf(name) : ctx;
+  return <MascotArt kind={key} bust size={size} className={className} label={t(`mascot.names.${key}`)} />;
+}
+
 /** Rejilla para elegir compañero (ficha del niño en el panel del tutor y selector del propio niño). */
 export function MascotPick({
   value,
@@ -498,10 +506,14 @@ export function MascotArt({
   kind,
   className,
   label,
+  bust = false,
+  size,
 }: {
   kind: MascotKey;
   className?: string;
   label?: string;
+  bust?: boolean; // recorte redondo de cabeza y hombros, para usarlo como avatar
+  size?: number;
 }) {
   // Ids de gradiente únicos por instancia: en el selector se pintan varios compañeros a la vez.
   const id = "m" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -511,7 +523,9 @@ export function MascotArt({
   return (
     <svg
       className={className}
-      viewBox="0 0 140 152"
+      viewBox={bust ? "10 2 120 120" : "0 0 140 152"}
+      width={size}
+      height={size}
       xmlns="http://www.w3.org/2000/svg"
       {...(label
         ? { role: "img", "aria-label": label }
@@ -538,7 +552,14 @@ export function MascotArt({
             <stop offset="100%" stopColor="#0A0E28" />
           </linearGradient>
         )}
+        {bust && (
+          <clipPath id={`${id}-clip`}>
+            <circle cx="70" cy="62" r="60" />
+          </clipPath>
+        )}
       </defs>
+      <g clipPath={bust ? `url(#${id}-clip)` : undefined}>
+      {bust && <circle cx="70" cy="62" r="60" fill={accent} fillOpacity="0.22" />}
       <ellipse cx="70" cy="80" rx="62" ry="62" fill={`url(#${id}-glow)`} />
       {animal ? (
         <>
@@ -587,6 +608,7 @@ export function MascotArt({
           />
         </>
       )}
+      </g>
     </svg>
   );
 }

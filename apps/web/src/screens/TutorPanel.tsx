@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GRADE_BANDS, isGradeBand } from "../grades";
 import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type ExerciseReport, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
-import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
-import { MascotPick, mascotKeyOf, type MascotKey } from "../components/Mascot";
+import { MascotAvatar, MascotPick, mascotKeyOf, type MascotKey } from "../components/Mascot";
 import { ContentPreview } from "../components/ContentPreview";
 import { WorksheetDialog } from "../components/Worksheet";
 import { correctAnswerString } from "../components/ExerciseInput";
@@ -99,7 +98,7 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
             const noCourses = s ? s.courseCount + s.customCount === 0 : false;
             return (
               <div className="list-row" key={ch.id}>
-                <Avatar name={ch.avatar} size={38} />
+                <MascotAvatar name={ch.mascot} size={38} />
                 <div className="list-main">
                   <b>{ch.displayName}</b>
                   <span>
@@ -337,7 +336,6 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
   const [name, setName] = useState(child?.displayName ?? "");
   const [username, setUsername] = useState(child?.username ?? "");
   const [pin, setPin] = useState("");
-  const [avatar, setAvatar] = useState<string>(avatarKeyOf(child?.avatar));
   const [mascot, setMascot] = useState<MascotKey>(mascotKeyOf(child?.mascot));
   const [birthYear, setBirthYear] = useState<string>(child?.birthYear != null ? String(child.birthYear) : "");
   // Curso escolar: lo usa la generación de contenido para adaptar temario y dificultad.
@@ -366,14 +364,14 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
       let id = child?.id;
       const by = birthYear ? parseInt(birthYear, 10) : null;
       if (editing) {
-        const patch: { displayName: string; avatar: string; mascot: string; username: string; pin?: string; birthYear?: number | null; gradeBand?: string } = { displayName: name, avatar, mascot, username };
+        const patch: { displayName: string; mascot: string; username: string; pin?: string; birthYear?: number | null; gradeBand?: string } = { displayName: name, mascot, username };
         if (pin.length >= 4) patch.pin = pin;
         if (by) patch.birthYear = by;
         if (grade) patch.gradeBand = grade;
         await api.updateChild(child!.id, patch);
       } else {
         if (pin.length < 4) throw new Error(t("tutor.pinError"));
-        const r = await api.createChild({ displayName: name, username, avatar, mascot, gradeBand: grade, pin, courseIds: sel, birthYear: by, consent });
+        const r = await api.createChild({ displayName: name, username, mascot, gradeBand: grade, pin, courseIds: sel, birthYear: by, consent });
         id = r.profile.id;
       }
       if (id) await api.setChildCourses(id, sel);
@@ -436,13 +434,6 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
             </option>
           ))}
         </select>
-        <div className="avatar-pick">
-          {AVATAR_KEYS.map((k) => (
-            <button key={k} type="button" className={"ava" + (k === avatar ? " on" : "")} onClick={() => setAvatar(k)}>
-              <Avatar name={k} size={30} />
-            </button>
-          ))}
-        </div>
         <div className="course-label">{t("mascot.tutorLabel")}</div>
         <MascotPick value={mascot} onChange={setMascot} />
         <div className="course-label">{t("tutor.coursesAccess")}</div>

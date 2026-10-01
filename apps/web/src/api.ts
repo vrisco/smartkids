@@ -276,6 +276,18 @@ export interface SessionStat {
   durationMs?: number; // lo que duró la tanda, de la primera pregunta a la última respuesta
   points: number;
 }
+// Cómo va el niño en un ámbito jugable (`course:<id>`, `skill:<id>` o `path:<id>`): GET /api/child/progress.
+export interface ScopeProgress {
+  attempts: number;
+  correct: number;
+  accuracyPct: number;
+  avgMs: number | null; // media por respuesta
+  trend: "up" | "down" | "flat" | null; // últimas 20 respuestas frente a las 20 anteriores
+  pending: number; // preguntas pendientes de corregir ("Repasar fallos")
+  seen: number; // preguntas distintas ya respondidas
+  mastered?: number; // solo cursos
+  totalSkills?: number; // solo cursos
+}
 // Pregunta en la que más tarda el niño (top del panel del tutor). Tiempos recortados a 5 min por respuesta.
 export interface SlowQuestion {
   templateId: string;
@@ -393,7 +405,7 @@ export const api = {
 
   // Cursos + niños (tutor)
   courses: () => j<Course[]>(`/api/courses`),
-  createChild: (data: { displayName: string; username: string; avatar: string; mascot: string; gradeBand: string; pin: string; courseIds: string[]; birthYear?: number | null; consent: boolean }) =>
+  createChild: (data: { displayName: string; username: string; avatar?: string; mascot: string; gradeBand: string; pin: string; courseIds: string[]; birthYear?: number | null; consent: boolean }) =>
     j<{ profile: Child }>(`/api/profiles`, post(data)),
   updateChild: (id: string, data: { displayName?: string; avatar?: string; mascot?: string; pin?: string; username?: string; birthYear?: number | null; gradeBand?: string }) =>
     j<{ profile: Child }>(`/api/profiles/${id}/update`, post(data)),
@@ -495,6 +507,9 @@ export const api = {
   deleteRequestAsset: (reqId: string, assetId: string) =>
     j<{ ok: boolean }>(`/api/tutor/content-requests/${reqId}/assets/${assetId}`, { method: "DELETE" }),
   // Estadísticas / seguimiento
+  childProgress: () => j<{ scopes: Record<string, ScopeProgress>; reviewTop: number }>(`/api/child/progress`),
+  // Los ejercicios del repaso de fallos de un ámbito (los pendientes que más falla primero).
+  childReview: (scope: string) => j<{ ids: string[] }>(`/api/child/review?scope=${encodeURIComponent(scope)}`),
   childStats: () => j<ProfileStats>(`/api/child/stats?tz=${encodeURIComponent(deviceTz())}`),
   tutorChildStats: (childId: string) => j<ProfileStats>(`/api/tutor/children/${encodeURIComponent(childId)}/stats`),
   householdSummary: () => j<ChildSummary[]>(`/api/tutor/summary`),

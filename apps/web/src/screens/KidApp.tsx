@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type ChildMe, type Course, type CustomContent, type ProfileStats } from "../api";
+import { api, tx, type ChildMe, type Course, type CustomContent, type ProfileStats, type ScopeProgress } from "../api";
 import { Hud } from "../components/Hud";
 import { Icon } from "../components/Icon";
+import { ProgressLine, ReviewButton } from "../components/KidProgress";
 import { Mascot, MascotContext, MascotPick, mascotKeyOf, rememberMascot, type MascotKey } from "../components/Mascot";
 import { StatsView } from "../components/StatsView";
 import { useScrollTop } from "../useScrollTop";
@@ -42,44 +43,78 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   const [openPath, setOpenPath] = useState<PathGroup | null>(null);
   const [customSkill, setCustomSkill] = useState<CustomContent | null>(null);
   const [sessionSkillId, setSessionSkillId] = useState<string | null>(null); // sesión de un skill de curso (galaxia)
+  // "Repasar fallos": ejercicios concretos (los pendientes que más falla) de un curso, ficha o path.
+  const [reviewIds, setReviewIds] = useState<string[] | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<string | null>(null); // ámbito cuyo repaso se está preparando
+  const [reviewError, setReviewError] = useState(false);
+  // Cómo va en cada curso / ficha / path (null = aún cargando). Se recarga al volver de cada misión.
+  const [progress, setProgress] = useState<Record<string, ScopeProgress> | null>(null);
   const [balance, setBalance] = useState(data.balance);
   const [mascot, setMascot] = useState<MascotKey>(mascotKeyOf(data.child.mascot));
   // El login muestra el último compañero usado en este dispositivo.
   useEffect(() => rememberMascot(mascot), [mascot]);
 
-  const inFullScreen = customSkill !== null || sessionSkillId !== null; // sesión a pantalla completa: sin HUD ni barra
-  useScrollTop(`${tab}|${course?.id ?? ""}|${openPath?.pathId ?? ""}|${customSkill?.skillId ?? ""}|${sessionSkillId ?? ""}`);
+  const loadProgress = useCallback(() => {
+    api
+      .childProgress()
+      .then((r) => setProgress(r.scopes))
+      .catch(() => setProgress((cur) => cur ?? {}));
+  }, []);
+  useEffect(() => {
+    loadProgress();
+  }, [loadProgress]);
 
-  // Ficha o módulo de contenido a medida: se juega directamente, sin galaxia intermedia.
-  if (customSkill) {
+  async function startReview(scope: string) {
+    setReviewBusy(scope);
+    setReviewError(false);
+    try {
+      const r = await api.childReview(scope);
+      if (r.ids.length > 0) setReviewIds(r.ids);
+      else loadProgress(); // ya no quedaba nada pendiente: refresca los botones
+    } catch {
+      setReviewError(true);
+    }
+    setReviewBusy(null);
+  }
+
+  const inSession = customSkill !== null || sessionSkillId !== null || reviewIds !== null;
+  useScrollTop(`${tab}|${course?.id ?? ""}|${openPath?.pathId ?? ""}|${customSkill?.skillId ?? ""}|${sessionSkillId ?? ""}|${reviewIds ? "repaso" : ""}`);
+
+  // Misión a pantalla completa, sin HUD ni barra: ficha/módulo, skill de la galaxia o repaso de fallos.
+  if (inSession) {
+    const exit = () => {
+      setCustomSkill(null);
+      setSessionSkillId(null);
+      setReviewIds(null);
+      loadProgress();
+    };
     return (
-    <MascotContext.Provider value={mascot}>
+      <MascotContext.Provider value={mascot}>
         <div className="app-shell">
           <div className="app-body">
-            <Session profileId={data.child.id} skillId={customSkill.skillId} onBalance={setBalance} onExit={() => setCustomSkill(null)} />
+            {reviewIds ? (
+              <Session profileId={data.child.id} reviewIds={reviewIds} onBalance={setBalance} onExit={exit} />
+            ) : (
+              <Session profileId={data.child.id} skillId={customSkill?.skillId ?? sessionSkillId ?? ""} onBalance={setBalance} onExit={exit} />
+            )}
           </div>
         </div>
-    </MascotContext.Provider>
+      </MascotContext.Provider>
     );
   }
-  // Sesión de un skill de curso (desde la galaxia).
-  if (sessionSkillId) {
-    return (
-    <MascotContext.Provider value={mascot}>
-        <div className="app-shell">
-          <div className="app-body">
-            <Session profileId={data.child.id} skillId={sessionSkillId} onBalance={setBalance} onExit={() => setSessionSkillId(null)} />
-          </div>
-        </div>
-    </MascotContext.Provider>
-    );
-  }
+
+  const ready = progress !== null;
+  const prog = (scope: string) => progress?.[scope];
+  const review = (scope: string) => (
+    <ReviewButton pending={prog(scope)?.pending ?? 0} busy={reviewBusy === scope} onClick={() => void startReview(scope)} />
+  );
 
   return (
     <MascotContext.Provider value={mascot}>
       <div className="app-shell">
         <Hud profile={data.child} balance={balance} streak={data.streak} onExit={onLogout} />
         <div className="app-body">
+          {reviewError && tab === "home" && <div className="auth-error kid-review-error">{t("kid.reviewError")}</div>}
           {tab === "shop" ? (
             <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />
           ) : tab === "stats" ? (
@@ -91,6 +126,8 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
               courseName={tx(course.nameI18n)}
               onPlay={(s) => setSessionSkillId(s)}
               onBack={data.courses.length > 1 || hasCustom ? () => setCourse(null) : undefined}
+              progress={<ProgressLine p={prog(`course:${course.id}`)} ready={ready} />}
+              review={review(`course:${course.id}`)}
             />
           ) : openPath ? (
             <>
@@ -98,7 +135,11 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                 <Icon name="back" size={14} /> {t("common.back")}
               </button>
               <h2 className="screen-title">{tx(openPath.pathName)}</h2>
+              <div className="galaxy-progress">
+                <ProgressLine p={prog(`path:${openPath.pathId}`)} ready={ready} total={openPath.modules.reduce((n, m) => n + m.exercises, 0)} />
+              </div>
               <div className="course-grid">
+                <div className="course-item">{review(`path:${openPath.pathId}`)}</div>
                 {openPath.modules.map((m, i) => (
                   <button className="course-card custom" key={m.skillId} type="button" onClick={() => setCustomSkill(m)}>
                     <span className="course-emoji">
@@ -108,9 +149,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                       <b>
                         {t("kid.module")} {(m.moduleIndex ?? i) + 1}
                       </b>
-                      <span className="course-sub">
-                        {m.exercises} {t("content.exercises")}
-                      </span>
+                      <ProgressLine p={prog(`skill:${m.skillId}`)} ready={ready} total={m.exercises} />
                     </span>
                   </button>
                 ))}
@@ -133,12 +172,18 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                   <h2 className="screen-title">{t("kid.whatStudy")}</h2>
                   <div className="course-grid">
                     {data.courses.map((cr) => (
-                      <button className="course-card" key={cr.id} type="button" onClick={() => setCourse(cr)}>
-                        <span className="course-emoji">
-                          <Icon name="book" size={22} />
-                        </span>
-                        <b>{tx(cr.nameI18n)}</b>
-                      </button>
+                      <div className="course-item" key={cr.id}>
+                        <button className="course-card" type="button" onClick={() => setCourse(cr)}>
+                          <span className="course-emoji">
+                            <Icon name="book" size={22} />
+                          </span>
+                          <span className="course-text">
+                            <b>{tx(cr.nameI18n)}</b>
+                            <ProgressLine p={prog(`course:${cr.id}`)} ready={ready} />
+                          </span>
+                        </button>
+                        {review(`course:${cr.id}`)}
+                      </div>
                     ))}
                   </div>
                 </>
@@ -150,30 +195,35 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                   </div>
                   <div className="course-grid">
                     {singles.map((cc) => (
-                      <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
-                        <span className="course-emoji">
-                          <Icon name="star" size={22} />
-                        </span>
-                        <span className="course-text">
-                          <b>{tx(cc.nameI18n)}</b>
-                          <span className="course-sub">
-                            {cc.exercises} {t("content.exercises")}
+                      <div className="course-item" key={cc.skillId}>
+                        <button className="course-card custom" type="button" onClick={() => setCustomSkill(cc)}>
+                          <span className="course-emoji">
+                            <Icon name="star" size={22} />
                           </span>
-                        </span>
-                      </button>
+                          <span className="course-text">
+                            <b>{tx(cc.nameI18n)}</b>
+                            <ProgressLine p={prog(`skill:${cc.skillId}`)} ready={ready} total={cc.exercises} />
+                          </span>
+                        </button>
+                        {review(`skill:${cc.skillId}`)}
+                      </div>
                     ))}
                     {paths.map((p) => (
-                      <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
-                        <span className="course-emoji">
-                          <Icon name="satellite" size={22} />
-                        </span>
-                        <span className="course-text">
-                          <b>{tx(p.pathName)}</b>
-                          <span className="course-sub">
-                            {p.modules.length} {t("kid.modules")}
+                      <div className="course-item" key={p.pathId}>
+                        <button className="course-card custom" type="button" onClick={() => setOpenPath(p)}>
+                          <span className="course-emoji">
+                            <Icon name="satellite" size={22} />
                           </span>
-                        </span>
-                      </button>
+                          <span className="course-text">
+                            <b>{tx(p.pathName)}</b>
+                            <span className="course-sub">
+                              {p.modules.length} {t("kid.modules")}
+                            </span>
+                            <ProgressLine p={prog(`path:${p.pathId}`)} ready={ready} total={p.modules.reduce((n, m) => n + m.exercises, 0)} />
+                          </span>
+                        </button>
+                        {review(`path:${p.pathId}`)}
+                      </div>
                     ))}
                   </div>
                 </>
@@ -182,28 +232,26 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
           )}
         </div>
 
-        {!inFullScreen && (
-          <nav className="bottom-nav">
-            <button className={tab === "home" ? "on" : ""} onClick={() => setTab("home")}>
-              <span className="ic">
-                <Icon name="planet" size={22} />
-              </span>
-              <span>{t("kid.home")}</span>
-            </button>
-            <button className={tab === "stats" ? "on" : ""} onClick={() => setTab("stats")}>
-              <span className="ic">
-                <Icon name="target" size={22} />
-              </span>
-              <span>{t("kid.stats")}</span>
-            </button>
-            <button className={tab === "shop" ? "on" : ""} onClick={() => setTab("shop")}>
-              <span className="ic">
-                <Icon name="coin" size={22} />
-              </span>
-              <span>{t("kid.shop")}</span>
-            </button>
-          </nav>
-        )}
+        <nav className="bottom-nav">
+          <button className={tab === "home" ? "on" : ""} onClick={() => setTab("home")}>
+            <span className="ic">
+              <Icon name="planet" size={22} />
+            </span>
+            <span>{t("kid.home")}</span>
+          </button>
+          <button className={tab === "stats" ? "on" : ""} onClick={() => setTab("stats")}>
+            <span className="ic">
+              <Icon name="target" size={22} />
+            </span>
+            <span>{t("kid.stats")}</span>
+          </button>
+          <button className={tab === "shop" ? "on" : ""} onClick={() => setTab("shop")}>
+            <span className="ic">
+              <Icon name="coin" size={22} />
+            </span>
+            <span>{t("kid.shop")}</span>
+          </button>
+        </nav>
       </div>
     </MascotContext.Provider>
   );

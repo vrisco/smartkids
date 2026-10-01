@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { isGradeBand } from "../grades";
 import { Icon } from "./Icon";
+import { MascotAvatar } from "./Mascot";
 
 export function Hud({
   profile,
@@ -14,11 +15,10 @@ export function Hud({
   onExit?: () => void;
 }) {
   const { t } = useTranslation();
-  const initial = profile.displayName.charAt(0).toUpperCase();
   return (
     <header className="hud">
       <button className="avatar avatar-btn" onClick={onExit} title={t("hud.switchProfile")} type="button">
-        {initial}
+        <MascotAvatar size={34} />
       </button>
       <div className="who">
         <b>{profile.displayName}</b>

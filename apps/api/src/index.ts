@@ -1109,12 +1109,187 @@ app.post("/api/child/mascot", async (c) => {
   return c.json({ ok: true, mascot: m });
 });
 
+/* ================= Progreso del niño por curso / ficha / path y repaso de fallos ================= */
+
+/** Preguntas que pide una tanda de "Repasar fallos". */
+const REPASO_TOP = 10;
+
+type ProgresoAmbito = {
+  attempts: number;
+  correct: number;
+  accuracyPct: number;
+  avgMs: number | null; // media por respuesta (recortadas a RT_TOPE_MS)
+  trend: "up" | "down" | "flat" | null; // últimas 20 respuestas frente a las 20 anteriores
+  pending: number; // ejercicios pendientes de corregir (vigentes y visibles)
+  seen: number; // ejercicios vigentes distintos que ya ha respondido
+  mastered?: number; // solo cursos: temas dominados
+  totalSkills?: number; // solo cursos: temas del curso
+};
+
+/**
+ * Progreso del niño por ÁMBITO jugable: `course:<id>` (skills globales de un curso suyo), `skill:<id>`
+ * (ficha o módulo privado asignado) y `path:<id>` (todos los módulos de un path). Solo ámbitos a los que
+ * tiene acceso HOY (cursos asignados; privados con grant y dueño en su hogar). Devuelve además, por
+ * ámbito, los ejercicios pendientes ordenados para el repaso: los que más falla primero.
+ */
+async function progresoDelNino(db: DB, kid: string): Promise<{ scopes: Record<string, ProgresoAmbito>; pendientes: Map<string, string[]> }> {
+  const scopes: Record<string, ProgresoAmbito> = {};
+  const pendientes = new Map<string, string[]>();
+  const [child] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, kid)).limit(1);
+  if (!child) return { scopes, pendientes };
+  const crs = await childCoursesOf(db, kid);
+  const household = await householdIds(db, child.parentId);
+  const priv = await db
+    .select({ id: skills.id, pathId: skills.pathId, subjectId: skills.subjectId, gradeBand: skills.gradeBand })
+    .from(childSkills)
+    .innerJoin(skills, eq(skills.id, childSkills.skillId))
+    .where(and(eq(childSkills.childId, kid), isNotNull(skills.ownerId), inArray(skills.ownerId, household)));
+  const privById = new Map(priv.map((p) => [p.id, p]));
+  // Cursos del niño con la misma asignatura+nivel: la galaxia de un curso también pinta esos privados.
+  const cursosDe = (subjectId: string, gradeBand: string) =>
+    crs.filter((co) => co.subjectId === subjectId && co.gradeBand === gradeBand).map((co) => `course:${co.id}`);
+
+  // Los 5000 intentos más recientes, en orden cronológico, con la vigencia de su plantilla.
+  const rows = (
+    await db
+      .select({
+        skillId: attempts.skillId,
+        tid: attempts.exerciseTemplateId,
+        correct: attempts.correct,
+        rt: attempts.responseTimeMs,
+        ts: attempts.ts,
+        hidden: exerciseTemplates.hidden,
+        retired: exerciseTemplates.retired,
+      })
+      .from(attempts)
+      .innerJoin(exerciseTemplates, eq(exerciseTemplates.id, attempts.exerciseTemplateId))
+      .where(eq(attempts.profileId, kid))
+      .orderBy(desc(attempts.ts))
+      .limit(5000)
+  ).reverse();
+
+  // Skill -> ámbitos. Los globales van al curso por asignatura+nivel (en tandas: D1 limita los parámetros).
+  const ambitosDe = new Map<string, string[]>();
+  const globales = [...new Set(rows.map((r) => r.skillId))].filter((id) => !privById.has(id));
+  for (let i = 0; i < globales.length; i += 50) {
+    const meta = await db
+      .select({ id: skills.id, subjectId: skills.subjectId, gradeBand: skills.gradeBand, ownerId: skills.ownerId })
+      .from(skills)
+      .where(inArray(skills.id, globales.slice(i, i + 50)));
+    for (const m of meta) {
+      if (m.ownerId) continue; // privado sin acceso: no cuenta en ningún ámbito
+      ambitosDe.set(m.id, cursosDe(m.subjectId, m.gradeBand));
+    }
+  }
+  for (const [id, p] of privById) {
+    ambitosDe.set(id, [`skill:${id}`, ...(p.pathId ? [`path:${p.pathId}`] : []), ...cursosDe(p.subjectId, p.gradeBand)]);
+  }
+
+  type Acc = { n: number; ok: number; rtSum: number; rtN: number; seq: boolean[]; tpl: Map<string, { fails: number; lastFail: string | null; lastOk: string | null; visible: boolean }> };
+  const accs = new Map<string, Acc>();
+  for (const r of rows) {
+    const rt = rtUtil(r.rt);
+    for (const key of ambitosDe.get(r.skillId) ?? []) {
+      const g: Acc = accs.get(key) ?? { n: 0, ok: 0, rtSum: 0, rtN: 0, seq: [], tpl: new Map() };
+      g.n++;
+      if (r.correct) g.ok++;
+      if (rt !== null) {
+        g.rtSum += rt;
+        g.rtN++;
+      }
+      g.seq.push(Boolean(r.correct));
+      const t = g.tpl.get(r.tid) ?? { fails: 0, lastFail: null, lastOk: null, visible: !r.hidden && !r.retired };
+      if (r.correct) t.lastOk = r.ts;
+      else {
+        t.fails++;
+        t.lastFail = r.ts;
+      }
+      g.tpl.set(r.tid, t);
+      accs.set(key, g);
+    }
+  }
+
+  const pct = (bs: boolean[]) => (bs.filter(Boolean).length / bs.length) * 100;
+  for (const [key, g] of accs) {
+    const recent = g.seq.slice(-20);
+    const prev = g.seq.slice(-40, -20);
+    const diff = prev.length >= 10 ? pct(recent) - pct(prev) : null;
+    const pend = [...g.tpl.entries()]
+      .filter(([, t]) => t.visible && esPendiente(t.lastFail, t.lastOk))
+      .sort((a, b) => b[1].fails - a[1].fails || ((b[1].lastFail ?? "") > (a[1].lastFail ?? "") ? 1 : -1));
+    pendientes.set(key, pend.map(([id]) => id));
+    scopes[key] = {
+      attempts: g.n,
+      correct: g.ok,
+      accuracyPct: Math.round((g.ok / g.n) * 100),
+      avgMs: g.rtN ? Math.round(g.rtSum / g.rtN) : null,
+      trend: diff === null ? null : diff >= 5 ? "up" : diff <= -5 ? "down" : "flat",
+      pending: pend.length,
+      seen: [...g.tpl.values()].filter((t) => t.visible).length,
+    };
+  }
+
+  // Cursos: avance en temas dominados (también sin intentos, para que el niño vea cuánto le queda).
+  if (crs.length) {
+    const mastered = new Set(
+      (
+        await db
+          .select({ skillId: skillProgress.skillId })
+          .from(skillProgress)
+          .where(and(eq(skillProgress.profileId, kid), eq(skillProgress.status, "mastered")))
+      ).map((r) => r.skillId),
+    );
+    for (const co of crs) {
+      // Los temas que pinta su galaxia: globales del curso + privados asignados de la misma asignatura+nivel.
+      const courseSkills = [
+        ...(await db
+          .select({ id: skills.id })
+          .from(skills)
+          .where(and(eq(skills.subjectId, co.subjectId), eq(skills.gradeBand, co.gradeBand), isNull(skills.ownerId)))),
+        ...priv.filter((p) => p.subjectId === co.subjectId && p.gradeBand === co.gradeBand),
+      ];
+      const key = `course:${co.id}`;
+      const base = scopes[key] ?? { attempts: 0, correct: 0, accuracyPct: 0, avgMs: null, trend: null, pending: 0, seen: 0 };
+      scopes[key] = { ...base, totalSkills: courseSkills.length, mastered: courseSkills.filter((sk) => mastered.has(sk.id)).length };
+    }
+  }
+  return { scopes, pendientes };
+}
+
+// El niño ve cómo va en cada curso, ficha y path: aciertos, tendencia, tiempo por pregunta y avance.
+app.get("/api/child/progress", async (c) => {
+  const db = getDb(c.env.DB);
+  const kid = await currentChildId(c, db);
+  if (!kid) return c.json({ error: "unauthorized" }, 401);
+  const { scopes } = await progresoDelNino(db, kid);
+  return c.json({ scopes, reviewTop: REPASO_TOP });
+});
+
+// "Repasar fallos": el top de ejercicios PENDIENTES de un ámbito (`course:<id>`, `skill:<id>` o
+// `path:<id>`), los que más falla primero. Un ámbito al que el niño no tiene acceso sale vacío, y cada
+// ejercicio se vuelve a validar al servirlo (`/api/session/next?exercise=`).
+app.get("/api/child/review", async (c) => {
+  const db = getDb(c.env.DB);
+  const kid = await currentChildId(c, db);
+  if (!kid) return c.json({ error: "unauthorized" }, 401);
+  const { pendientes } = await progresoDelNino(db, kid);
+  return c.json({ ids: (pendientes.get(c.req.query("scope") ?? "") ?? []).slice(0, REPASO_TOP) });
+});
+
 /* ================= Estadísticas / seguimiento ================= */
 
 const SESSION_GAP_MS = 20 * 60 * 1000; // hueco que separa una "sesión" de la siguiente al reconstruirlas
 // Tope de una respuesta en las medias y el top de lentitud: si el niño deja la app abierta con una pregunta
 // en pantalla, ese intento registraría minutos y dominaría cualquier media.
 const RT_TOPE_MS = 5 * 60 * 1000;
+/**
+ * ¿Ejercicio PENDIENTE? Lo falló y aún no lo ha acertado en OTRA tanda (más de SESSION_GAP_MS después del
+ * último fallo). Acertarlo en el repaso de la misma misión, con la solución recién vista, no lo salda.
+ */
+function esPendiente(lastFailTs: string | null | undefined, lastOkTs: string | null | undefined): boolean {
+  if (!lastFailTs) return false;
+  return !lastOkTs || Date.parse(lastOkTs) - Date.parse(lastFailTs) <= SESSION_GAP_MS;
+}
 /** Tiempo de respuesta útil para estadísticas (recortado a RT_TOPE_MS), o null si no se midió. */
 function rtUtil(rt: number | null): number | null {
   return typeof rt === "number" && rt > 0 ? Math.min(rt, RT_TOPE_MS) : null;
@@ -2811,13 +2986,10 @@ app.get("/api/session/next", async (c) => {
     .groupBy(attempts.exerciseTemplateId);
   const histOf = new Map(hist.map((h) => [h.tid, h]));
   const recent = new Set([...hist].sort((x, y) => (x.lastTs < y.lastTs ? 1 : -1)).slice(0, 20).map((h) => h.tid));
-  // PENDIENTE = lo falló y aún no lo ha acertado en OTRA tanda (más de SESSION_GAP_MS después del último
-  // fallo). Acertarlo en el repaso de la misma misión, con la solución recién vista, no lo salda: sigue
-  // saliendo con prioridad en las misiones siguientes hasta que lo acierte de verdad.
+  // Lo pendiente (ver esPendiente) sigue saliendo con prioridad hasta que lo acierte en otra tanda.
   const isDebt = (id: string) => {
     const h = histOf.get(id);
-    if (!h?.lastFailTs) return false;
-    return !h.lastOkTs || Date.parse(h.lastOkTs) - Date.parse(h.lastFailTs) <= SESSION_GAP_MS;
+    return esPendiente(h?.lastFailTs, h?.lastOkTs);
   };
 
   // Selección ALEATORIA pero PRIORIZADA (nunca un orden fijo):

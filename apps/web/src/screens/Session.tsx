@@ -25,14 +25,20 @@ function shuffled<T>(arr: T[]): T[] {
   return a;
 }
 
+/**
+ * Misión de un skill (`skillId`): tanda principal y, si hubo fallos, repaso de esos mismos ejercicios.
+ * Con `reviewIds` es un "Repasar fallos": empieza directamente en el repaso con esos ejercicios.
+ */
 export function Session({
   profileId,
   skillId,
+  reviewIds,
   onBalance,
   onExit,
 }: {
   profileId: string;
-  skillId: string;
+  skillId?: string;
+  reviewIds?: string[];
   onBalance: (balance: number) => void;
   onExit: () => void;
 }) {
@@ -41,13 +47,14 @@ export function Session({
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [result, setResult] = useState<AttemptResult | null>(null);
-  const [phase, setPhase] = useState<Phase>("main");
+  const practice = Boolean(reviewIds && reviewIds.length > 0); // "Repasar fallos": solo fase de repaso
+  const [phase, setPhase] = useState<Phase>(practice ? "review" : "main");
   const [sessionLength, setSessionLength] = useState<number | null>(null); // preguntas de la tanda (lo fija el skill)
   const [mainDone, setMainDone] = useState(0);
   const [mainCorrect, setMainCorrect] = useState(0);
-  const [failedIds, setFailedIds] = useState<string[]>([]); // ejercicios fallados en la tanda principal
-  const [reviewQueue, setReviewQueue] = useState<string[]>([]); // ids pendientes de repasar (los fallados)
-  const [reviewBudget, setReviewBudget] = useState(0); // tope de reintentos de repaso
+  const [failedIds, setFailedIds] = useState<string[]>(reviewIds ?? []); // ejercicios fallados en la tanda principal
+  const [reviewQueue, setReviewQueue] = useState<string[]>(() => (reviewIds ? shuffled(reviewIds) : [])); // ids pendientes de repasar
+  const [reviewBudget, setReviewBudget] = useState(reviewIds ? reviewIds.length + REVIEW_EXTRA : 0); // tope de reintentos de repaso
   const [reviewFixed, setReviewFixed] = useState(0); // fallados que se acertaron en el repaso
   const [hintsShown, setHintsShown] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
@@ -98,7 +105,7 @@ export function Session({
     })();
   }, []);
   const loadNext = useCallback(
-    () => applyExercise(() => api.nextExercise(skillId, profileId, served.current)),
+    () => applyExercise(() => api.nextExercise(skillId ?? "", profileId, served.current)),
     [applyExercise, skillId, profileId],
   );
   const loadId = useCallback((id: string) => applyExercise(() => api.retryExercise(id, profileId)), [applyExercise, profileId]);
@@ -106,9 +113,22 @@ export function Session({
     if (lastRun.current) applyExercise(lastRun.current);
   }, [applyExercise]);
 
+  const firstReview = useRef(reviewQueue[0]);
   useEffect(() => {
-    loadNext();
-  }, [loadNext]);
+    if (practice && firstReview.current) loadId(firstReview.current);
+    else loadNext();
+  }, [practice, loadId, loadNext]);
+
+  // Un ejercicio del repaso que ya no se puede servir (oculto o retirado entretanto): se salta.
+  function skipBroken() {
+    const queue = reviewQueue.slice(1);
+    if (queue.length === 0) {
+      setPhase("summary");
+      return;
+    }
+    setReviewQueue(queue);
+    loadId(queue[0]!);
+  }
 
   // Mantén la pantalla encendida mientras dura la sesión (se libera al salir).
   useEffect(() => keepAwake(), []);
@@ -207,7 +227,12 @@ export function Session({
           ) : (
             <>
               <h2 className="session-state-title">{t("session.summaryTitle")}</h2>
-              {failedCount === 0 ? (
+              {practice ? (
+                <>
+                  <p className="session-state-text">{t("session.practiceSummary", { fixed: Math.min(reviewFixed, failedCount), count: failedCount })}</p>
+                  {reviewFixed < failedCount && <p className="session-state-text">{t("session.summaryPending")}</p>}
+                </>
+              ) : failedCount === 0 ? (
                 <p className="session-state-text">{t("session.summaryPerfect", { correct: mainCorrect, total })}</p>
               ) : (
                 <>
@@ -247,7 +272,7 @@ export function Session({
                   <Icon name="play" size={16} /> {t("session.connRetry")}
                 </button>
               ) : (
-                <button className="btn-primary" onClick={loadNext}>
+                <button className="btn-primary" onClick={phase === "review" ? skipBroken : loadNext}>
                   <Icon name="play" size={16} /> {t("session.next")}
                 </button>
               )}

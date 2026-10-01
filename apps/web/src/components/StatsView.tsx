@@ -5,7 +5,7 @@ import { tx, type ActivityDay, type ProfileStats, type SessionStat } from "../ap
 import { Icon, type IconName } from "./Icon";
 import { MathText } from "./MathText";
 
-function fmtTime(ms: number | null): string {
+export function fmtTime(ms: number | null): string {
   if (ms == null || ms <= 0) return "—";
   const s = Math.round(ms / 1000);
   if (s < 60) return `${s}s`;
