@@ -1124,7 +1124,8 @@ button:focus-visible {
 }
 
 /* ---------- Modal de preview del contenido ---------- */
-.preview-modal {
+/* `.modal.` delante: auth.css se carga DESPUÉS y su `.modal { max-width: 360px }` ganaría a una sola clase. */
+.modal.preview-modal {
   max-width: 560px;
   width: 100%;
 }
@@ -1355,8 +1356,9 @@ button:focus-visible {
 }
 
 /* ---------- Estadísticas / seguimiento ---------- */
-.stats-modal {
-  max-width: 560px;
+/* Ancho de escritorio para las 4 columnas de fichas (en móvil ocupa toda la pantalla igualmente). */
+.modal.stats-modal {
+  max-width: 720px;
   width: 100%;
 }
 .stats-view {
