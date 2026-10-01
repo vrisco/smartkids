@@ -1479,17 +1479,60 @@ button:focus-visible {
 }
 .stat-session {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 12px;
 }
+.stat-session-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  width: 100%;
+}
 .stat-session-main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+.stat-session-skill {
+  font-size: 0.82rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.review-pill {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  padding: 0.15rem var(--sp-2);
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.review-pill.ok {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.review-pill.partial {
+  color: var(--gold);
+  background: var(--gold-wash);
+}
+.review-pill.bad {
+  color: var(--coral);
+  background: color-mix(in srgb, var(--coral) 12%, transparent);
+}
+.review-pill-note {
+  font-weight: 500;
+  opacity: 0.85;
+}
+.review-pill-note::before {
+  content: "· ";
 }
 .stat-session-main .muted {
   font-size: 0.8rem;

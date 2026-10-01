@@ -1197,12 +1197,16 @@ async function computeStreak(db: DB, profileId: string, tz: string, consume: boo
 // No hay tabla de sesiones: se RECONSTRUYEN agrupando los intentos por huecos de tiempo.
 async function computeProfileStats(db: DB, profileId: string, tz: string) {
   const now = Date.now();
-  const attemptRows = await db
-    .select({ skillId: attempts.skillId, correct: attempts.correct, rt: attempts.responseTimeMs, ts: attempts.ts })
-    .from(attempts)
-    .where(eq(attempts.profileId, profileId))
-    .orderBy(asc(attempts.ts))
-    .limit(5000);
+  // Los 5000 intentos MÁS RECIENTES, en orden cronológico (con asc + limit se quedaban los más antiguos
+  // y un niño muy activo dejaba de ver sus últimas sesiones).
+  const attemptRows = (
+    await db
+      .select({ skillId: attempts.skillId, tid: attempts.exerciseTemplateId, correct: attempts.correct, rt: attempts.responseTimeMs, ts: attempts.ts })
+      .from(attempts)
+      .where(eq(attempts.profileId, profileId))
+      .orderBy(desc(attempts.ts))
+      .limit(5000)
+  ).reverse();
   const ledgerRows = await db
     .select({ delta: walletLedger.delta, reason: walletLedger.reason, ts: walletLedger.ts })
     .from(walletLedger)
@@ -1258,20 +1262,44 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
     }))
     .sort((a, b) => b.attempts - a.attempts);
 
-  // Sesiones reconstruidas (hueco > SESSION_GAP_MS = nueva sesión)
+  // Sesiones reconstruidas (hueco > SESSION_GAP_MS = nueva sesión). Dentro de una sesión, la PRIMERA
+  // respuesta a cada ejercicio es la "primera vuelta" (count/correct/wrong); volver a uno fallado antes en
+  // la misma sesión es REPASO: la sesión de repaso de la misión o una misión siguiente que lo vuelve a servir.
+  // Así se ve si repasó lo fallado (`retried`) y cuánto corrigió (`fixed`), también en el histórico antiguo.
   const exLedger = ledgerRows.filter((l) => isExercise(l.reason)).map((l) => ({ t: Date.parse(l.ts), d: l.delta }));
-  const sessions: Array<{ start: string; end: string; count: number; correct: number; wrong: number; timeMs: number; points: number }> = [];
-  let cur: { startT: number; endT: number; count: number; correct: number; rtSum: number } | null = null;
+  const sessions: Array<{
+    start: string;
+    end: string;
+    count: number;
+    correct: number;
+    wrong: number;
+    answers: number;
+    failed: number;
+    retried: number;
+    fixed: number;
+    skills: unknown[];
+    timeMs: number;
+    points: number;
+  }> = [];
+  type Visto = { failed: boolean; retried: boolean; fixed: boolean };
+  let cur: { startT: number; endT: number; answers: number; first: number; firstOk: number; rtSum: number; seen: Map<string, Visto>; skills: Map<string, number> } | null = null;
   const flush = () => {
     if (!cur) return;
     const g = cur;
     const points = exLedger.filter((l) => l.t >= g.startT - 1000 && l.t <= g.endT + 1000).reduce((s, l) => s + l.d, 0);
+    const failed = [...g.seen.values()].filter((v) => v.failed);
     sessions.push({
       start: new Date(g.startT).toISOString(),
       end: new Date(g.endT).toISOString(),
-      count: g.count,
-      correct: g.correct,
-      wrong: g.count - g.correct,
+      count: g.first,
+      correct: g.firstOk,
+      wrong: g.first - g.firstOk,
+      answers: g.answers,
+      failed: failed.length,
+      retried: failed.filter((v) => v.retried).length,
+      fixed: failed.filter((v) => v.fixed).length,
+      // Temas practicados, el más trabajado primero.
+      skills: [...g.skills.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([id]) => nameById.get(id) ?? { es: id }),
       timeMs: g.rtSum,
       points,
     });
@@ -1280,11 +1308,20 @@ async function computeProfileStats(db: DB, profileId: string, tz: string) {
   for (const a of attemptRows) {
     const t = Date.parse(a.ts);
     if (cur && t - cur.endT > SESSION_GAP_MS) flush();
-    if (!cur) cur = { startT: t, endT: t, count: 0, correct: 0, rtSum: 0 };
+    if (!cur) cur = { startT: t, endT: t, answers: 0, first: 0, firstOk: 0, rtSum: 0, seen: new Map(), skills: new Map() };
     cur.endT = t;
-    cur.count++;
-    if (a.correct) cur.correct++;
+    cur.answers++;
+    cur.skills.set(a.skillId, (cur.skills.get(a.skillId) ?? 0) + 1);
     if (typeof a.rt === "number") cur.rtSum += a.rt;
+    const visto = cur.seen.get(a.tid);
+    if (!visto) {
+      cur.seen.set(a.tid, { failed: !a.correct, retried: false, fixed: false });
+      cur.first++;
+      if (a.correct) cur.firstOk++;
+    } else if (visto.failed) {
+      visto.retried = true;
+      if (a.correct) visto.fixed = true;
+    }
   }
   flush();
   sessions.reverse();
@@ -2701,29 +2738,33 @@ app.get("/api/session/next", async (c) => {
   }
   const lastType = typeOf.get(served[served.length - 1] ?? "");
 
-  // Historial del niño en este skill, por plantilla: nº de fallos, cuándo la vio por última vez y si
-  // esa ÚLTIMA respuesta fue buena (columna "desnuda" junto a un único max(): SQLite la toma de la
-  // fila que da el máximo).
+  // Historial del niño en este skill, por plantilla: nº de fallos, cuándo la vio por última vez y cuándo
+  // la falló y la acertó por última vez.
   const hist = await db
     .select({
       tid: attempts.exerciseTemplateId,
       fails: sql<number>`sum(case when ${attempts.correct} = 1 then 0 else 1 end)`,
       lastTs: sql<string>`max(${attempts.ts})`,
-      lastCorrect: sql<number>`${attempts.correct}`,
+      lastFailTs: sql<string | null>`max(case when ${attempts.correct} = 1 then null else ${attempts.ts} end)`,
+      lastOkTs: sql<string | null>`max(case when ${attempts.correct} = 1 then ${attempts.ts} else null end)`,
     })
     .from(attempts)
     .where(and(eq(attempts.profileId, profileId), eq(attempts.skillId, skillId)))
     .groupBy(attempts.exerciseTemplateId);
   const histOf = new Map(hist.map((h) => [h.tid, h]));
   const recent = new Set([...hist].sort((x, y) => (x.lastTs < y.lastTs ? 1 : -1)).slice(0, 20).map((h) => h.tid));
+  // PENDIENTE = lo falló y aún no lo ha acertado en OTRA tanda (más de SESSION_GAP_MS después del último
+  // fallo). Acertarlo en el repaso de la misma misión, con la solución recién vista, no lo salda: sigue
+  // saliendo con prioridad en las misiones siguientes hasta que lo acierte de verdad.
   const isDebt = (id: string) => {
     const h = histOf.get(id);
-    return Boolean(h && Number(h.lastCorrect) !== 1); // la última vez lo falló: pendiente de repaso
+    if (!h?.lastFailTs) return false;
+    return !h.lastOkTs || Date.parse(h.lastOkTs) - Date.parse(h.lastFailTs) <= SESSION_GAP_MS;
   };
 
   // Selección ALEATORIA pero PRIORIZADA (nunca un orden fijo):
-  //  1) Con probabilidad PRIORIDAD_FALLOS se sortea entre los ejercicios "pendientes" (falló la
-  //     última vez), con más peso cuantos más fallos acumula.
+  //  1) Con probabilidad PRIORIDAD_FALLOS se sortea entre los ejercicios "pendientes" (fallados y aún
+  //     sin acertar en otra tanda), con más peso cuantos más fallos acumula.
   //  2) Si no, entre el resto: lo fallado alguna vez pesa más que lo nuevo, y lo nuevo más que lo
   //     siempre acertado; lo visto hace poco descansa.
   //  En ambos casos se penaliza repetir tipo para que la misión alterne formatos.
@@ -2756,7 +2797,7 @@ app.get("/api/session/next", async (c) => {
   return c.json({ error: "no exercise found" }, 404);
 });
 
-/** Proporción de preguntas que salen de lo pendiente (fallado la última vez) mientras quede algo. */
+/** Proporción de preguntas que salen de lo pendiente (fallado y sin acertar en otra tanda) mientras quede algo. */
 const PRIORIDAD_FALLOS = 0.7;
 
 /** Elige un elemento al azar con probabilidad proporcional a su peso. */

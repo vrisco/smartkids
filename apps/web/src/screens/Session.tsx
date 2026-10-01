@@ -213,7 +213,7 @@ export function Session({
                 <>
                   <p className="session-state-text">{t("session.summaryFirst", { correct: mainCorrect, total })}</p>
                   <p className="session-state-text">{t("session.summaryReview", { fixed: Math.min(reviewFixed, failedCount), count: failedCount })}</p>
-                  {reviewFixed < failedCount && <p className="session-state-text">{t("session.summaryPending")}</p>}
+                  <p className="session-state-text">{t("session.summaryPending")}</p>
                 </>
               )}
               <button className="btn-primary" onClick={onExit}>

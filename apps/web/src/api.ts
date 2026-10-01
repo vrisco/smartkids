@@ -258,12 +258,19 @@ export interface SkillStat {
   mastery: number | null;
   status: string | null;
 }
+// count/correct/wrong = primera vuelta (cada ejercicio una vez). El repaso de lo fallado va aparte:
+// `failed` falladas a la primera, `retried` repasadas después en la sesión y `fixed` corregidas.
 export interface SessionStat {
   start: string;
   end: string;
   count: number;
   correct: number;
   wrong: number;
+  answers?: number;
+  failed?: number;
+  retried?: number;
+  fixed?: number;
+  skills?: LocaleText[];
   timeMs: number;
   points: number;
 }

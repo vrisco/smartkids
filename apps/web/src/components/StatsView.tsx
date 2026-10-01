@@ -1,7 +1,7 @@
 // Vista de estadísticas/seguimiento de un perfil. La comparten el tutor (en un modal
 // por niño) y el propio niño (pestaña "Mis puntos"). Solo lectura.
 import { useTranslation } from "react-i18next";
-import { tx, type ActivityDay, type ProfileStats } from "../api";
+import { tx, type ActivityDay, type ProfileStats, type SessionStat } from "../api";
 import { Icon, type IconName } from "./Icon";
 
 function fmtTime(ms: number | null): string {
@@ -20,6 +20,31 @@ function fmtDate(iso: string, locale: string): string {
 function fmtDateTime(iso: string, locale: string): string {
   const d = new Date(iso);
   return d.toLocaleString(locale, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// Qué pasó con lo fallado en la sesión: sin fallos, sin repasar o cuántas se corrigieron en el repaso.
+function ReviewPill({ s }: { s: SessionStat }) {
+  const { t } = useTranslation();
+  if (s.failed == null) return null; // respuesta de una API anterior: sin datos de repaso
+  if (s.failed === 0)
+    return (
+      <span className="review-pill ok">
+        <Icon name="check" size={12} /> {t("stats.allFirstTry")}
+      </span>
+    );
+  if (!s.retried)
+    return (
+      <span className="review-pill bad">
+        <Icon name="flag" size={12} /> {t("stats.reviewSkipped", { count: s.failed })}
+      </span>
+    );
+  const fixed = s.fixed ?? 0;
+  return (
+    <span className={"review-pill " + (fixed >= s.failed ? "ok" : "partial")}>
+      <Icon name="target" size={12} /> {t("stats.reviewFixed", { fixed, count: s.failed })}
+      {s.retried < s.failed && <span className="review-pill-note">{t("stats.reviewPartial", { count: s.retried })}</span>}
+    </span>
+  );
 }
 
 function Tile({ icon, label, value, tone }: { icon: IconName; label: string; value: string; tone?: string }) {
@@ -143,23 +168,27 @@ export function StatsView({ stats }: { stats: ProfileStats }) {
           <div className="stat-session-list">
             {stats.sessions.map((s, i) => (
               <div className="stat-session" key={i}>
-                <div className="stat-session-main">
-                  <b>{fmtDateTime(s.start, locale)}</b>
-                  <span className="muted">
-                    {s.count} {t("stats.questions")} · {fmtTime(s.timeMs)}
-                  </span>
+                <div className="stat-session-top">
+                  <div className="stat-session-main">
+                    <b>{fmtDateTime(s.start, locale)}</b>
+                    {s.skills && s.skills.length > 0 && <span className="stat-session-skill">{s.skills.map((n) => tx(n)).join(" · ")}</span>}
+                    <span className="muted">
+                      {s.count} {t(s.count === 1 ? "stats.question" : "stats.questions")} · {fmtTime(s.timeMs)}
+                    </span>
+                  </div>
+                  <div className="stat-session-marks">
+                    <span className="mark ok" title={t("stats.firstTry")}>
+                      <Icon name="check" size={13} /> {s.correct}
+                    </span>
+                    <span className="mark bad" title={t("stats.firstTry")}>
+                      <Icon name="close" size={13} /> {s.wrong}
+                    </span>
+                    <span className="mark pts">
+                      <Icon name="coin" size={13} /> {s.points >= 0 ? `+${s.points}` : s.points}
+                    </span>
+                  </div>
                 </div>
-                <div className="stat-session-marks">
-                  <span className="mark ok">
-                    <Icon name="check" size={13} /> {s.correct}
-                  </span>
-                  <span className="mark bad">
-                    <Icon name="close" size={13} /> {s.wrong}
-                  </span>
-                  <span className="mark pts">
-                    <Icon name="coin" size={13} /> {s.points >= 0 ? `+${s.points}` : s.points}
-                  </span>
-                </div>
+                <ReviewPill s={s} />
               </div>
             ))}
           </div>
