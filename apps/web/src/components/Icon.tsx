@@ -32,7 +32,8 @@ export type IconName =
   | "chevronRight"
   | "eye"
   | "eyeOff"
-  | "flag";
+  | "flag"
+  | "printer";
 
 const STROKE: Partial<Record<IconName, ReactElement>> = {
   lock: (
@@ -122,6 +123,13 @@ const STROKE: Partial<Record<IconName, ReactElement>> = {
       <rect x="4" y="9" width="16" height="11" rx="1.5" />
       <path d="M4 13h16M12 9v11" />
       <path d="M12 9C10 5.5 6.5 6 7.6 8.3 8.3 9 12 9 12 9ZM12 9c2-3.5 5.5-3 4.4-.7C15.7 9 12 9 12 9Z" />
+    </>
+  ),
+  printer: (
+    <>
+      <path d="M7 9V3.5h10V9" />
+      <path d="M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+      <rect x="7" y="14" width="10" height="6.5" rx="1" />
     </>
   ),
   target: (

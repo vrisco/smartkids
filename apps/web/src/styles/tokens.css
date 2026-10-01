@@ -27,6 +27,12 @@
   --btn-primary-bg: linear-gradient(94deg, #37e1e8, #4bf0d0);
   --btn-primary-fg: #04121b;
 
+  /* Fichas impresas (Worksheet): papel blanco y tinta negra en cualquier tema */
+  --print-paper: #ffffff;
+  --print-ink: #111111;
+  --print-dim: #555555;
+  --print-line: #8a8a8a;
+
   /* ----- TEMA CLARO (por defecto) ----- */
   color-scheme: light;
   --space-950: #e7ebf7;

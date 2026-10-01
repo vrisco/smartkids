@@ -721,9 +721,14 @@ code {
 }
 .content-row-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.5rem;
+}
+/* En móvil el título ocupa su propia línea y los botones bajan debajo, en vez de estrujarlo. */
+.content-row-head .list-main {
+  flex: 1 1 11rem;
 }
 .asset-list {
   display: flex;
@@ -1794,4 +1799,250 @@ button:focus-visible {
   margin-top: var(--sp-2);
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+/* ---------- Ficha imprimible (Worksheet) ---------- */
+.modal.worksheet-modal {
+  max-width: 560px;
+  width: 100%;
+}
+.worksheet-modal .btn-primary {
+  gap: var(--sp-2);
+}
+/* La hoja vive en un portal fuera de #root: invisible en pantalla, sola en la impresión. */
+.ws-print-root {
+  display: none;
+}
+@page {
+  margin: 14mm 13mm;
+}
+@media print {
+  /* `:root.` para ganar al `color-scheme: dark` del tema oscuro (si no, los márgenes salen negros). */
+  :root.ws-printing,
+  :root.ws-printing body {
+    height: auto;
+    background: var(--print-paper);
+    color-scheme: light;
+  }
+  html.ws-printing body > :not(.ws-print-root) {
+    display: none !important;
+  }
+  html.ws-printing .ws-print-root {
+    display: block;
+  }
+}
+.ws-sheet {
+  color: var(--print-ink);
+  background: var(--print-paper);
+  font-family: var(--sans);
+  font-size: 12pt;
+  line-height: 1.45;
+}
+.ws-head {
+  border-bottom: 1.5pt solid var(--print-ink);
+  padding-bottom: 3mm;
+  margin-bottom: 6mm;
+}
+.ws-head h1 {
+  font-size: 18pt;
+  margin: 0;
+  line-height: 1.2;
+}
+.ws-meta {
+  color: var(--print-dim);
+  font-size: 10pt;
+  margin-top: 1mm;
+}
+.ws-fields {
+  display: flex;
+  gap: 8mm;
+  margin-top: 5mm;
+  font-size: 11pt;
+}
+.ws-field {
+  display: flex;
+  align-items: flex-end;
+  gap: 2mm;
+  white-space: nowrap;
+}
+.ws-field.grow {
+  flex: 1;
+}
+.ws-line {
+  flex: 1;
+  min-width: 30mm;
+  border-bottom: 0.8pt solid var(--print-line);
+  height: 1.1em;
+}
+.ws-field .ws-line {
+  min-width: 28mm;
+}
+.ws-field .ws-line.short {
+  flex: 0 0 12mm;
+  min-width: 12mm;
+}
+.ws-q {
+  display: flex;
+  gap: 3mm;
+  margin-bottom: 7mm;
+  break-inside: avoid;
+}
+.ws-num {
+  font-weight: 700;
+  min-width: 7mm;
+  flex: 0 0 auto;
+}
+.ws-q-body {
+  flex: 1;
+  min-width: 0;
+}
+.ws-inst {
+  font-size: 9.5pt;
+  font-style: italic;
+  color: var(--print-dim);
+  margin-bottom: 1mm;
+}
+.ws-stem {
+  white-space: pre-line;
+}
+.ws-blank {
+  display: inline-block;
+  min-width: 26mm;
+  height: 1.1em;
+  border-bottom: 0.8pt solid var(--print-ink);
+  vertical-align: baseline;
+  margin: 0 1mm;
+}
+.mexp .ws-blank {
+  min-width: 8mm;
+}
+.ws-sheet .ex-figure {
+  justify-content: flex-start;
+  color: var(--print-ink);
+  margin: 2mm 0;
+}
+.ws-sheet .ex-figure svg {
+  max-width: 75mm;
+  max-height: 55mm;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  animation: none;
+}
+.ws-opts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5mm 6mm;
+  margin-top: 2.5mm;
+}
+.ws-opts.cols {
+  grid-template-columns: 1fr 1fr;
+}
+.ws-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+}
+.ws-letter {
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.ws-box {
+  flex: 0 0 auto;
+  width: 4.5mm;
+  height: 4.5mm;
+  border: 0.8pt solid var(--print-ink);
+  border-radius: 0.8mm;
+  align-self: center;
+}
+.ws-answer {
+  display: flex;
+  align-items: flex-end;
+  gap: 2mm;
+  margin-top: 3mm;
+  max-width: 110mm;
+}
+.ws-match {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 22mm;
+  margin-top: 2.5mm;
+}
+.ws-match-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
+}
+.ws-match-item {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+}
+.ws-dot {
+  flex: 0 0 auto;
+  width: 2.2mm;
+  height: 2.2mm;
+  border-radius: 50%;
+  background: var(--print-ink);
+}
+.ws-dot.end {
+  margin-left: auto;
+}
+.ws-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+  margin-top: 2mm;
+}
+.ws-step-prompt {
+  display: flex;
+  gap: 2mm;
+  align-items: baseline;
+}
+.ws-step .ws-answer {
+  margin: 1.5mm 0 1mm 6mm;
+}
+.ws-work {
+  height: 30mm;
+  margin-top: 3mm;
+  border: 0.8pt dashed var(--print-line);
+  border-radius: 2mm;
+  padding: 1mm 2mm;
+  font-size: 8pt;
+  color: var(--print-dim);
+}
+.ws-key {
+  break-before: page;
+}
+.ws-key h2 {
+  font-size: 14pt;
+  margin: 0 0 5mm;
+  padding-bottom: 2mm;
+  border-bottom: 1.5pt solid var(--print-ink);
+}
+.ws-key-list {
+  columns: 2;
+  column-gap: 10mm;
+  font-size: 10.5pt;
+}
+.ws-key-item {
+  display: flex;
+  gap: 2mm;
+  margin-bottom: 3mm;
+  break-inside: avoid;
+}
+.ws-key-body {
+  min-width: 0;
+}
+.ws-key-part + .ws-key-part::before {
+  content: "·";
+  margin: 0 1.5mm;
+  color: var(--print-dim);
+}
+.ws-key-sol {
+  font-size: 9pt;
+  color: var(--print-dim);
+  margin-top: 0.5mm;
+  white-space: pre-line;
 }

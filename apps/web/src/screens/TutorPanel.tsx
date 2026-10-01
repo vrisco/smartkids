@@ -4,6 +4,7 @@ import { GRADE_BANDS, isGradeBand } from "../grades";
 import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type ExerciseReport, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
 import { ContentPreview } from "../components/ContentPreview";
+import { WorksheetDialog } from "../components/Worksheet";
 import { correctAnswerString } from "../components/ExerciseInput";
 import { MathText } from "../components/MathText";
 import { StatsView } from "../components/StatsView";
@@ -1076,6 +1077,7 @@ function ContentSection({ me }: { me: Me }) {
   const [editing, setEditing] = useState<ContentRequest | null>(null);
   const [regenerating, setRegenerating] = useState<ContentRequest | null>(null);
   const [preview, setPreview] = useState<PrivateSkill | null>(null);
+  const [worksheet, setWorksheet] = useState<PrivateSkill | null>(null);
   const [showOld, setShowOld] = useState(false);
   const contentRef = useRef<PrivateSkill[]>([]);
 
@@ -1242,6 +1244,9 @@ function ContentSection({ me }: { me: Me }) {
                       <button className="btn-ghost sm" type="button" onClick={() => setPreview(s)}>
                         {t("content.preview")}
                       </button>
+                      <button className="btn-ghost sm" type="button" onClick={() => setWorksheet(s)} disabled={s.exercises === 0}>
+                        {t("worksheet.button")}
+                      </button>
                       {regen && (
                         <button className="btn-ghost sm" type="button" onClick={() => setRegenerating(regen)}>
                           {t("content.regenerate")}
@@ -1295,6 +1300,14 @@ function ContentSection({ me }: { me: Me }) {
         />
       )}
       {preview && <ContentPreview skillId={preview.id} title={tx(preview.nameI18n)} onClose={() => setPreview(null)} />}
+      {worksheet && (
+        <WorksheetDialog
+          skillId={worksheet.id}
+          title={tx(worksheet.nameI18n)}
+          level={isGradeBand(worksheet.gradeBand) ? t(`grades.${worksheet.gradeBand}`) : undefined}
+          onClose={() => setWorksheet(null)}
+        />
+      )}
     </div>
   );
 }

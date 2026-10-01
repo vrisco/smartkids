@@ -87,9 +87,11 @@ function atomize(s: string): Atom[] {
       i = j;
       continue;
     }
-    if (/[A-Za-z]/.test(c)) {
+    // Cualquier letra (\p{L}), no solo ASCII: si no, «fracción» se partía en «fracci» + «ó» + «n» y la
+    // «n» suelta salía en cursiva como si fuera una variable.
+    if (/\p{L}/u.test(c)) {
       let j = i;
-      while (j < s.length && /[A-Za-z]/.test(s[j]!)) j++;
+      while (j < s.length && /\p{L}/u.test(s[j]!)) j++;
       const w = s.slice(i, j);
       if (w === "sqrt") atoms.push({ t: "root" });
       else atoms.push({ t: "word", text: w });
