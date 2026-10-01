@@ -202,10 +202,13 @@ de los 8 tipos + `src/grading.ts` la lógica). Lo importan la API Y la web (se a
 **Motor de sesión** (`GET /api/session/next` + `POST /api/session/attempt`, en `apps/api/src/index.ts`): corrige
 los 8 tipos en servidor y baraja opciones por servida. `next` carga un banco LIGERO (solo id+tipo, hasta 1000) y
 elige de forma ALEATORIA PERO PRIORIZADA, nunca en orden fijo: con probabilidad 0.7 (`PRIORIDAD_FALLOS`) sortea
-entre los «pendientes» (falló la última vez; más peso cuantos más fallos) y si no entre el resto (fallado alguna
+entre los «pendientes» (fallados y aún sin acertar en OTRA tanda, es decir, más de 20 min después del último fallo:
+acertarlo en el repaso de la misma misión no lo salda; más peso cuantos más fallos) y si no entre el resto (fallado alguna
 vez 3 > nuevo 2 > siempre acertado 1; lo visto en los 20 últimos pesa x0.15), penalizando repetir tipo en la
 sesión. Devuelve además `sessionLength` del skill (preguntas por misión; default 5). `attempt` devuelve `solution`
-y `theory`: al fallar, la web muestra una tarjeta con la respuesta correcta, la teoría («Recuerda») y cómo se
+y `theory`. Las estadísticas (`computeProfileStats`) reconstruyen las sesiones por huecos de 20 min y separan la
+primera vuelta (cada ejercicio una vez) del repaso: `failed`/`retried`/`fixed` = falladas, repasadas y corregidas
+en la sesión (la web lo pinta en `StatsView`). Al fallar, la web muestra una tarjeta con la respuesta correcta, la teoría («Recuerda») y cómo se
 resuelve. Al acabar la tanda, si hubo fallos, pantalla de transición y **SESIÓN DE REPASO** con los MISMOS
 ejercicios fallados en orden aleatorio (`?exercise=<id>`; fallar lo manda al final de la cola, tope = fallos + 3)
 y un resumen final (lógica en `apps/web/src/screens/Session.tsx`). Tras responder, el niño puede marcar

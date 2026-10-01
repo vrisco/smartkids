@@ -86,7 +86,8 @@ borra las 28 tablas y crea cuentas demo con contraseñas publicadas en el repo, 
   La respuesta incluye `feedback`, `solution` y `theory` (la web los enseña al fallar).
 - **`GET /api/session/next`** valida el curso/skill (403 si no), NO envía la solución (`redactForClient`) y baraja
   opciones (`shuffleRender`). Banco ligero (solo id+tipo, hasta 1000); selección aleatoria PRIORIZADA
-  (`PRIORIDAD_FALLOS = 0.7` hacia lo fallado la última vez, pesos por historial, lo reciente descansa, penaliza
+  (`PRIORIDAD_FALLOS = 0.7` hacia lo PENDIENTE: fallado y sin acertar en otra tanda, más de `SESSION_GAP_MS` después
+  del último fallo, así que acertarlo en el repaso de la misma misión no lo salda; pesos por historial, lo reciente descansa, penaliza
   repetir tipo). `?exclude=` = lo ya servido en la sesión (no repite y mide la variedad); `?exercise=<id>` sirve
   uno concreto (la sesión de repaso de fallos). Devuelve `sessionLength` del skill (`SESSION_LENGTH_DEFAULT = 5`).
 - **Avisos «esta pregunta está mal»** (`exercise_reports`, PK (niño, plantilla)): `POST /api/session/report` exige
