@@ -1,0 +1,1 @@
+ALTER TABLE `child_profiles` ADD `mascot` text DEFAULT 'orbi' NOT NULL;

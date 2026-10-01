@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api, tx, type ChildMe, type Course, type CustomContent, type ProfileStats } from "../api";
 import { Hud } from "../components/Hud";
 import { Icon } from "../components/Icon";
+import { Mascot, MascotContext, MascotPick, mascotKeyOf, rememberMascot, type MascotKey } from "../components/Mascot";
 import { StatsView } from "../components/StatsView";
 import { useScrollTop } from "../useScrollTop";
 import { GalaxyMap } from "./GalaxyMap";
@@ -42,6 +43,9 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   const [customSkill, setCustomSkill] = useState<CustomContent | null>(null);
   const [sessionSkillId, setSessionSkillId] = useState<string | null>(null); // sesión de un skill de curso (galaxia)
   const [balance, setBalance] = useState(data.balance);
+  const [mascot, setMascot] = useState<MascotKey>(mascotKeyOf(data.child.mascot));
+  // El login muestra el último compañero usado en este dispositivo.
+  useEffect(() => rememberMascot(mascot), [mascot]);
 
   const inFullScreen = customSkill !== null || sessionSkillId !== null; // sesión a pantalla completa: sin HUD ni barra
   useScrollTop(`${tab}|${course?.id ?? ""}|${openPath?.pathId ?? ""}|${customSkill?.skillId ?? ""}|${sessionSkillId ?? ""}`);
@@ -49,158 +53,164 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   // Ficha o módulo de contenido a medida: se juega directamente, sin galaxia intermedia.
   if (customSkill) {
     return (
-      <div className="app-shell">
-        <div className="app-body">
-          <Session profileId={data.child.id} skillId={customSkill.skillId} onBalance={setBalance} onExit={() => setCustomSkill(null)} />
+    <MascotContext.Provider value={mascot}>
+        <div className="app-shell">
+          <div className="app-body">
+            <Session profileId={data.child.id} skillId={customSkill.skillId} onBalance={setBalance} onExit={() => setCustomSkill(null)} />
+          </div>
         </div>
-      </div>
+    </MascotContext.Provider>
     );
   }
   // Sesión de un skill de curso (desde la galaxia).
   if (sessionSkillId) {
     return (
-      <div className="app-shell">
-        <div className="app-body">
-          <Session profileId={data.child.id} skillId={sessionSkillId} onBalance={setBalance} onExit={() => setSessionSkillId(null)} />
+    <MascotContext.Provider value={mascot}>
+        <div className="app-shell">
+          <div className="app-body">
+            <Session profileId={data.child.id} skillId={sessionSkillId} onBalance={setBalance} onExit={() => setSessionSkillId(null)} />
+          </div>
         </div>
-      </div>
+    </MascotContext.Provider>
     );
   }
 
   return (
-    <div className="app-shell">
-      <Hud profile={data.child} balance={balance} streak={data.streak} onExit={onLogout} />
-      <div className="app-body">
-        {tab === "shop" ? (
-          <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />
-        ) : tab === "stats" ? (
-          <KidStats />
-        ) : /* tab === "home" */ course ? (
-          <GalaxyMap
-            profileId={data.child.id}
-            courseId={course.id}
-            courseName={tx(course.nameI18n)}
-            onPlay={(s) => setSessionSkillId(s)}
-            onBack={data.courses.length > 1 || hasCustom ? () => setCourse(null) : undefined}
-          />
-        ) : openPath ? (
-          <>
-            <button className="btn-ghost sm" type="button" onClick={() => setOpenPath(null)} style={{ alignSelf: "flex-start", marginTop: "0.8rem" }}>
-              <Icon name="back" size={14} /> {t("common.back")}
-            </button>
-            <h2 className="screen-title">{tx(openPath.pathName)}</h2>
-            <div className="course-grid">
-              {openPath.modules.map((m, i) => (
-                <button className="course-card custom" key={m.skillId} type="button" onClick={() => setCustomSkill(m)}>
-                  <span className="course-emoji">
-                    <Icon name="star" size={22} />
-                  </span>
-                  <span className="course-text">
-                    <b>
-                      {t("kid.module")} {(m.moduleIndex ?? i) + 1}
-                    </b>
-                    <span className="course-sub">
-                      {m.exercises} {t("content.exercises")}
+    <MascotContext.Provider value={mascot}>
+      <div className="app-shell">
+        <Hud profile={data.child} balance={balance} streak={data.streak} onExit={onLogout} />
+        <div className="app-body">
+          {tab === "shop" ? (
+            <RewardShop profileId={data.child.id} balance={balance} onBalance={setBalance} />
+          ) : tab === "stats" ? (
+            <KidStats mascot={mascot} onMascot={setMascot} />
+          ) : /* tab === "home" */ course ? (
+            <GalaxyMap
+              profileId={data.child.id}
+              courseId={course.id}
+              courseName={tx(course.nameI18n)}
+              onPlay={(s) => setSessionSkillId(s)}
+              onBack={data.courses.length > 1 || hasCustom ? () => setCourse(null) : undefined}
+            />
+          ) : openPath ? (
+            <>
+              <button className="btn-ghost sm" type="button" onClick={() => setOpenPath(null)} style={{ alignSelf: "flex-start", marginTop: "0.8rem" }}>
+                <Icon name="back" size={14} /> {t("common.back")}
+              </button>
+              <h2 className="screen-title">{tx(openPath.pathName)}</h2>
+              <div className="course-grid">
+                {openPath.modules.map((m, i) => (
+                  <button className="course-card custom" key={m.skillId} type="button" onClick={() => setCustomSkill(m)}>
+                    <span className="course-emoji">
+                      <Icon name="star" size={22} />
                     </span>
-                  </span>
-                </button>
-              ))}
+                    <span className="course-text">
+                      <b>
+                        {t("kid.module")} {(m.moduleIndex ?? i) + 1}
+                      </b>
+                      <span className="course-sub">
+                        {m.exercises} {t("content.exercises")}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : noContent ? (
+            <div className="screen-pad">
+              <h2 className="screen-title">
+                {t("kid.noCoursesTitle")} <Icon name="satellite" size={20} />
+              </h2>
+              <p className="muted">{t("kid.noCoursesBody")}</p>
             </div>
-          </>
-        ) : noContent ? (
-          <div className="screen-pad">
-            <h2 className="screen-title">
-              {t("kid.noCoursesTitle")} <Icon name="satellite" size={20} />
-            </h2>
-            <p className="muted">{t("kid.noCoursesBody")}</p>
-          </div>
-        ) : (
-          <>
-            {data.courses.length > 0 && (
-              <>
-                <div className="screen-kicker" style={{ paddingTop: "1.2rem" }}>
-                  {t("kid.yourCourses")}
-                </div>
-                <h2 className="screen-title">{t("kid.whatStudy")}</h2>
-                <div className="course-grid">
-                  {data.courses.map((cr) => (
-                    <button className="course-card" key={cr.id} type="button" onClick={() => setCourse(cr)}>
-                      <span className="course-emoji">
-                        <Icon name="book" size={22} />
-                      </span>
-                      <b>{tx(cr.nameI18n)}</b>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-            {hasCustom && (
-              <>
-                <div className="screen-kicker" style={{ paddingTop: "1.4rem" }}>
-                  {t("kid.worksheets")}
-                </div>
-                <div className="course-grid">
-                  {singles.map((cc) => (
-                    <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
-                      <span className="course-emoji">
-                        <Icon name="star" size={22} />
-                      </span>
-                      <span className="course-text">
-                        <b>{tx(cc.nameI18n)}</b>
-                        <span className="course-sub">
-                          {cc.exercises} {t("content.exercises")}
+          ) : (
+            <>
+              {data.courses.length > 0 && (
+                <>
+                  <div className="screen-kicker" style={{ paddingTop: "1.2rem" }}>
+                    {t("kid.yourCourses")}
+                  </div>
+                  <h2 className="screen-title">{t("kid.whatStudy")}</h2>
+                  <div className="course-grid">
+                    {data.courses.map((cr) => (
+                      <button className="course-card" key={cr.id} type="button" onClick={() => setCourse(cr)}>
+                        <span className="course-emoji">
+                          <Icon name="book" size={22} />
                         </span>
-                      </span>
-                    </button>
-                  ))}
-                  {paths.map((p) => (
-                    <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
-                      <span className="course-emoji">
-                        <Icon name="satellite" size={22} />
-                      </span>
-                      <span className="course-text">
-                        <b>{tx(p.pathName)}</b>
-                        <span className="course-sub">
-                          {p.modules.length} {t("kid.modules")}
+                        <b>{tx(cr.nameI18n)}</b>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {hasCustom && (
+                <>
+                  <div className="screen-kicker" style={{ paddingTop: "1.4rem" }}>
+                    {t("kid.worksheets")}
+                  </div>
+                  <div className="course-grid">
+                    {singles.map((cc) => (
+                      <button className="course-card custom" key={cc.skillId} type="button" onClick={() => setCustomSkill(cc)}>
+                        <span className="course-emoji">
+                          <Icon name="star" size={22} />
                         </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
+                        <span className="course-text">
+                          <b>{tx(cc.nameI18n)}</b>
+                          <span className="course-sub">
+                            {cc.exercises} {t("content.exercises")}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                    {paths.map((p) => (
+                      <button className="course-card custom" key={p.pathId} type="button" onClick={() => setOpenPath(p)}>
+                        <span className="course-emoji">
+                          <Icon name="satellite" size={22} />
+                        </span>
+                        <span className="course-text">
+                          <b>{tx(p.pathName)}</b>
+                          <span className="course-sub">
+                            {p.modules.length} {t("kid.modules")}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {!inFullScreen && (
+          <nav className="bottom-nav">
+            <button className={tab === "home" ? "on" : ""} onClick={() => setTab("home")}>
+              <span className="ic">
+                <Icon name="planet" size={22} />
+              </span>
+              <span>{t("kid.home")}</span>
+            </button>
+            <button className={tab === "stats" ? "on" : ""} onClick={() => setTab("stats")}>
+              <span className="ic">
+                <Icon name="target" size={22} />
+              </span>
+              <span>{t("kid.stats")}</span>
+            </button>
+            <button className={tab === "shop" ? "on" : ""} onClick={() => setTab("shop")}>
+              <span className="ic">
+                <Icon name="coin" size={22} />
+              </span>
+              <span>{t("kid.shop")}</span>
+            </button>
+          </nav>
         )}
       </div>
-
-      {!inFullScreen && (
-        <nav className="bottom-nav">
-          <button className={tab === "home" ? "on" : ""} onClick={() => setTab("home")}>
-            <span className="ic">
-              <Icon name="planet" size={22} />
-            </span>
-            <span>{t("kid.home")}</span>
-          </button>
-          <button className={tab === "stats" ? "on" : ""} onClick={() => setTab("stats")}>
-            <span className="ic">
-              <Icon name="target" size={22} />
-            </span>
-            <span>{t("kid.stats")}</span>
-          </button>
-          <button className={tab === "shop" ? "on" : ""} onClick={() => setTab("shop")}>
-            <span className="ic">
-              <Icon name="coin" size={22} />
-            </span>
-            <span>{t("kid.shop")}</span>
-          </button>
-        </nav>
-      )}
-    </div>
+    </MascotContext.Provider>
   );
 }
 
-// Pestaña "Mis puntos": el niño ve sus propias estadísticas.
-function KidStats() {
+// Pestaña "Mis puntos": el niño ve sus propias estadísticas y elige su compañero de viaje.
+function KidStats({ mascot, onMascot }: { mascot: MascotKey; onMascot: (key: MascotKey) => void }) {
   const { t } = useTranslation();
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [error, setError] = useState(false);
@@ -214,6 +224,7 @@ function KidStats() {
 
   return (
     <>
+      <MascotCard mascot={mascot} onMascot={onMascot} />
       <h2 className="screen-title" style={{ paddingTop: "1rem" }}>
         {t("stats.myPoints")}
       </h2>
@@ -223,6 +234,62 @@ function KidStats() {
         <p className="muted screen-pad">{t("content.previewLoading")}</p>
       ) : (
         <StatsView stats={stats} />
+      )}
+    </>
+  );
+}
+
+// Compañero de viaje: se ve en la galaxia y en las misiones. Cambio optimista; si falla, vuelve al anterior.
+function MascotCard({ mascot, onMascot }: { mascot: MascotKey; onMascot: (key: MascotKey) => void }) {
+  const { t } = useTranslation();
+  const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function choose(key: MascotKey) {
+    if (key === mascot) {
+      setPicking(false);
+      return;
+    }
+    const prev = mascot;
+    onMascot(key);
+    setBusy(true);
+    setError(false);
+    try {
+      await api.setMascot(key);
+      setPicking(false);
+    } catch {
+      onMascot(prev);
+      setError(true);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <>
+      <div className="mascot-card">
+        <Mascot className="mascot-card-art float" />
+        <div className="mascot-card-text">
+          <span className="screen-kicker">{t("mascot.title")}</span>
+          <b>{t(`mascot.names.${mascot}`)}</b>
+        </div>
+        <button className="btn-ghost sm" type="button" onClick={() => setPicking(true)}>
+          {t("mascot.change")}
+        </button>
+      </div>
+      {picking && (
+        <div className="modal-backdrop" onClick={() => !busy && setPicking(false)}>
+          <div className="modal mascot-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{t("mascot.pickTitle")}</h3>
+            <MascotPick value={mascot} onChange={(k) => void choose(k)} disabled={busy} />
+            {error && <div className="auth-error">{t("mascot.saveError")}</div>}
+            <div className="modal-actions">
+              <button className="btn-ghost sm" type="button" disabled={busy} onClick={() => setPicking(false)}>
+                {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

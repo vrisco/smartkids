@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, tx, type SkillNode } from "../api";
-import { Orbi } from "../components/Orbi";
+import { Mascot } from "../components/Mascot";
 import { Icon } from "../components/Icon";
 
 function planetClass(status: string | null, isCurrent: boolean): string {
@@ -74,7 +74,7 @@ export function GalaxyMap({
                   <b>{tx(s.nameI18n)}</b>
                   {s.masteryScore != null && s.status !== "locked" && <span>{Math.round((s.masteryScore ?? 0) * 100)}%</span>}
                 </div>
-                {isCurrent && <Orbi className="node-orbi float" />}
+                {isCurrent && <Mascot className="node-orbi float" />}
               </div>
             </div>
           );

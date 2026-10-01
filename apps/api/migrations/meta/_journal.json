@@ -141,6 +141,13 @@
       "when": 1790714764198,
       "tag": "0019_clumsy_proteus",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790868921758,
+      "tag": "0020_acoustic_karnak",
+      "breakpoints": true
     }
   ]
 }

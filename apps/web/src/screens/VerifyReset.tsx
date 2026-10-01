@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
-import { Orbi } from "../components/Orbi";
+import { Mascot } from "../components/Mascot";
 import { Icon } from "../components/Icon";
 
 function goHome() {
@@ -25,7 +25,7 @@ export function VerifyPage({ token }: { token: string }) {
 
   return (
     <div className="auth-screen">
-      <Orbi className="auth-orbi" />
+      <Mascot name="orbi" className="auth-orbi" />
       <h1 className="auth-title">Órbita</h1>
       {state === "loading" && <p className="auth-sub">{t("verify.verifying")}</p>}
       {state === "ok" && (
@@ -62,7 +62,7 @@ export function ResetPage({ token }: { token: string }) {
 
   return (
     <div className="auth-screen">
-      <Orbi className="auth-orbi" />
+      <Mascot name="orbi" className="auth-orbi" />
       <h1 className="auth-title">Órbita</h1>
       {done ? (
         <>

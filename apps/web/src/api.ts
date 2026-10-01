@@ -34,6 +34,7 @@ export interface Child {
   displayName: string;
   username?: string | null;
   avatar: string;
+  mascot?: string;
   gradeBand: string;
   birthYear?: number | null;
 }
@@ -69,7 +70,7 @@ export interface CustomContent {
 }
 
 export interface ChildMe {
-  child: { id: string; displayName: string; avatar: string; gradeBand: string };
+  child: { id: string; displayName: string; avatar: string; mascot?: string; gradeBand: string };
   balance: number;
   streak: number;
   courses: Course[];
@@ -372,9 +373,9 @@ export const api = {
 
   // Cursos + niños (tutor)
   courses: () => j<Course[]>(`/api/courses`),
-  createChild: (data: { displayName: string; username: string; avatar: string; gradeBand: string; pin: string; courseIds: string[]; birthYear?: number | null; consent: boolean }) =>
+  createChild: (data: { displayName: string; username: string; avatar: string; mascot: string; gradeBand: string; pin: string; courseIds: string[]; birthYear?: number | null; consent: boolean }) =>
     j<{ profile: Child }>(`/api/profiles`, post(data)),
-  updateChild: (id: string, data: { displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number | null; gradeBand?: string }) =>
+  updateChild: (id: string, data: { displayName?: string; avatar?: string; mascot?: string; pin?: string; username?: string; birthYear?: number | null; gradeBand?: string }) =>
     j<{ profile: Child }>(`/api/profiles/${id}/update`, post(data)),
   adjustWallet: (childId: string, delta: number, reason: string) =>
     j<{ ok: boolean; balance: number; applied: number }>(`/api/tutor/children/${encodeURIComponent(childId)}/wallet`, post({ delta, reason })),
@@ -395,6 +396,7 @@ export const api = {
   childMe: () => j<ChildMe>(`/api/child/me?tz=${encodeURIComponent(deviceTz())}`),
   childLogin: (username: string, pin: string) => j<{ child: ChildMe["child"]; courses: Course[] }>(`/api/child/login`, post({ username, pin })),
   childLogout: () => j<{ ok: boolean }>(`/api/child/logout`, { method: "POST" }),
+  setMascot: (mascot: string) => j<{ ok: boolean; mascot: string }>(`/api/child/mascot`, post({ mascot })),
 
   // Juego
   skills: (profileId: string, courseId: string) => j<SkillNode[]>(`/api/skills?profile=${profileId}&course=${courseId}`),

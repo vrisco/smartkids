@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError, type Answer, type AttemptResult, type Exercise, type ReportReason } from "../api";
 import { ExerciseInput, FillBlanks, correctAnswerString } from "../components/ExerciseInput";
 import { ExerciseFigure } from "../components/ExerciseFigure";
 import { Icon } from "../components/Icon";
 import { MathText } from "../components/MathText";
-import { Orbi } from "../components/Orbi";
+import { Mascot, MascotContext } from "../components/Mascot";
 import { keepAwake, vibrate } from "../pwa";
 
 const DEFAULT_SESSION_LENGTH = 5; // si el servidor no dice otra cosa (skills antiguos)
@@ -37,6 +37,7 @@ export function Session({
   onExit: () => void;
 }) {
   const { t } = useTranslation();
+  const mascot = useContext(MascotContext);
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [result, setResult] = useState<AttemptResult | null>(null);
@@ -194,7 +195,7 @@ export function Session({
           </button>
         </div>
         <div className="session-state">
-          <Orbi className="session-state-orbi float" />
+          <Mascot className="session-state-orbi float" />
           {phase === "reviewIntro" ? (
             <>
               <h2 className="session-state-title">{t("session.reviewIntroTitle")}</h2>
@@ -239,7 +240,7 @@ export function Session({
         <div className="session-state">
           {error !== null ? (
             <>
-              <Orbi className="session-state-orbi float" />
+              <Mascot className="session-state-orbi float" />
               <p className="session-state-text">{error === "red" ? t("session.missionOffline") : t("session.missionFailed")}</p>
               {error === "red" ? (
                 <button className="btn-primary" onClick={retryLoad}>
@@ -383,7 +384,7 @@ export function Session({
       )}
 
       <div className="ex-foot">
-        <Orbi className="foot-orbi" />
+        <Mascot className="foot-orbi" />
         {result ? (
           <div className={`bubble ${result.correct ? "good" : "bad"}`}>
             <b>
@@ -400,7 +401,7 @@ export function Session({
           </div>
         ) : (
           <div className="bubble">
-            <b>{t("session.orbi")}</b> {t("session.youCan")} <Icon name="rocket" size={16} />
+            <b>{t(`mascot.names.${mascot}`)}:</b> {t("session.youCan")} <Icon name="rocket" size={16} />
           </div>
         )}
       </div>

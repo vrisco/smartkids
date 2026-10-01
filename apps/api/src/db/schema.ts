@@ -24,6 +24,7 @@ export const childProfiles = sqliteTable("child_profiles", {
     .references(() => parentAccounts.id),
   displayName: text("display_name").notNull(),
   avatar: text("avatar").notNull().default("orbi"),
+  mascot: text("mascot").notNull().default("orbi"), // compañero astronauta que ve el niño (orbi, redpanda, fox...)
   birthYear: integer("birth_year"),
   gradeBand: text("grade_band").notNull(),
   loginPinHash: text("login_pin_hash"),

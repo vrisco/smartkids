@@ -284,6 +284,13 @@ function parseGradeBand(v: unknown): string | null {
   return GRADE_BAND_RE.test(g) ? g : null;
 }
 
+/** Compañeros (mascotas) válidos del niño. Misma lista que MASCOT_KEYS en apps/web/src/components/Mascot.tsx. */
+const MASCOTS = new Set(["orbi", "redpanda", "fox", "cat", "bunny", "panda", "penguin"]);
+function parseMascot(v: unknown): string | null {
+  const m = String(v ?? "").trim();
+  return MASCOTS.has(m) ? m : null;
+}
+
 /** Curso escolar válido de un niño (o null si no está definido). */
 async function childGradeBand(db: DB, childId: string | null): Promise<string | null> {
   if (!childId) return null;
@@ -494,6 +501,7 @@ app.get("/api/auth/me", async (c) => {
       displayName: childProfiles.displayName,
       username: childProfiles.username,
       avatar: childProfiles.avatar,
+      mascot: childProfiles.mascot,
       gradeBand: childProfiles.gradeBand,
       birthYear: childProfiles.birthYear,
     })
@@ -891,7 +899,7 @@ app.post("/api/profiles", async (c) => {
   const db = getDb(c.env.DB);
   const parentId = await requireParent(c, db);
   if (typeof parentId !== "string") return parentId;
-  const body = await c.req.json<{ displayName?: string; username?: string; avatar?: string; gradeBand?: string; pin?: string; courseIds?: string[]; birthYear?: number; consent?: boolean }>();
+  const body = await c.req.json<{ displayName?: string; username?: string; avatar?: string; mascot?: string; gradeBand?: string; pin?: string; courseIds?: string[]; birthYear?: number; consent?: boolean }>();
   const displayName = body.displayName?.trim();
   const username = body.username?.trim().toLowerCase();
   const pin = String(body.pin ?? "");
@@ -908,6 +916,7 @@ app.post("/api/profiles", async (c) => {
     parentId,
     displayName,
     avatar: body.avatar ?? "orbi",
+    mascot: parseMascot(body.mascot) ?? "orbi",
     gradeBand: parseGradeBand(body.gradeBand) ?? "", // "" = sin definir (el tutor lo puede fijar luego)
     loginPinHash: await hashSecret(pin),
     username,
@@ -923,7 +932,7 @@ app.post("/api/profiles", async (c) => {
     const valid = new Set((await db.select({ id: courses.id }).from(courses)).map((v) => v.id));
     for (const cid of requested) if (valid.has(cid)) await db.insert(childCourses).values({ childId: id, courseId: cid });
   }
-  return c.json({ profile: { id, displayName, username, avatar: body.avatar ?? "orbi", gradeBand: parseGradeBand(body.gradeBand) ?? "" } });
+  return c.json({ profile: { id, displayName, username, avatar: body.avatar ?? "orbi", mascot: parseMascot(body.mascot) ?? "orbi", gradeBand: parseGradeBand(body.gradeBand) ?? "" } });
 });
 
 app.post("/api/profiles/:id/update", async (c) => {
@@ -932,10 +941,15 @@ app.post("/api/profiles/:id/update", async (c) => {
   const parentId = await requireParent(c, db);
   if (typeof parentId !== "string") return parentId;
   if (!(await ownsProfile(db, parentId, id))) return c.json({ error: "forbidden" }, 403);
-  const body = await c.req.json<{ displayName?: string; avatar?: string; pin?: string; username?: string; birthYear?: number; gradeBand?: string }>();
-  const patch: { displayName?: string; avatar?: string; loginPinHash?: string; username?: string; birthYear?: number; gradeBand?: string } = {};
+  const body = await c.req.json<{ displayName?: string; avatar?: string; mascot?: string; pin?: string; username?: string; birthYear?: number; gradeBand?: string }>();
+  const patch: { displayName?: string; avatar?: string; mascot?: string; loginPinHash?: string; username?: string; birthYear?: number; gradeBand?: string } = {};
   if (body.displayName?.trim()) patch.displayName = body.displayName.trim();
   if (body.avatar) patch.avatar = body.avatar;
+  if (body.mascot !== undefined) {
+    const m = parseMascot(body.mascot);
+    if (!m) return c.json({ error: "invalid", message: "Compañero inválido." }, 400);
+    patch.mascot = m;
+  }
   if (body.pin != null && String(body.pin).length >= 4) patch.loginPinHash = await hashSecret(String(body.pin));
   if (body.birthYear !== undefined) {
     const by = parseBirthYear(body.birthYear);
@@ -956,7 +970,7 @@ app.post("/api/profiles/:id/update", async (c) => {
   if (Object.keys(patch).length === 0) return c.json({ error: "invalid", message: "Nada que actualizar." }, 400);
   await db.update(childProfiles).set(patch).where(eq(childProfiles.id, id));
   const [p] = await db.select().from(childProfiles).where(eq(childProfiles.id, id)).limit(1);
-  return c.json({ profile: { id: p!.id, displayName: p!.displayName, username: p!.username, avatar: p!.avatar, gradeBand: p!.gradeBand } });
+  return c.json({ profile: { id: p!.id, displayName: p!.displayName, username: p!.username, avatar: p!.avatar, mascot: p!.mascot, gradeBand: p!.gradeBand } });
 });
 
 app.delete("/api/profiles/:id", async (c) => {
@@ -1005,6 +1019,7 @@ app.get("/api/profiles/:id", async (c) => {
       displayName: childProfiles.displayName,
       username: childProfiles.username,
       avatar: childProfiles.avatar,
+      mascot: childProfiles.mascot,
       gradeBand: childProfiles.gradeBand,
       birthYear: childProfiles.birthYear,
       preferredLocale: childProfiles.preferredLocale,
@@ -1040,7 +1055,7 @@ app.post("/api/child/login", async (c) => {
   await clearAttempts(db, idU);
   setChildCookie(c, await createChildSession(db, kid.id));
   const crs = await childCoursesOf(db, kid.id);
-  return c.json({ child: { id: kid.id, displayName: kid.displayName, avatar: kid.avatar, gradeBand: kid.gradeBand }, courses: crs });
+  return c.json({ child: { id: kid.id, displayName: kid.displayName, avatar: kid.avatar, mascot: kid.mascot, gradeBand: kid.gradeBand }, courses: crs });
 });
 
 app.post("/api/child/logout", async (c) => {
@@ -1079,7 +1094,19 @@ app.get("/api/child/me", async (c) => {
       .where(and(eq(exerciseTemplates.skillId, s.id), eq(exerciseTemplates.retired, false), eq(exerciseTemplates.hidden, false)));
     customContent.push({ skillId: s.id, nameI18n: s.nameI18n, exercises: cnt?.n ?? 0, pathId: s.pathId, pathName: s.pathName, moduleIndex: s.moduleIndex });
   }
-  return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, streak, courses: crs, customContent });
+  return c.json({ child: { id: child.id, displayName: child.displayName, avatar: child.avatar, mascot: child.mascot, gradeBand: child.gradeBand }, balance: wallet?.balance ?? 0, streak, courses: crs, customContent });
+});
+
+// El propio niño elige su compañero de viaje (el tutor también puede fijarlo desde la ficha del niño).
+app.post("/api/child/mascot", async (c) => {
+  const db = getDb(c.env.DB);
+  const kid = await currentChildId(c, db);
+  if (!kid) return c.json({ error: "unauthorized" }, 401);
+  const { mascot } = await c.req.json<{ mascot?: string }>();
+  const m = parseMascot(mascot);
+  if (!m) return c.json({ error: "invalid", message: "Compañero inválido." }, 400);
+  await db.update(childProfiles).set({ mascot: m }).where(eq(childProfiles.id, kid));
+  return c.json({ ok: true, mascot: m });
 });
 
 /* ================= Estadísticas / seguimiento ================= */
@@ -1389,6 +1416,7 @@ app.get("/api/tutor/children/:id/export", async (c) => {
     displayName: child.displayName,
     username: child.username,
     avatar: child.avatar,
+    mascot: child.mascot,
     gradeBand: child.gradeBand,
     birthYear: child.birthYear,
     preferredLocale: child.preferredLocale,

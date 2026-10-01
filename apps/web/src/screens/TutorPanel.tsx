@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { GRADE_BANDS, isGradeBand } from "../grades";
 import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type ExerciseReport, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
 import { Avatar, AVATAR_KEYS, avatarKeyOf } from "../components/Avatar";
+import { MascotPick, mascotKeyOf, type MascotKey } from "../components/Mascot";
 import { ContentPreview } from "../components/ContentPreview";
 import { WorksheetDialog } from "../components/Worksheet";
 import { correctAnswerString } from "../components/ExerciseInput";
@@ -337,6 +338,7 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
   const [username, setUsername] = useState(child?.username ?? "");
   const [pin, setPin] = useState("");
   const [avatar, setAvatar] = useState<string>(avatarKeyOf(child?.avatar));
+  const [mascot, setMascot] = useState<MascotKey>(mascotKeyOf(child?.mascot));
   const [birthYear, setBirthYear] = useState<string>(child?.birthYear != null ? String(child.birthYear) : "");
   // Curso escolar: lo usa la generación de contenido para adaptar temario y dificultad.
   const [grade, setGrade] = useState<string>(isGradeBand(child?.gradeBand) ? child!.gradeBand : "");
@@ -364,14 +366,14 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
       let id = child?.id;
       const by = birthYear ? parseInt(birthYear, 10) : null;
       if (editing) {
-        const patch: { displayName: string; avatar: string; username: string; pin?: string; birthYear?: number | null; gradeBand?: string } = { displayName: name, avatar, username };
+        const patch: { displayName: string; avatar: string; mascot: string; username: string; pin?: string; birthYear?: number | null; gradeBand?: string } = { displayName: name, avatar, mascot, username };
         if (pin.length >= 4) patch.pin = pin;
         if (by) patch.birthYear = by;
         if (grade) patch.gradeBand = grade;
         await api.updateChild(child!.id, patch);
       } else {
         if (pin.length < 4) throw new Error(t("tutor.pinError"));
-        const r = await api.createChild({ displayName: name, username, avatar, gradeBand: grade, pin, courseIds: sel, birthYear: by, consent });
+        const r = await api.createChild({ displayName: name, username, avatar, mascot, gradeBand: grade, pin, courseIds: sel, birthYear: by, consent });
         id = r.profile.id;
       }
       if (id) await api.setChildCourses(id, sel);
@@ -441,6 +443,8 @@ function ChildForm({ child, courses, onClose, onDone }: { child?: Child; courses
             </button>
           ))}
         </div>
+        <div className="course-label">{t("mascot.tutorLabel")}</div>
+        <MascotPick value={mascot} onChange={setMascot} />
         <div className="course-label">{t("tutor.coursesAccess")}</div>
         <div className="course-checks">
           {[...courses]

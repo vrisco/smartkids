@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { loginWithPasskey, passkeySupported } from "../passkeys";
-import { Orbi } from "./Orbi";
+import { Mascot, lastMascot } from "./Mascot";
 import { Icon } from "./Icon";
 import { SettingsToggle } from "./SettingsToggle";
 
@@ -66,7 +66,7 @@ export function Auth({ onTutor, onChild }: { onTutor: () => void; onChild: () =>
       <div className="auth-top-bar">
         <SettingsToggle />
       </div>
-      <Orbi className="auth-orbi float" />
+      <Mascot name={lastMascot()} className="auth-orbi float" />
       <h1 className="auth-title">Órbita</h1>
 
       {mode !== "forgot" && (
