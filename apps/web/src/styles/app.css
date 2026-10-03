@@ -2108,3 +2108,280 @@ button:focus-visible {
   margin: 0 1.5mm;
   color: var(--print-dim);
 }
+
+/* ---------- Cuentas en columna y factorización en primos (ColumnOps) ---------- */
+.column-op,
+.factor-op,
+.worked-op {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.cg-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: var(--sp-1);
+}
+/* Cuadrícula de cuaderno: --cols columnas de --cell; cada casilla, una cifra. */
+.cg {
+  --cell: clamp(1.55rem, 7.2vw, 2.3rem);
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.cg-cell {
+  position: relative;
+  height: var(--cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell) * 0.6);
+  font-weight: 650;
+  line-height: 1;
+}
+.cg-cell.small {
+  height: calc(var(--cell) * 0.72);
+  font-size: calc(var(--cell) * 0.42);
+  color: var(--text-dim);
+}
+.cg-cell.top {
+  border-top: 2px solid var(--text);
+}
+.cg-cell.bar {
+  border-left: 2px solid var(--text);
+}
+.cg-cell.given {
+  font-weight: 750;
+}
+.cg-cell.work {
+  color: var(--text-dim);
+}
+.cg-cell.result {
+  color: var(--green);
+  font-weight: 800;
+}
+/* Casillas editables. 16px como mínimo: con menos, iOS hace zoom al enfocarlas. */
+.cg-in {
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  padding: 0;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: max(16px, 1em);
+  text-align: center;
+  caret-color: var(--cyan);
+}
+.cg-in:focus {
+  outline: none;
+  border: 1.5px solid var(--cyan);
+  color: var(--text);
+}
+.cg-in.result,
+.cg-in.quotient {
+  border: 1.5px solid var(--cyan);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 750;
+}
+.cg-in.carry {
+  border-radius: 4px;
+}
+.cg-in:disabled {
+  opacity: 1;
+}
+.cg-in.correct {
+  border-color: var(--green);
+  color: var(--green);
+}
+.cg-in.wrong {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+/* La coma va abajo a la derecha de la cifra, como en el cuaderno. */
+.cg-comma {
+  position: absolute;
+  right: -0.14em;
+  bottom: 0.02em;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+.cg-comma.user {
+  color: var(--cyan);
+}
+.cg-remainder {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.cg-rem-label {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text-dim);
+}
+.cg-hint {
+  max-width: 34rem;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+/* Escalera de la factorización: lo que queda | el primo entre el que se divide. */
+.fl {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.fl-row {
+  display: contents;
+}
+.fl-v,
+.fl-d {
+  display: flex;
+  align-items: center;
+  min-height: 2.2rem;
+  padding: 0.15rem 0;
+}
+.fl-v {
+  justify-content: flex-end;
+  min-width: 4.5rem;
+  padding-right: var(--sp-3);
+}
+.fl-d {
+  min-width: 3.5rem;
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--text);
+}
+.fl-in,
+.fe-base,
+.fe-exp {
+  height: 2.2rem;
+  padding: 0 0.3rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: max(16px, 1em);
+  text-align: center;
+}
+.fl-in {
+  width: 5.5rem;
+}
+.fl-d .fl-in {
+  width: 3.8rem;
+}
+.fl-in:focus,
+.fe-base:focus,
+.fe-exp:focus {
+  outline: none;
+  border: 1.5px solid var(--cyan);
+}
+.fl-in:disabled,
+.fe-base:disabled,
+.fe-exp:disabled {
+  opacity: 1;
+}
+.fl.static .fl-v,
+.fl.static .fl-d {
+  min-height: 1.8rem;
+}
+.fe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.fe-n {
+  margin-right: var(--sp-1);
+}
+.fe-chip {
+  display: inline-flex;
+  align-items: flex-start;
+}
+.fe-dot {
+  align-self: center;
+  margin: 0 var(--sp-2);
+}
+.fe-base {
+  width: 3.1rem;
+  border: 1.5px solid var(--cyan);
+  background: var(--surface);
+  font-weight: 750;
+}
+/* El exponente, pequeño y arriba a la derecha de la base. */
+.fe-exp {
+  width: 2.1rem;
+  height: 1.7rem;
+  margin: -0.55rem 0 0 2px;
+  padding: 0 0.15rem;
+}
+.fe.correct .filled {
+  border-color: var(--green);
+  color: var(--green);
+}
+.fe.wrong .filled {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+.fe.solved {
+  font-size: 1.35rem;
+}
+
+/* En la ficha impresa: cuadrícula de cuaderno con tinta de papel. */
+.ws-op {
+  margin-top: 3mm;
+}
+.ws-sheet .cg.paper {
+  --cell: 7mm;
+  width: max-content; /* el borde de la cuadrícula, solo lo que ocupa (no toda la línea) */
+  justify-content: start;
+  border-top: 0.3pt solid var(--print-line);
+  border-left: 0.3pt solid var(--print-line);
+}
+.ws-sheet .cg.paper .cg-cell {
+  font-size: 13pt;
+  color: var(--print-ink);
+  border-right: 0.3pt solid var(--print-line);
+  border-bottom: 0.3pt solid var(--print-line);
+}
+.ws-sheet .cg.paper .cg-cell.small {
+  height: 4.5mm;
+  font-size: 8pt;
+}
+.ws-sheet .cg.paper .cg-cell.top {
+  border-top: 1.2pt solid var(--print-ink);
+}
+.ws-sheet .cg.paper .cg-cell.bar {
+  border-left: 1.2pt solid var(--print-ink);
+}
+.ws-sheet .fl.paper {
+  justify-content: start;
+  font-size: 12pt;
+}
+.ws-sheet .fl.paper .fl-v,
+.ws-sheet .fl.paper .fl-d {
+  min-height: 7.5mm;
+  border-bottom: 0.3pt dotted var(--print-line);
+}
+.ws-sheet .fl.paper .fl-v {
+  min-width: 24mm;
+}
+.ws-sheet .fl.paper .fl-d {
+  min-width: 16mm;
+  border-left: 1.2pt solid var(--print-ink);
+}
+.ws-answer.short {
+  max-width: 50mm;
+}

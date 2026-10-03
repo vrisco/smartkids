@@ -7,12 +7,24 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { createPortal, flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { api, type FullExercise, type PreviewExercise } from "../api";
+import { PaperOperation, decimalSep, operationSolutionText } from "./ColumnOps";
 import { ExerciseFigure } from "./ExerciseFigure";
 import { Icon } from "./Icon";
 import { MathText, renderMath } from "./MathText";
 
 type ExType = FullExercise["type"];
-const TYPE_ORDER: ExType[] = ["multiple_choice", "multiple_select", "true_false", "fill_in_blank", "numeric", "ordering", "matching", "step_problem"];
+const TYPE_ORDER: ExType[] = [
+  "multiple_choice",
+  "multiple_select",
+  "true_false",
+  "fill_in_blank",
+  "numeric",
+  "ordering",
+  "matching",
+  "step_problem",
+  "column_operation",
+  "prime_factorization",
+];
 const COUNTS = [5, 10, 15, 20, 25, 30, 40, 50];
 const MAX_COUNT = 50;
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
@@ -405,6 +417,10 @@ function PaperAnswer({ q }: { q: PaperQuestion }) {
           </div>
         </div>
       );
+    case "column_operation":
+    case "prime_factorization":
+      // La cuenta colocada en cuadrícula (o la escalera) para hacerla a lápiz: ya es el sitio para operar.
+      return <PaperOperation ex={ex} />;
     case "step_problem":
       return (
         <div className="ws-steps">
@@ -470,7 +486,7 @@ function NumAnswer({ a }: { a: { value: number; unit?: string } }) {
 }
 
 function KeyAnswer({ q }: { q: PaperQuestion }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { ex, shown } = q;
   const letterOf = (id: string) => letter(shown.findIndex((o) => o.id === id));
   switch (ex.type) {
@@ -539,5 +555,8 @@ function KeyAnswer({ q }: { q: PaperQuestion }) {
           ))}
         />
       );
+    case "column_operation":
+    case "prime_factorization":
+      return <MathText text={operationSolutionText(ex, decimalSep(i18n.language), t("session.remainder").toLowerCase())} />;
   }
 }

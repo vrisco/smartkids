@@ -1,0 +1,296 @@
+{
+  "skill": {
+    "id": "MATH.PRI6.COL.ADDSUB",
+    "name": {
+      "es": "Sumas y restas en columna",
+      "en": "Column addition and subtraction"
+    },
+    "difficultyBase": 0.25,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 2112 + 352",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.15
+      },
+      "operation": "add",
+      "operands": [
+        2112,
+        352
+      ],
+      "feedback": {
+        "correct": "Bien sumado: columna a columna y llevando.",
+        "incorrect": "Revisa columna a columna, de derecha a izquierda, sin olvidar lo que te llevas.",
+        "theory": "Para sumar en columna se colocan unidades debajo de unidades y se suma de derecha a izquierda; si una columna pasa de 9, se escribe la cifra de las unidades y se lleva 1 a la columna siguiente."
+      },
+      "hints": [
+        "Coloca unidades debajo de unidades (y la coma debajo de la coma).",
+        "Empieza por la columna de la derecha y apunta arriba lo que te llevas."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 4758 + 2367",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.2
+      },
+      "operation": "add",
+      "operands": [
+        4758,
+        2367
+      ],
+      "feedback": {
+        "correct": "Bien sumado: columna a columna y llevando.",
+        "incorrect": "Revisa columna a columna, de derecha a izquierda, sin olvidar lo que te llevas.",
+        "theory": "Para sumar en columna se colocan unidades debajo de unidades y se suma de derecha a izquierda; si una columna pasa de 9, se escribe la cifra de las unidades y se lleva 1 a la columna siguiente."
+      },
+      "hints": [
+        "Coloca unidades debajo de unidades (y la coma debajo de la coma).",
+        "Empieza por la columna de la derecha y apunta arriba lo que te llevas."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 5432 − 1876",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.25
+      },
+      "operation": "subtract",
+      "operands": [
+        5432,
+        1876
+      ],
+      "feedback": {
+        "correct": "Resta bien hecha.",
+        "incorrect": "Revisa las columnas en las que la cifra de arriba era menor: ahí te llevas una.",
+        "theory": "Para restar en columna se va de derecha a izquierda; si la cifra de arriba es menor, se le suman 10 y se lleva 1 a la cifra de abajo de la columna siguiente."
+      },
+      "hints": [
+        "Empieza por la columna de la derecha.",
+        "Si la cifra de arriba es menor, súmale 10 y lleva 1 a la siguiente cifra de abajo."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 99999 + 1",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.3
+      },
+      "operation": "add",
+      "operands": [
+        99999,
+        1
+      ],
+      "feedback": {
+        "correct": "Bien sumado: columna a columna y llevando.",
+        "incorrect": "Revisa columna a columna, de derecha a izquierda, sin olvidar lo que te llevas.",
+        "theory": "Para sumar en columna se colocan unidades debajo de unidades y se suma de derecha a izquierda; si una columna pasa de 9, se escribe la cifra de las unidades y se lleva 1 a la columna siguiente."
+      },
+      "hints": [
+        "Coloca unidades debajo de unidades (y la coma debajo de la coma).",
+        "Empieza por la columna de la derecha y apunta arriba lo que te llevas."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 38406 + 9785 + 615",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.35
+      },
+      "operation": "add",
+      "operands": [
+        38406,
+        9785,
+        615
+      ],
+      "feedback": {
+        "correct": "Bien sumado: columna a columna y llevando.",
+        "incorrect": "Revisa columna a columna, de derecha a izquierda, sin olvidar lo que te llevas.",
+        "theory": "Para sumar en columna se colocan unidades debajo de unidades y se suma de derecha a izquierda; si una columna pasa de 9, se escribe la cifra de las unidades y se lleva 1 a la columna siguiente."
+      },
+      "hints": [
+        "Coloca unidades debajo de unidades (y la coma debajo de la coma).",
+        "Empieza por la columna de la derecha y apunta arriba lo que te llevas."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 125,6 + 38,75",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.35
+      },
+      "operation": "add",
+      "operands": [
+        125.6,
+        38.75
+      ],
+      "feedback": {
+        "correct": "Bien sumado: columna a columna y llevando.",
+        "incorrect": "Revisa columna a columna, de derecha a izquierda, sin olvidar lo que te llevas.",
+        "theory": "Para sumar en columna se colocan unidades debajo de unidades y se suma de derecha a izquierda; si una columna pasa de 9, se escribe la cifra de las unidades y se lleva 1 a la columna siguiente. Con decimales, la coma va debajo de la coma (donde falte una cifra decimal, imagina un 0) y la coma del resultado baja en la misma columna."
+      },
+      "hints": [
+        "Coloca unidades debajo de unidades (y la coma debajo de la coma).",
+        "Empieza por la columna de la derecha y apunta arriba lo que te llevas."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 8000 − 2763",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.4
+      },
+      "operation": "subtract",
+      "operands": [
+        8000,
+        2763
+      ],
+      "feedback": {
+        "correct": "Resta bien hecha.",
+        "incorrect": "Revisa las columnas en las que la cifra de arriba era menor: ahí te llevas una.",
+        "theory": "Para restar en columna se va de derecha a izquierda; si la cifra de arriba es menor, se le suman 10 y se lleva 1 a la cifra de abajo de la columna siguiente."
+      },
+      "hints": [
+        "Empieza por la columna de la derecha.",
+        "Si la cifra de arriba es menor, súmale 10 y lleva 1 a la siguiente cifra de abajo."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 7,08 + 12,5 + 0,375",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "operation": "add",
+      "operands": [
+        7.08,
+        12.5,
+        0.375
+      ],
+      "feedback": {
+        "correct": "Bien sumado: columna a columna y llevando.",
+        "incorrect": "Revisa columna a columna, de derecha a izquierda, sin olvidar lo que te llevas.",
+        "theory": "Para sumar en columna se colocan unidades debajo de unidades y se suma de derecha a izquierda; si una columna pasa de 9, se escribe la cifra de las unidades y se lleva 1 a la columna siguiente. Con decimales, la coma va debajo de la coma (donde falte una cifra decimal, imagina un 0) y la coma del resultado baja en la misma columna."
+      },
+      "hints": [
+        "Coloca unidades debajo de unidades (y la coma debajo de la coma).",
+        "Empieza por la columna de la derecha y apunta arriba lo que te llevas."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 70305 − 28467",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "operation": "subtract",
+      "operands": [
+        70305,
+        28467
+      ],
+      "feedback": {
+        "correct": "Resta bien hecha.",
+        "incorrect": "Revisa las columnas en las que la cifra de arriba era menor: ahí te llevas una.",
+        "theory": "Para restar en columna se va de derecha a izquierda; si la cifra de arriba es menor, se le suman 10 y se lleva 1 a la cifra de abajo de la columna siguiente."
+      },
+      "hints": [
+        "Empieza por la columna de la derecha.",
+        "Si la cifra de arriba es menor, súmale 10 y lleva 1 a la siguiente cifra de abajo."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 100,4 − 37,86",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.55
+      },
+      "operation": "subtract",
+      "operands": [
+        100.4,
+        37.86
+      ],
+      "feedback": {
+        "correct": "Resta bien hecha.",
+        "incorrect": "Revisa las columnas en las que la cifra de arriba era menor: ahí te llevas una.",
+        "theory": "Para restar en columna se va de derecha a izquierda; si la cifra de arriba es menor, se le suman 10 y se lleva 1 a la cifra de abajo de la columna siguiente. Con decimales, coma debajo de coma; si al minuendo le faltan cifras decimales, se completan con ceros."
+      },
+      "hints": [
+        "Empieza por la columna de la derecha.",
+        "Si la cifra de arriba es menor, súmale 10 y lleva 1 a la siguiente cifra de abajo."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 4567,89 + 3210,6 + 98,765",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.6
+      },
+      "operation": "add",
+      "operands": [
+        4567.89,
+        3210.6,
+        98.765
+      ],
+      "feedback": {
+        "correct": "Bien sumado: columna a columna y llevando.",
+        "incorrect": "Revisa columna a columna, de derecha a izquierda, sin olvidar lo que te llevas.",
+        "theory": "Para sumar en columna se colocan unidades debajo de unidades y se suma de derecha a izquierda; si una columna pasa de 9, se escribe la cifra de las unidades y se lleva 1 a la columna siguiente. Con decimales, la coma va debajo de la coma (donde falte una cifra decimal, imagina un 0) y la coma del resultado baja en la misma columna."
+      },
+      "hints": [
+        "Coloca unidades debajo de unidades (y la coma debajo de la coma).",
+        "Empieza por la columna de la derecha y apunta arriba lo que te llevas."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Calcula: 25 − 7,38",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.6
+      },
+      "operation": "subtract",
+      "operands": [
+        25,
+        7.38
+      ],
+      "feedback": {
+        "correct": "Resta bien hecha.",
+        "incorrect": "Revisa las columnas en las que la cifra de arriba era menor: ahí te llevas una.",
+        "theory": "Para restar en columna se va de derecha a izquierda; si la cifra de arriba es menor, se le suman 10 y se lleva 1 a la cifra de abajo de la columna siguiente. Con decimales, coma debajo de coma; si al minuendo le faltan cifras decimales, se completan con ceros."
+      },
+      "hints": [
+        "Empieza por la columna de la derecha.",
+        "Si la cifra de arriba es menor, súmale 10 y lleva 1 a la siguiente cifra de abajo."
+      ]
+    },
+    {
+      "type": "true_false",
+      "stem": "Para sumar 125,6 + 38,75 en columna, la coma de 125,6 tiene que quedar justo encima de la coma de 38,75.",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.2
+      },
+      "answer": {
+        "value": true
+      },
+      "feedback": {
+        "correct": "Eso es: coma debajo de coma.",
+        "incorrect": "Al sumar decimales se alinean las comas, no la última cifra.",
+        "theory": "Con decimales, la coma va debajo de la coma (donde falte una cifra decimal, imagina un 0) y la coma del resultado baja en la misma columna."
+      }
+    }
+  ]
+}

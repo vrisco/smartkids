@@ -1,0 +1,33 @@
+{
+  "subjectId": "math",
+  "subjectName": {
+    "es": "Matemáticas",
+    "en": "Maths",
+    "ca": "Matemàtiques"
+  },
+  "gradeBand": "PRI-6",
+  "courseId": "course_math_pri6_calculo",
+  "courseName": {
+    "es": "Matemáticas · 6º Primaria · Cálculo en columna y factores primos",
+    "en": "Maths · Year 7 · Column arithmetic and prime factors"
+  },
+  "language": "es",
+  "version": "1.0.0",
+  "modules": [
+    {
+      "file": "01-sumas-restas.json"
+    },
+    {
+      "file": "02-multiplicacion.json"
+    },
+    {
+      "file": "03-division-entera.json"
+    },
+    {
+      "file": "04-division-decimales.json"
+    },
+    {
+      "file": "05-factores-primos.json"
+    }
+  ]
+}

@@ -20,6 +20,8 @@ export const ExerciseTypeSchema = z.enum([
   "ordering",
   "matching",
   "step_problem",
+  "column_operation",
+  "prime_factorization",
 ]);
 export type ExerciseType = z.infer<typeof ExerciseTypeSchema>;
 
@@ -187,7 +189,35 @@ export const StepProblemSchema = BaseExercise.extend({
 });
 export type StepProblemExercise = z.infer<typeof StepProblemSchema>;
 
-/** Unión discriminada por `type` — los 8 tipos. */
+/**
+ * Operación en columna, como en el cuaderno: suma (2-4 sumandos), resta, multiplicación o división «en
+ * casita». Solo se guardan los NÚMEROS: la solución (resultado, resto, restos parciales) la calcula
+ * `arith.ts`, así que el contenido no puede traer una cuenta mal resuelta. En pantalla el niño la hace en
+ * una cuadrícula y solo se corrige el resultado (y el resto en la división entera): lo demás es borrador.
+ * Topes y coherencia (minuendo >= sustraendo, división entera con enteros...) en `columnSpecProblem`.
+ */
+export const ColumnOperationSchema = BaseExercise.extend({
+  type: z.literal("column_operation"),
+  operation: z.enum(["add", "subtract", "multiply", "divide"]),
+  /** En orden: sumandos; minuendo y sustraendo; los dos factores (el 2º va abajo); dividendo y divisor. */
+  operands: z.array(z.number().nonnegative()).min(2).max(4),
+  /** Solo división: decimales del cociente (se trunca). 0/ausente = división entera con resto. */
+  decimals: z.number().int().min(0).max(3).optional(),
+});
+export type ColumnOperationExercise = z.infer<typeof ColumnOperationSchema>;
+
+/**
+ * Descomposición en factores primos con la «escalera» del cuaderno (1428 | 2, 714 | 2, ... 1). Solo se
+ * guarda el número. Se corrige el producto de potencias de primos que escribe el niño (cualquier orden;
+ * la escalera es borrador).
+ */
+export const PrimeFactorizationSchema = BaseExercise.extend({
+  type: z.literal("prime_factorization"),
+  number: z.number().int().min(2).max(9_999_999),
+});
+export type PrimeFactorizationExercise = z.infer<typeof PrimeFactorizationSchema>;
+
+/** Unión discriminada por `type` — los 10 tipos. */
 export const ExerciseSchema = z.discriminatedUnion("type", [
   MultipleChoiceSchema,
   MultipleSelectSchema,
@@ -197,6 +227,8 @@ export const ExerciseSchema = z.discriminatedUnion("type", [
   OrderingSchema,
   MatchingSchema,
   StepProblemSchema,
+  ColumnOperationSchema,
+  PrimeFactorizationSchema,
 ]);
 export type Exercise = z.infer<typeof ExerciseSchema>;
 
@@ -218,6 +250,12 @@ export const AnswerSchema = z.discriminatedUnion("type", [
     steps: z.array(
       z.object({ stepId: z.string(), value: z.number().optional(), text: z.string().optional() }),
     ),
+  }),
+  /** Resultado de la cuenta (en la división, el cociente) y, en la división entera, el resto. */
+  z.object({ type: z.literal("column_operation"), result: z.number(), remainder: z.number().optional() }),
+  z.object({
+    type: z.literal("prime_factorization"),
+    factors: z.array(z.object({ base: z.number().int(), exp: z.number().int().min(1).max(64) })).max(30),
   }),
 ]);
 export type Answer = z.infer<typeof AnswerSchema>;

@@ -206,6 +206,7 @@ export interface ContentRequest {
   id: string;
   title: string;
   instructions: string;
+  examples?: string; // ejemplos o guía de los ejercicios (modelo para parte del banco, no lo limita)
   status: string; // uploaded | processing | published | failed
   childId?: string | null;
   subjectId?: string | null;

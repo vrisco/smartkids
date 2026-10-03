@@ -317,6 +317,12 @@ function parseQuestionTypes(v: unknown): string[] | null {
   return out.length > 0 ? out : null;
 }
 
+/** Ejemplos o guía de ejercicios que da el tutor (texto libre). Sirven de MODELO para parte del banco, no lo limitan. */
+const REQ_EXAMPLES_MAX = 4000;
+function parseExamples(v: unknown): string {
+  return String(v ?? "").trim().slice(0, REQ_EXAMPLES_MAX);
+}
+
 /** Nº de ejercicios a GENERAR para una solicitud: lo pedido + el 50 % de variedad. */
 function targetExercises(numQuestions: number | null): number {
   return Math.ceil((numQuestions ?? 20) * GENERATION_EXTRA);
@@ -336,6 +342,7 @@ function requestConfigFromForm(form: Record<string, unknown>, prev?: RequestRow)
       : (prev?.sessionLength ?? null),
     // Presente pero vacío = "variados" (null); ausente = se conserva lo que hubiera.
     questionTypes: form["questionTypes"] !== undefined ? parseQuestionTypes(form["questionTypes"]) : (prev?.questionTypes ?? null),
+    examples: form["examples"] !== undefined ? parseExamples(form["examples"]) : (prev?.examples ?? ""),
   };
 }
 
@@ -2682,8 +2689,8 @@ app.post("/api/tutor/content-requests", async (c) => {
 
   const raw = form["files"];
   const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File);
-  // Título opcional (la skill lo nombra con la info). Solo hace falta ALGO con lo que generar: fichero, descripción o al menos un título/tema.
-  if (files.length === 0 && !instructions && !title) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
+  // Título opcional (la skill lo nombra con la info). Solo hace falta ALGO con lo que generar: fichero, descripción, ejemplos o al menos un título/tema.
+  if (files.length === 0 && !instructions && !cfg.examples && !title) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
   if (files.length > UPLOAD_MAX_FILES) return c.json({ error: "too_many_files" }, 400);
   for (const f of files) {
     if (!UPLOAD_KINDS[f.type]) return c.json({ error: "unsupported_type", detail: `${f.name}: ${f.type}` }, 400);
@@ -2813,7 +2820,7 @@ app.post("/api/tutor/content-requests/:id/regenerate", async (c) => {
     if (!UPLOAD_KINDS[f.type]) return c.json({ error: "unsupported_type", detail: `${f.name}: ${f.type}` }, 400);
     if (f.size > UPLOAD_MAX_BYTES) return c.json({ error: "file_too_large", detail: f.name }, 400);
   }
-  if (!title && !instructions && prevAssets.length + newFiles.length === 0) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
+  if (!title && !instructions && !cfg.examples && prevAssets.length + newFiles.length === 0) return c.json({ error: "empty_request", message: "Sube material o describe qué generar." }, 400);
 
   const now = new Date().toISOString();
   let targetId = reqId;

@@ -1,12 +1,12 @@
 # Arquitectura de smartkids
 
-> **Nota (M9, 2026-07-12):** el **sistema de contenido** (hoy 8 tipos con modelo unificado en `packages/shared`,
+> **Nota (M9, 2026-07-12):** el **sistema de contenido** (hoy 10 tipos con modelo unificado en `packages/shared`,
 > generación en dos vías, contenido privado del hogar, anti-farm atómico) es posterior a partes de este documento.
 > Para el estado ACTUAL de contenido/economía la verdad viva es `../CLAUDE.md` §8, `docs/adr/` y `apps/api/src/db/schema.ts`
 > (28 tablas). Este documento conserva el modelo de datos base, la jerarquía de usuarios y los flujos de auth.
-> Migraciones al día hasta `0020` (0018: preguntas por misión `skills.session_length`, y en `content_requests`
+> Migraciones al día hasta `0021` (0018: preguntas por misión `skills.session_length`, y en `content_requests`
 > `question_types`, `session_length` y `source_request_id` para las copias regeneradas; 0019: `exercise_reports`,
-> los avisos «esta pregunta está mal» que el niño manda y el tutor revisa; 0020: `child_profiles.mascot`). La «sesión de juego» del §6
+> los avisos «esta pregunta está mal» que el niño manda y el tutor revisa; 0020: `child_profiles.mascot`; 0021: `content_requests.examples`, los ejemplos o guía de ejercicios del tutor). La «sesión de juego» del §6
 > hoy sirve una tanda de `sessionLength` preguntas con selección priorizada y repaso de los fallos (ver `../CLAUDE.md` §8).
 
 Referencia profunda del sistema. Para la guía operativa breve, ver `../CLAUDE.md`. Para el catálogo de

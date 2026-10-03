@@ -1,0 +1,295 @@
+{
+  "skill": {
+    "id": "MATH.PRI6.COL.DIV",
+    "name": {
+      "es": "Divisiones con resto",
+      "en": "Long division with remainder"
+    },
+    "difficultyBase": 0.45,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "column_operation",
+      "stem": "Divide 965 entre 4. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.2
+      },
+      "operation": "divide",
+      "operands": [
+        965,
+        4
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 7384 entre 6. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.3
+      },
+      "operation": "divide",
+      "operands": [
+        7384,
+        6
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 5291 entre 9. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.3
+      },
+      "operation": "divide",
+      "operands": [
+        5291,
+        9
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 1428 entre 7. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.35
+      },
+      "operation": "divide",
+      "operands": [
+        1428,
+        7
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 2148 entre 25. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.4
+      },
+      "operation": "divide",
+      "operands": [
+        2148,
+        25
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 3605 entre 12. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "operation": "divide",
+      "operands": [
+        3605,
+        12
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 9876 entre 32. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "operation": "divide",
+      "operands": [
+        9876,
+        32
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 16384 entre 128. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.5
+      },
+      "operation": "divide",
+      "operands": [
+        16384,
+        128
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 57000 entre 125. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.55
+      },
+      "operation": "divide",
+      "operands": [
+        57000,
+        125
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 84251 entre 48. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.55
+      },
+      "operation": "divide",
+      "operands": [
+        84251,
+        48
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 40417 entre 352. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.6
+      },
+      "operation": "divide",
+      "operands": [
+        40417,
+        352
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 31416 entre 157. Escribe el cociente y el resto.",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.6
+      },
+      "operation": "divide",
+      "operands": [
+        31416,
+        157
+      ],
+      "feedback": {
+        "correct": "División correcta: cociente y resto bien.",
+        "incorrect": "Haz la prueba: divisor × cociente + resto tiene que dar el dividendo.",
+        "theory": "Se cogen las primeras cifras del dividendo que alcancen al divisor, se mira cuántas veces cabe, se escribe el resto y se baja la cifra siguiente. Para comprobarlo: divisor × cociente + resto = dividendo."
+      },
+      "hints": [
+        "Coge las primeras cifras del dividendo que sean mayores o iguales que el divisor.",
+        "Apunta el resto debajo y baja la siguiente cifra."
+      ]
+    },
+    {
+      "type": "numeric",
+      "stem": "En una división el divisor es 25, el cociente 85 y el resto 23. ¿Cuál es el dividendo?",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "answer": {
+        "value": 2148,
+        "tolerance": 0
+      },
+      "feedback": {
+        "correct": "Exacto: 25 × 85 + 23 = 2148.",
+        "incorrect": "Usa la prueba de la división: dividendo = divisor × cociente + resto.",
+        "solution": "25 × 85 = 2125; 2125 + 23 = 2148.",
+        "theory": "En toda división: dividendo = divisor × cociente + resto, y el resto es siempre menor que el divisor."
+      }
+    }
+  ]
+}

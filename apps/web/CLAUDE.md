@@ -65,17 +65,25 @@ funciona por el proxy de Vite; en prod por mismo origen. Un despliegue cross-ori
   cómo se resuelve (`solution`). Si hubo fallos, pantalla de transición y SESIÓN DE REPASO con esos mismos
   ejercicios barajados (`api.retryExercise` → `?exercise=<id>`; fallar lo reencola, tope = fallos + 3); al final,
   resumen. La corrección y las monedas siguen siendo del servidor.
-- **`components/ExerciseInput.tsx`** — inputs de los 8 tipos; `multiple_select` son casillas y envía
+- **`components/ExerciseInput.tsx`** — inputs de los 10 tipos; `multiple_select` son casillas y envía
   `{ type:"multiple_select", optionIds }`.
+- **`components/ColumnOps.tsx`** — `column_operation` y `prime_factorization` «como en el cuaderno». UNA colocación
+  (`layoutColumn`: cuadrícula de casillas con rayas y la «casita» de la división) en tres modos: `input` (el niño la
+  hace; casillas de una cifra que avanzan solas, de derecha a izquierda en sumas/restas/multiplicaciones y de
+  izquierda a derecha en el cociente; la coma se teclea en la casilla de su cifra; solo cuentan las de borde de
+  color), `solved` (`WorkedOperation`: tras fallar y en la vista previa) y `paper` (`PaperOperation`, la ficha). La
+  aritmética sale de `@smartkids/shared/arith` (import de RUNTIME permitido: no lleva zod). Las casillas del cociente
+  son las que PUEDE tener (no chivan cuántas cifras tiene).
 - **`components/Worksheet.tsx`** — «Ficha PDF» de cada contenido del hogar (botón en `TutorPanel`): el tutor elige
-  tipos y nº de preguntas (tope 50; reparto por turnos entre tipos y de fácil a difícil, opciones/ítems barajados) y
+  tipos y nº de preguntas (tope 50; reparto por turnos entre tipos y de fácil a difícil, opciones/ítems barajados; las
+  cuentas en columna salen en cuadrícula de cuaderno y la factorización con su escalera vacía) y
   se imprime con `window.print()` («Guardar como PDF»). Las soluciones van SIEMPRE al final en página aparte y son
   sencillas (solo nº y respuesta, sin explicaciones); el recuadro de operaciones es opcional.
   Sin dependencias ni endpoint nuevo: usa `api.skillExercises` (excluye los ocultos). La hoja va en un portal fuera
   de `#root` y el CSS `@media print` (`html.ws-printing`, tokens `--print-*`) oculta el resto de la app.
 - **`screens/TutorPanel.tsx`** — formulario de solicitud (Vía B): nº de preguntas 10..200 con aviso del 50 % extra
-  que se genera, preguntas por misión (5..30), 1..6 módulos y casillas de tipos de pregunta con presets por materia
-  (`TYPE_PRESETS`); en modo «Regenerar» elige sustituir (`replace`) o crear uno nuevo (`copy`) y llama a
+  que se genera, preguntas por misión (5..30), 1..6 módulos, casillas de tipos de pregunta con presets por materia
+  (`TYPE_PRESETS`) y un campo opcional «Ejemplos o guía» (`examples`, tope 4000 como la API); en modo «Regenerar» elige sustituir (`replace`) o crear uno nuevo (`copy`) y llama a
   `api.regenerateContentRequest`. Cada contenido del hogar ofrece «Regenerar» (si su solicitud está procesada) y un
   selector de preguntas por misión (`api.setSkillSessionLength`). `ExerciseReports` lista las preguntas que los niños
   han marcado como erróneas (su respuesta, la esperada y la solución) con «Ocultar pregunta» (solo contenido propio)

@@ -1,0 +1,316 @@
+{
+  "skill": {
+    "id": "MATH.PRI6.FACT.PRIMES",
+    "name": {
+      "es": "Descomposición en factores primos",
+      "en": "Prime factorisation"
+    },
+    "difficultyBase": 0.45,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 60",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.15
+      },
+      "number": 60,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 84",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.2
+      },
+      "number": 84,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 90",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.2
+      },
+      "number": 90,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 156",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.25
+      },
+      "number": 156,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 126",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.3
+      },
+      "number": 126,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 300",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.35
+      },
+      "number": 300,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 360",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.4
+      },
+      "number": 360,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 245",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.4
+      },
+      "number": 245,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 376",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "number": 376,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Divide entre 2, 3, 5, 7, 11, 13... en orden.",
+        "Si lo que queda no se divide entre ningún primo cuyo cuadrado sea menor que él, ya es primo: divide entre él mismo."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 1001",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.55
+      },
+      "number": 1001,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Divide entre 2, 3, 5, 7, 11, 13... en orden.",
+        "Si lo que queda no se divide entre ningún primo cuyo cuadrado sea menor que él, ya es primo: divide entre él mismo."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 1428",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.55
+      },
+      "number": 1428,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 2148",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.65
+      },
+      "number": 2148,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Divide entre 2, 3, 5, 7, 11, 13... en orden.",
+        "Si lo que queda no se divide entre ningún primo cuyo cuadrado sea menor que él, ya es primo: divide entre él mismo."
+      ]
+    },
+    {
+      "type": "prime_factorization",
+      "stem": "Descompón en factores primos: 4620",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.7
+      },
+      "number": 4620,
+      "feedback": {
+        "correct": "Bien descompuesto: todos los factores son primos.",
+        "incorrect": "Revisa la escalera: cada divisor tiene que ser primo y hay que llegar hasta 1.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      },
+      "hints": [
+        "Mientras el número sea par, divide entre 2.",
+        "Después prueba con 3, 5, 7, 11... hasta que lo que quede sea 1."
+      ]
+    },
+    {
+      "type": "true_false",
+      "stem": "El número 97 es primo.",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.3
+      },
+      "answer": {
+        "value": true
+      },
+      "feedback": {
+        "correct": "Sí: no se puede dividir entre 2, 3, 5 ni 7, y 11 × 11 ya pasa de 97.",
+        "incorrect": "Prueba a dividir 97 entre 2, 3, 5 y 7: ninguna división es exacta.",
+        "theory": "Un número es primo si solo se puede dividir de forma exacta entre 1 y entre él mismo. Basta probar con los primos cuyo cuadrado no pase del número."
+      }
+    },
+    {
+      "type": "multiple_choice",
+      "stem": "¿Cuál es la descomposición en factores primos de 72?",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.35
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "2^3 · 3^2",
+          "isCorrect": true
+        },
+        {
+          "id": "b",
+          "text": "2^2 · 3^3",
+          "isCorrect": false
+        },
+        {
+          "id": "c",
+          "text": "8 · 9",
+          "isCorrect": false
+        },
+        {
+          "id": "d",
+          "text": "2 · 36",
+          "isCorrect": false
+        }
+      ],
+      "feedback": {
+        "correct": "Bien: 72 = 2 · 2 · 2 · 3 · 3.",
+        "incorrect": "8 · 9 da 72, pero 8 y 9 no son primos: hay que seguir dividiendo.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      }
+    },
+    {
+      "type": "numeric",
+      "stem": "¿Cuántas veces aparece el factor 2 en la descomposición de 96?",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.4
+      },
+      "answer": {
+        "value": 5,
+        "tolerance": 0
+      },
+      "feedback": {
+        "correct": "Exacto: 96 = 2^5 · 3.",
+        "incorrect": "Divide 96 entre 2 tantas veces como puedas: 48, 24, 12, 6, 3.",
+        "solution": "96 : 2 = 48; 48 : 2 = 24; 24 : 2 = 12; 12 : 2 = 6; 6 : 2 = 3. Son cinco veces: 96 = 2^5 · 3.",
+        "theory": "Para descomponer un número en factores primos se divide entre el menor primo posible (2, 3, 5, 7, 11...) y se repite con el cociente hasta llegar a 1. Los divisores de la derecha son los factores; los que se repiten se escriben como potencia."
+      }
+    }
+  ]
+}

@@ -1312,7 +1312,19 @@ function ContentSection({ me }: { me: Me }) {
 const QUESTION_COUNTS = [10, 20, 30, 50, 75, 100, 150, 200];
 const SESSION_LENGTHS = [5, 10, 15, 20, 25, 30];
 const GENERATION_EXTRA = 1.5; // igual que la API: se genera un 50 % más de lo pedido para variar cada tanda
-const QUESTION_TYPES = ["multiple_choice", "multiple_select", "true_false", "fill_in_blank", "numeric", "ordering", "matching", "step_problem"] as const;
+const EXAMPLES_MAX = 4000; // igual que REQ_EXAMPLES_MAX en la API
+const QUESTION_TYPES = [
+  "multiple_choice",
+  "multiple_select",
+  "true_false",
+  "fill_in_blank",
+  "numeric",
+  "ordering",
+  "matching",
+  "step_problem",
+  "column_operation",
+  "prime_factorization",
+] as const;
 type QuestionType = (typeof QUESTION_TYPES)[number];
 /** Tipos sugeridos por materia: lo que mejor evalúa cada una sin corrección manual. */
 const TYPE_PRESETS: Record<string, QuestionType[]> = {
@@ -1345,6 +1357,7 @@ function UploadContent({
   const { t } = useTranslation();
   const [title, setTitle] = useState(request?.title ?? "");
   const [instructions, setInstructions] = useState(request?.instructions ?? "");
+  const [examples, setExamples] = useState(request?.examples ?? "");
   const [childId, setChildId] = useState(request?.childId ?? kids[0]?.id ?? "");
   const gradeOf = (id: string) => {
     const g = kids.find((k) => k.id === id)?.gradeBand;
@@ -1365,7 +1378,7 @@ function UploadContent({
   const [error, setError] = useState<string | null>(null);
 
   const hasNewFiles = Boolean(files && files.length > 0);
-  const canSave = Boolean(title.trim() || instructions.trim() || hasNewFiles || assets.length > 0);
+  const canSave = Boolean(title.trim() || instructions.trim() || examples.trim() || hasNewFiles || assets.length > 0);
 
   function toggleType(ty: string, on: boolean) {
     setTypes((cur) => (on ? QUESTION_TYPES.filter((x) => x === ty || cur.includes(x)) : cur.filter((x) => x !== ty)));
@@ -1389,6 +1402,7 @@ function UploadContent({
       const form = new FormData();
       form.set("title", title.trim());
       form.set("instructions", instructions.trim());
+      form.set("examples", examples.trim()); // vacío = sin ejemplos
       if (childId) form.set("childId", childId);
       form.set("gradeBand", level); // vacío = el curso escolar del niño (lo resuelve la API)
       form.set("numQuestions", String(numQuestions));
@@ -1538,6 +1552,17 @@ function UploadContent({
           })}
         </div>
         <p className="reward-hint">{t("content.questionTypesHint")}</p>
+
+        <div className="course-label">{t("content.examples")}</div>
+        <textarea
+          className="field"
+          rows={4}
+          maxLength={EXAMPLES_MAX}
+          placeholder={t("content.examplesPh")}
+          value={examples}
+          onChange={(e) => setExamples(e.target.value)}
+        />
+        <p className="reward-hint">{t("content.examplesHint")}</p>
 
         {assets.length > 0 && (
           <>

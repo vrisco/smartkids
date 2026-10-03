@@ -50,7 +50,18 @@ const DEFAULT_SPEC: Spec = SpecSchema.parse({
   skillId: "MATH.ESO5.MIX.DEMO",
   skillName: { es: "Repaso variado", en: "Mixed practice" },
   language: "es",
-  types: ["multiple_choice", "multiple_select", "numeric", "true_false", "fill_in_blank", "ordering", "matching", "step_problem"],
+  types: [
+    "multiple_choice",
+    "multiple_select",
+    "numeric",
+    "true_false",
+    "fill_in_blank",
+    "ordering",
+    "matching",
+    "step_problem",
+    "column_operation",
+    "prime_factorization",
+  ],
   count: 8,
   packageId: "pkg_math_eso5_mix_demo_v1",
   version: "1.0.0",
@@ -114,6 +125,10 @@ function mockByType(type: ExerciseType, spec: Spec): Record<string, unknown> {
         { id: "s1", prompt: "Velocidad media (km/h)?", kind: "numeric", answer: { value: 60, tolerance: 0 } },
         { id: "s2", prompt: "Como se llama esa magnitud?", kind: "short_text", accept: ["velocidad"] },
       ] };
+    case "column_operation":
+      return { ...base, type, stem: "Calcula: 386 × 412", operation: "multiply", operands: [386, 412] };
+    case "prime_factorization":
+      return { ...base, type, stem: "Descompón en factores primos: 1428", number: 1428 };
   }
 }
 
@@ -145,6 +160,8 @@ Reglas OBLIGATORIAS:
 - ordering: "items" con ids y "correctOrder" con esos ids en el orden correcto.
 - matching: "left", "right" y "correctPairs" (cada left emparejado una vez).
 - step_problem: "steps" en orden, cada uno numeric o short_text con su respuesta.
+- column_operation (cuenta en columna en cuadrícula, como en el cuaderno): "operation" = add | subtract | multiply | divide y "operands" = los números (>= 0, hasta 4 decimales, como número JSON: 40417.84). Suma: 2-4 sumandos; resta, multiplicación y división: exactamente 2 (minuendo >= sustraendo; en la multiplicación el 2º factor, el de abajo, de 1 a 4 cifras; en la división dividendo y divisor). División: "decimals" = decimales del cociente (se trunca); sin "decimals" es división entera con resto y entonces los dos números deben ser enteros. NO escribas el resultado: lo calcula la app. stem corto con la operación ("Calcula: 386 × 412", "Divide 40417,84 entre 352 sacando dos decimales").
+- prime_factorization (descomposición en factores primos con la escalera de divisiones): "number" = entero de 2 a 9999999. NO escribas los factores: los calcula la app. stem tipo "Descompón en factores primos: 1428".
 - NOTACIÓN MATEMÁTICA (en stem, opciones y prompts): potencias con "^" (2^5, x^2, 2^(-3)), raíces con "√" o "sqrt(...)" (√81, √(9 + 16)), fracciones con "/" (1/2, x/2), multiplicación con "·". El exponente puede llevar paréntesis (10^(-3)) y un hueco puede ir en el exponente (2^{{1}}). NO uses LaTeX (\\frac, \\sqrt) ni superíndices Unicode (²³): la app renderiza esta notación en pantalla.
 - feedback.correct y feedback.incorrect breves; feedback.solution con la solución trabajada; feedback.theory con la regla o concepto que explica el ejercicio (1-2 frases, lo que el alumno debe recordar). Sin apóstrofos ni comillas raras.
 - Opcional "hints": array de 1-3 pistas que GUÍEN sin dar la solución, de lo general a lo concreto (la última puede casi resolver). Ayudan al alumno atascado antes de responder.

@@ -319,6 +319,7 @@ export const contentRequests = sqliteTable("content_requests", {
   gradeBand: text("grade_band"), // pista opcional de nivel
   title: text("title").notNull(),
   instructions: text("instructions").notNull().default(""), // qué quiere generar el tutor
+  examples: text("examples").notNull().default(""), // ejemplos o guía de los ejercicios que quiere (modelo, no límite: se generan también otros)
   numQuestions: integer("num_questions"), // preguntas a generar (null = por defecto)
   pointsPerCorrect: integer("points_per_correct"), // puntos por acierto
   modules: integer("modules"), // 1 = ficha única; >1 = path con N módulos

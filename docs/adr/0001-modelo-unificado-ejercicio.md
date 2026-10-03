@@ -39,3 +39,9 @@ Verificado end-to-end (los 7 tipos sirven, corrigen acierto/fallo y no filtran l
 > acierta solo con el conjunto exacto; `redactForClient` no revela cuántas son correctas) y `FeedbackSchema` ganó
 > `theory` opcional (teoría «Recuerda: ...» que se enseña al fallar). La decisión de este ADR no cambia: el tipo
 > nuevo se añadió solo en `packages/shared` y lo consumen API, web y pipeline.
+>
+> **Nota posterior (2026-10):** hoy son **10 tipos**: `column_operation` (suma, resta, multiplicación y división «en
+> casita» en cuadrícula) y `prime_factorization` (escalera de divisiones). Variante de la decisión: estos dos tipos
+> guardan solo los DATOS (los números) y la solución se DERIVA con aritmética exacta (`packages/shared/src/arith.ts`,
+> sin zod para que la web también la use al dibujar la cuenta resuelta). Así el contenido generado no puede traer una
+> solución equivocada y el self-check es trivialmente cierto; la validación útil son los topes de `columnSpecProblem`.

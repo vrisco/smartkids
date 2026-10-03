@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError, type Answer, type AttemptResult, type Exercise, type ReportReason } from "../api";
+import { WorkedOperation } from "../components/ColumnOps";
 import { ExerciseInput, FillBlanks, correctAnswerString } from "../components/ExerciseInput";
 import { ExerciseFigure } from "../components/ExerciseFigure";
 import { Icon } from "../components/Icon";
@@ -300,7 +301,11 @@ export function Session({
             ? t("session.complete")
             : render.type === "multiple_select"
               ? t("session.selectAll")
-              : t("session.solve");
+              : render.type === "column_operation"
+                ? t("session.columnOp")
+                : render.type === "prime_factorization"
+                  ? t("session.factorize")
+                  : t("session.solve");
 
   // En selección / verdadero-falso / casillas la respuesta buena ya se marca en verde sobre las opciones.
   const highlighted = render.type === "multiple_choice" || render.type === "true_false" || render.type === "multiple_select";
@@ -374,6 +379,13 @@ export function Session({
             <div className="explain-answer">
               <span className="explain-label">{t("session.correctAnswer")}</span>
               <MathText text={correctText} />
+            </div>
+          )}
+          {/* Cuentas en columna y factorización: la cuenta entera resuelta, como en el cuaderno. */}
+          {(render.type === "column_operation" || render.type === "prime_factorization") && (
+            <div className="explain-block">
+              <span className="explain-label">{t("session.workedOp")}</span>
+              <WorkedOperation ex={render} />
             </div>
           )}
           {result.theory && (
@@ -453,7 +465,7 @@ export function Session({
           )}
         </button>
       )}
-      {result && <ReportQuestion key={exercise.id} profileId={profileId} templateId={exercise.id} />}
+      {result && <ReportQuestion key={"report-" + exercise.id} profileId={profileId} templateId={exercise.id} />}
     </div>
   );
 }

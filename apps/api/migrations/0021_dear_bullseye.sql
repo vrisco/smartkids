@@ -1,0 +1,1 @@
+ALTER TABLE `content_requests` ADD `examples` text DEFAULT '' NOT NULL;

@@ -58,7 +58,8 @@ borra las 28 tablas y crea cuentas demo con contraseñas publicadas en el repo, 
   publican troceados (`offset` en el import; ids de plantilla `<paquete>_<offset+n>`; solo el lote 0 retira).
 - **Config de generación de la Vía B** en un único sitio: `requestConfigFromForm()` (lo que no venga se hereda de la
   solicitud previa). Rangos: `numQuestions` 5..200, `sessionLength` 3..30, `modules` 1..6, `pointsPerCorrect` 1..50,
-  `questionTypes` = tipos válidos del `ExerciseTypeSchema` (vacío = variados, desconocidos se descartan). Se genera
+  `questionTypes` = tipos válidos del `ExerciseTypeSchema` (vacío = variados, desconocidos se descartan), `examples` =
+  ejemplos o guía del tutor (texto, `REQ_EXAMPLES_MAX = 4000`; presente vacío lo borra, ausente se hereda). Se genera
   `targetExercises = ceil(numQuestions * GENERATION_EXTRA)` con `GENERATION_EXTRA = 1.5`.
 - **R2 compartido entre solicitudes**: una copia regenerada (`mode=copy`) reutiliza los objetos de R2 del original.
   Borra SIEMPRE con `deleteR2IfUnreferenced` (solo si ninguna fila de `content_request_assets` apunta al `r2_key`),

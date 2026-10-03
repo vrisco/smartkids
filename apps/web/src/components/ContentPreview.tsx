@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type FullExercise, type PreviewExercise } from "../api";
+import { WorkedOperation } from "./ColumnOps";
 import { ExerciseFigure } from "./ExerciseFigure";
 import { Icon } from "./Icon";
 import { MathText, renderMath } from "./MathText";
@@ -263,5 +264,8 @@ function Answer({ ex }: { ex: FullExercise }) {
           ))}
         </ol>
       );
+    case "column_operation":
+    case "prime_factorization":
+      return <WorkedOperation ex={ex} />;
   }
 }

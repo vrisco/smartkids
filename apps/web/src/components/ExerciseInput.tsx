@@ -1,8 +1,11 @@
-// Inputs y correcciones para los 8 tipos de ejercicio. Recibe el `render` (sin
+// Inputs y correcciones para los 10 tipos de ejercicio. Recibe el `render` (sin
 // solución) y reporta un `Answer | null` hacia arriba; `null` = aún incompleto.
+// Las cuentas en columna y la factorización en primos viven en ColumnOps.tsx.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Answer, AttemptResult, RenderPayload } from "../api";
+import i18n from "../i18n";
+import { ColumnOperationInput, FactorizationInput, decimalSep, operationAnswerText } from "./ColumnOps";
 import { Icon } from "./Icon";
 import { MathText, renderMath } from "./MathText";
 
@@ -330,6 +333,10 @@ export function ExerciseInput({
       return <Matching render={render} answer={answer} onChange={onChange} result={result} />;
     case "step_problem":
       return <StepProblem render={render} answer={answer} onChange={onChange} result={result} />;
+    case "column_operation":
+      return <ColumnOperationInput render={render} onChange={onChange} result={result} />;
+    case "prime_factorization":
+      return <FactorizationInput render={render} onChange={onChange} result={result} />;
     case "fill_in_blank":
       return null; // se renderiza inline dentro del enunciado (FillBlanks)
   }
@@ -373,5 +380,8 @@ export function correctAnswerString(render: RenderPayload, ca: Answer): string {
         .map((s) => (s.value !== undefined ? String(s.value) : (s.text ?? "")))
         .join("  ·  ");
     }
+    case "column_operation":
+    case "prime_factorization":
+      return operationAnswerText(render, ca, decimalSep(i18n.language), i18n.t("session.remainder").toLowerCase());
   }
 }

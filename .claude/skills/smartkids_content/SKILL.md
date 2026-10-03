@@ -1,6 +1,6 @@
 ---
 name: smartkids_content
-description: "Genera contenido educativo (ejercicios de los 8 tipos) para smartkids y lo publica en PRODUCCIÓN de forma autónoma, en dos vías: (A) desde una descripción en lenguaje natural del usuario, y (B) procesando el material que los tutores suben por la app (fotos, PDF, texto). Úsala cuando el usuario pida 'generar contenido', 'crear ejercicios de <asignatura/nivel>', o 'procesar las solicitudes de contenido de los tutores'."
+description: "Genera contenido educativo (ejercicios de los 10 tipos) para smartkids y lo publica en PRODUCCIÓN de forma autónoma, en dos vías: (A) desde una descripción en lenguaje natural del usuario, y (B) procesando el material que los tutores suben por la app (fotos, PDF, texto). Úsala cuando el usuario pida 'generar contenido', 'crear ejercicios de <asignatura/nivel>', o 'procesar las solicitudes de contenido de los tutores'."
 ---
 
 # /smartkids_content
@@ -54,13 +54,26 @@ Con esos dos en su sitio, el ciclo completo (listar → descargar → generar �
 
 ## Contexto imprescindible
 
-- El modelo del ejercicio es ÚNICO y vive en `packages/shared` (`ExerciseSchema`, 8 tipos: `multiple_choice`,
-  `multiple_select`, `numeric`, `fill_in_blank`, `true_false`, `ordering`, `matching`, `step_problem`). NO inventes
+- El modelo del ejercicio es ÚNICO y vive en `packages/shared` (`ExerciseSchema`, 10 tipos: `multiple_choice`,
+  `multiple_select`, `numeric`, `fill_in_blank`, `true_false`, `ordering`, `matching`, `step_problem`,
+  `column_operation`, `prime_factorization`). NO inventes
   otro formato. Reglas de forma (mín. opciones, ids únicos, `correctOrder` permutación, `correctPairs` bijección,
   huecos `{{1}}`, etc.) y el self-check están en `packages/shared/src/grading.ts` (`validateExercise`).
 - **`multiple_select` ("casillas": marca TODAS las correctas):** `options: [{id, text, isCorrect}]` con 4-6
   opciones, **al menos 2 correctas y al menos 1 incorrecta** (todas correctas = inválido). Se acierta solo con el
   conjunto exacto. El `stem` debe dejar claro que puede haber varias ("Marca todas las que...").
+- **Cuentas en columna y factorización en primos (matemáticas, «como en el cuaderno»).** Solo llevan los NÚMEROS;
+  la solución la calcula la app (`packages/shared/src/arith.ts`), así que no escribas resultados ni factores.
+  - `column_operation`: `operation` = `add` | `subtract` | `multiply` | `divide` y `operands` (números JSON >= 0,
+    hasta 4 decimales: `40417.84`). Suma 2-4 sumandos; resta, multiplicación y división exactamente 2 (minuendo >=
+    sustraendo; el 2º factor, el de abajo, de 1 a 4 cifras). División: `decimals` = decimales del cociente (se
+    trunca); sin `decimals` es división ENTERA con resto y entonces dividendo y divisor deben ser enteros. El niño
+    la hace en una cuadrícula (llevadas, productos parciales y restos son borrador) y se corrige el resultado (y el
+    resto). `stem` corto: "Calcula: 386 × 412", "Divide 40417,84 entre 352 sacando dos decimales".
+  - `prime_factorization`: `number` entero 2..9999999. El niño hace la escalera (número | primo) y escribe el
+    producto de potencias; vale cualquier orden. `stem`: "Descompón en factores primos: 1428".
+  - Úsalos cuando el tema sea cálculo en columna, decimales o divisibilidad (Primaria y 1º-2º ESO); si el material
+    del tutor trae cuentas o «factoriza» en su cuaderno, son el tipo natural. `feedback.theory` igual de obligatorio.
 - **Feedback COMPLETO en cada ejercicio (el niño lo ve al fallar):** `feedback.correct` e `incorrect` breves,
   `feedback.solution` (cómo se resuelve, paso a paso y corto) y **`feedback.theory`** (1-2 frases con la regla o el
   concepto que hay que recordar, p. ej. "Para sumar fracciones con distinto denominador, primero se pasan a común
@@ -74,7 +87,7 @@ Con esos dos en su sitio, el ciclo completo (listar → descargar → generar �
   incluir en su propio texto todos los datos numéricos y la descripción necesaria. Nunca escribas "la figura A" ni
   "según la imagen": si el material se apoyaba en una figura, reescribe el ejercicio con los datos dentro del
   `stem`. Los items no auto-corregibles del material ("dibuja en tu cuaderno", "colorea") conviértelos en
-  preguntas equivalentes que SÍ se puedan evaluar con uno de los 7 tipos, o descártalos.
+  preguntas equivalentes que SÍ se puedan evaluar con uno de los tipos del modelo, o descártalos.
 - **Puedes GENERAR FIGURAS, no solo texto.** El modelo tiene un campo opcional `figure` en cada ejercicio: un
   documento **SVG en línea** que se muestra sobre el enunciado. Úsalo cuando una imagen aclare la pregunta
   (geometría: polígonos, triángulos, círculos con radio/diámetro marcados, ejes; diagramas; rectas numéricas;
@@ -123,6 +136,8 @@ Autónomo de principio a fin. Para CADA solicitud pendiente:
      se genera un 50 % más para que cada tanda del curso salga distinta. Genera `targetExercises`, no `numQuestions`.
    - `questionTypes`: tipos pedidos (p. ej. `["numeric","multiple_select"]`); `null` = elige tú la mezcla que mejor
      encaje con la materia y el material.
+   - `examples`: **ejemplos o guía** que escribió el tutor (texto libre; `""` = ninguno): ejercicios como los que
+     quiere y/o cómo deben ser. Es un MODELO para parte del banco, NO un límite (ver paso 4).
    - `sessionLength`: preguntas por misión (va en `skill.sessionLength` al publicar); `pointsPerCorrect`;
      `modules` (1 = ficha única; >1 = path con N módulos).
    - `regenerate` + `previousSkills`: si `regenerate` es `true`, es una **regeneración EN SITIO** de algo ya
@@ -130,7 +145,7 @@ Autónomo de principio a fin. Para CADA solicitud pendiente:
      se procesa como una solicitud normal (sus `assets` son los del original).
 2. **Descarga los assets si los hay:** `GET .../content-requests/:id/assets/:assetId` (Bearer) devuelve el binario.
    Guárdalo y léelo (el Read tool lee PDFs e imágenes directamente). Una solicitud puede NO tener assets (petición
-   solo de texto): entonces genera a partir de `title` + `instructions`.
+   solo de texto): entonces genera a partir de `title` + `instructions` + `examples`.
 3. **Fija el nivel y la asignatura (sin leer la D1):**
    - **Nivel** = `gradeBand` de la solicitud; si es null, `child.gradeBand`; si también, dedúcelo del material.
      Todo el lote se genera para ese curso (ver «Nivel = curso escolar» en «Contexto imprescindible»).
@@ -145,6 +160,16 @@ Autónomo de principio a fin. Para CADA solicitud pendiente:
    - **Variedad real, no clones:** con bancos grandes (50-300) recorre TODOS los subtemas del material, cambia
      datos, contextos y formulaciones; evita ejercicios que solo difieran en un número. Dificultad escalonada
      (aprox. 30 % easy, 50 % medium, 20 % hard) con `difficulty.numeric` coherente.
+   - **Ejemplos del tutor (`examples` no vacío), sin detrimento del resto:** aprox. **40-60 %** del banco sigue esos
+     ejemplos (mismo tipo de tarea, formato, dificultad y estilo de enunciado, con datos, contextos y formulaciones
+     NUEVOS; no copies los ejemplos tal cual salvo uno o dos como mucho). El otro 40-60 % sigue cubriendo el resto
+     del material y de los subtemas con otros enfoques. El reparto por tipos de `questionTypes` se mantiene en TODO
+     el banco: un ejemplo escrito en texto libre se traslada al tipo que mejor lo evalúe (p. ej. «Calcula 3/4 + 1/6»
+     → `numeric` o `fill_in_blank`), y ningún tipo pasa del ~40 % por culpa de los ejemplos. Si `examples` es una
+     GUÍA (cómo deben ser: «problemas cortos de la vida diaria», «sin decimales», «enunciados de una línea»), aplícala
+     a TODO el banco salvo que choque con un tipo pedido, y entonces manda el tipo. Si los ejemplos contradicen el
+     nivel del contenido, manda el ejemplo (es lo que el tutor ve en clase). Datos personales que aparezcan en los
+     ejemplos (nombres de compañeros, del colegio) no se copian.
    - Cada ejercicio con su `feedback` completo (incluida `theory`, ver «Contexto imprescindible»).
    **Nombre del skill/path:** usa `title`; si viene vacío O es claramente un placeholder de prueba (p. ej.
    "aaaa", "test", "asdf"), genera tú un nombre corto y claro a partir del contenido/`instructions`.
@@ -236,6 +261,8 @@ mundo— y emites los N cuerpos de import ya bien formados. No olvides poner `re
 - **Ejercicios auto-contenidos** (el niño no ve el material). No referencies figuras/imágenes externas.
 - **Siempre `feedback.theory` y `feedback.solution`**: es lo que aprende el niño cuando falla.
 - **Genera `targetExercises`** (lo pedido + 50 %) y respeta `questionTypes`; publica en lotes de 50 con `offset`.
+- **`examples` del tutor = modelo de ~la mitad del banco, nunca su totalidad:** el resto cubre el material con otros
+  enfoques y el reparto por tipos se mantiene.
 - **Privado = ámbito del hogar:** `ownerId` del tutor de la solicitud y asignación solo a su(s) niño(s).
 - Si el endpoint rechaza un ejercicio (`400`), corrígelo o descártalo; no publiques inválidos.
 - **Reporta con honestidad:** cuántos se generaron, cuántos se rechazaron y por qué, y el estado final en prod.

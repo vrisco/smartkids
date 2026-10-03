@@ -1,0 +1,298 @@
+{
+  "skill": {
+    "id": "MATH.PRI6.COL.DIVDEC",
+    "name": {
+      "es": "Divisiones con decimales",
+      "en": "Long division with decimals"
+    },
+    "difficultyBase": 0.55,
+    "coinsPerCorrect": 10
+  },
+  "exercises": [
+    {
+      "type": "column_operation",
+      "stem": "Divide 45,6 entre 3 sacando un decimal en el cociente.",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.3
+      },
+      "operation": "divide",
+      "operands": [
+        45.6,
+        3
+      ],
+      "decimals": 1,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo."
+      },
+      "hints": [
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 3 entre 4 sacando dos decimales en el cociente.",
+      "difficulty": {
+        "level": "easy",
+        "numeric": 0.3
+      },
+      "operation": "divide",
+      "operands": [
+        3,
+        4
+      ],
+      "decimals": 2,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo."
+      },
+      "hints": [
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 17 entre 8 sacando tres decimales en el cociente.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.4
+      },
+      "operation": "divide",
+      "operands": [
+        17,
+        8
+      ],
+      "decimals": 3,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo."
+      },
+      "hints": [
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 128,25 entre 15 sacando dos decimales en el cociente.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "operation": "divide",
+      "operands": [
+        128.25,
+        15
+      ],
+      "decimals": 2,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo."
+      },
+      "hints": [
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 2 entre 3 sacando tres decimales en el cociente.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.45
+      },
+      "operation": "divide",
+      "operands": [
+        2,
+        3
+      ],
+      "decimals": 3,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo."
+      },
+      "hints": [
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 1000 entre 7 sacando dos decimales en el cociente.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.5
+      },
+      "operation": "divide",
+      "operands": [
+        1000,
+        7
+      ],
+      "decimals": 2,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo."
+      },
+      "hints": [
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 93,6 entre 1,2 sacando un decimal en el cociente.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.55
+      },
+      "operation": "divide",
+      "operands": [
+        93.6,
+        1.2
+      ],
+      "decimals": 1,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente y cómo queda la cuenta sin coma en el divisor.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo. Si el divisor tiene coma, se quita: se corre la coma del dividendo tantos lugares como decimales tenga el divisor (añadiendo ceros si hace falta) y se divide igual."
+      },
+      "hints": [
+        "Primero quita la coma del divisor: corre la coma del dividendo los mismos lugares.",
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 40417,84 entre 352 sacando dos decimales en el cociente.",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.6
+      },
+      "operation": "divide",
+      "operands": [
+        40417.84,
+        352
+      ],
+      "decimals": 2,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo."
+      },
+      "hints": [
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 12 entre 0,25 sacando un decimal en el cociente.",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.6
+      },
+      "operation": "divide",
+      "operands": [
+        12,
+        0.25
+      ],
+      "decimals": 1,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente y cómo queda la cuenta sin coma en el divisor.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo. Si el divisor tiene coma, se quita: se corre la coma del dividendo tantos lugares como decimales tenga el divisor (añadiendo ceros si hace falta) y se divide igual."
+      },
+      "hints": [
+        "Primero quita la coma del divisor: corre la coma del dividendo los mismos lugares.",
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 7,35 entre 0,05 sacando un decimal en el cociente.",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.65
+      },
+      "operation": "divide",
+      "operands": [
+        7.35,
+        0.05
+      ],
+      "decimals": 1,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente y cómo queda la cuenta sin coma en el divisor.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo. Si el divisor tiene coma, se quita: se corre la coma del dividendo tantos lugares como decimales tenga el divisor (añadiendo ceros si hace falta) y se divide igual."
+      },
+      "hints": [
+        "Primero quita la coma del divisor: corre la coma del dividendo los mismos lugares.",
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 870,92 entre 5,6 sacando dos decimales en el cociente.",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.7
+      },
+      "operation": "divide",
+      "operands": [
+        870.92,
+        5.6
+      ],
+      "decimals": 2,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente y cómo queda la cuenta sin coma en el divisor.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo. Si el divisor tiene coma, se quita: se corre la coma del dividendo tantos lugares como decimales tenga el divisor (añadiendo ceros si hace falta) y se divide igual."
+      },
+      "hints": [
+        "Primero quita la coma del divisor: corre la coma del dividendo los mismos lugares.",
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "column_operation",
+      "stem": "Divide 56,7 entre 2,25 sacando dos decimales en el cociente.",
+      "difficulty": {
+        "level": "hard",
+        "numeric": 0.7
+      },
+      "operation": "divide",
+      "operands": [
+        56.7,
+        2.25
+      ],
+      "decimals": 2,
+      "feedback": {
+        "correct": "División con decimales bien hecha.",
+        "incorrect": "Revisa dónde va la coma del cociente y cómo queda la cuenta sin coma en el divisor.",
+        "theory": "Al bajar la primera cifra decimal del dividendo se pone la coma en el cociente. Para sacar más decimales se añade un 0 al resto y se sigue dividiendo. Si el divisor tiene coma, se quita: se corre la coma del dividendo tantos lugares como decimales tenga el divisor (añadiendo ceros si hace falta) y se divide igual."
+      },
+      "hints": [
+        "Primero quita la coma del divisor: corre la coma del dividendo los mismos lugares.",
+        "Cuando bajes la primera cifra decimal, pon la coma en el cociente."
+      ]
+    },
+    {
+      "type": "true_false",
+      "stem": "Dividir 870,92 entre 5,6 da el mismo cociente que dividir 8709,2 entre 56.",
+      "difficulty": {
+        "level": "medium",
+        "numeric": 0.5
+      },
+      "answer": {
+        "value": true
+      },
+      "feedback": {
+        "correct": "Correcto: multiplicar dividendo y divisor por 10 no cambia el cociente.",
+        "incorrect": "Si se multiplican dividendo y divisor por el mismo número, el cociente no cambia.",
+        "theory": "Si el divisor tiene coma, se quita: se corre la coma del dividendo tantos lugares como decimales tenga el divisor (añadiendo ceros si hace falta) y se divide igual."
+      }
+    }
+  ]
+}
