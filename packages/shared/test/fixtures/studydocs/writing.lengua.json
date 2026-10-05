@@ -1,0 +1,50 @@
+{
+  "kind": "writing",
+  "title": "Escribe una carta",
+  "subtitle": "Lengua · 5.º de Primaria",
+  "language": "es",
+  "estimatedMinutes": 40,
+  "blocks": [
+    {
+      "type": "writing_prompt",
+      "title": "Una carta a un amigo",
+      "prompt": "Escribe una carta a un amigo que vive lejos contándole cómo ha sido tu fin de semana.",
+      "genre": "Carta informal",
+      "minWords": 100,
+      "maxWords": 150,
+      "checklist": ["Lugar y fecha", "Saludo", "Cuerpo con tres párrafos", "Despedida y firma", "Revisar mayúsculas y tildes"],
+      "model": "Madrid, 3 de octubre de 2026\n\nQuerida Laura:\n\nTe escribo para contarte mi fin de semana. El sábado fuimos al parque con mis primos y montamos en bici hasta el lago...\n\nUn abrazo muy fuerte,\nPablo"
+    },
+    { "type": "answer_space", "lines": 18, "style": "lines", "label": "Tu carta" },
+    {
+      "type": "rubric",
+      "title": "Cómo se valora",
+      "criteria": [
+        {
+          "name": "Estructura",
+          "levels": [
+            { "label": "Por mejorar", "points": 0, "descriptor": "Faltan partes de la carta." },
+            { "label": "Bien", "points": 1, "descriptor": "Tiene casi todas las partes." },
+            { "label": "Muy bien", "points": 2, "descriptor": "Tiene todas las partes en orden." }
+          ]
+        },
+        {
+          "name": "Contenido",
+          "levels": [
+            { "label": "Por mejorar", "points": 0, "descriptor": "Cuenta muy poco." },
+            { "label": "Bien", "points": 1, "descriptor": "Cuenta lo que hizo con algún detalle." },
+            { "label": "Muy bien", "points": 2, "descriptor": "Cuenta lo que hizo con detalles y opiniones." }
+          ]
+        },
+        {
+          "name": "Ortografía",
+          "levels": [
+            { "label": "Por mejorar", "points": 0, "descriptor": "Más de cinco faltas." },
+            { "label": "Bien", "points": 1, "descriptor": "Entre dos y cinco faltas." },
+            { "label": "Muy bien", "points": 2, "descriptor": "Una falta o ninguna." }
+          ]
+        }
+      ]
+    }
+  ]
+}

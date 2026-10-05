@@ -1,0 +1,29 @@
+{
+  "kind": "flashcards",
+  "title": "Animals",
+  "subtitle": "Inglés · 3.º de Primaria",
+  "language": "es",
+  "print": { "cardsPerPage": 8 },
+  "blocks": [
+    {
+      "type": "flashcards",
+      "title": "Farm and wild animals",
+      "frontLang": "en",
+      "backLang": "es",
+      "cards": [
+        { "front": "cow", "back": "vaca", "hint": "Gives us milk." },
+        { "front": "horse", "back": "caballo" },
+        { "front": "sheep", "back": "oveja", "hint": "The plural is also sheep." },
+        { "front": "pig", "back": "cerdo" },
+        { "front": "hen", "back": "gallina" },
+        { "front": "duck", "back": "pato" },
+        { "front": "lion", "back": "león" },
+        { "front": "elephant", "back": "elefante" },
+        { "front": "monkey", "back": "mono" },
+        { "front": "giraffe", "back": "jirafa" },
+        { "front": "snake", "back": "serpiente" },
+        { "front": "bear", "back": "oso" }
+      ]
+    }
+  ]
+}

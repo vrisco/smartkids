@@ -19,6 +19,7 @@ export function GalaxyMap({
   onBack,
   progress,
   review,
+  notes,
 }: {
   profileId: string;
   courseId: string;
@@ -27,6 +28,7 @@ export function GalaxyMap({
   onBack?: () => void;
   progress?: ReactNode; // cómo va en el curso (aciertos, tiempo, temas dominados)
   review?: ReactNode; // botón "Repasar fallos" del curso
+  notes?: ReactNode; // «Apuntes de este tema» del curso
 }) {
   const { t } = useTranslation();
   const [skills, setSkills] = useState<SkillNode[] | null>(null);
@@ -58,6 +60,7 @@ export function GalaxyMap({
             {review}
           </div>
         )}
+        {notes}
       </div>
 
       <div className="nodes">

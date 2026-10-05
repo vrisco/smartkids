@@ -14,6 +14,9 @@
  *     01-....json        -> { skill: {...}, exercises: [ ...Exercise sin campos de contexto... ] }
  *     02-....json
  *     ...
+ *     docs/              -> OPCIONAL: documentos de estudio («Apuntes») del curso
+ *       NN-<slug>.<tipo>.json -> { id?, module?, position?, childAnswers?, doc: StudyDoc }
+ *                              (<tipo> = doc.kind; `module` = fichero del módulo al que pertenece)
  *
  * Uso (desde la raíz del monorepo):
  *   pnpm --filter @smartkids/content-gen run build:course -- --course content/math-eso2-operaciones
@@ -23,13 +26,22 @@
  *   pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote --file="tools/content-gen/out/<courseId>.sql"
  */
 import { z } from "zod";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import {
+  CHILD_ANSWERS_DEFAULT,
   ExerciseSchema,
+  StudyDocSchema,
+  canonicalStudyDocJson,
+  lintStudyDoc,
+  studyDocBytes,
+  studyDocStats,
   toStoredPayload,
   validateExercise,
+  validateStudyDoc,
   type Exercise,
+  type StudyDoc,
 } from "@smartkids/shared";
 
 /* ---------- Esquemas de los ficheros de curso ---------- */
@@ -60,6 +72,30 @@ const ModuleSchema = z.object({
   // + los campos específicos de su tipo.
   exercises: z.array(z.record(z.string(), z.unknown())).min(1),
 });
+
+/** Documento de estudio del curso: `content/<curso>/docs/NN-<slug>.<tipo>.json`. */
+const CourseDocFileSchema = z.object({
+  /** Por defecto `doc_<courseId>_<nombre del fichero>`. */
+  id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$/).optional(),
+  /** Fichero del módulo al que pertenece («03-division-entera.json»); sin él, es del curso entero. */
+  module: z.string().optional(),
+  position: z.number().int().min(0).optional(),
+  childAnswers: z.boolean().optional(),
+  doc: z.unknown(),
+});
+const DOC_FILE_RE = /^(\d{2})-[a-z0-9-]+\.([a-z_]+)\.json$/;
+/** D1 rechaza sentencias de más de 100 KB. */
+const MAX_STATEMENT_BYTES = 100_000;
+
+interface BuiltDoc {
+  id: string;
+  doc: StudyDoc;
+  skillId: string | null;
+  moduleIndex: number | null;
+  position: number;
+  childAnswers: boolean;
+  hash: string;
+}
 
 /* ---------- SQL helpers ---------- */
 
@@ -171,7 +207,9 @@ function main(): void {
     process.exit(1);
   }
 
-  const sql = buildSql(course, built);
+  const docs = loadDocs(courseDir, course, built);
+  // Con la carpeta docs/ (aunque esté vacía) se retiran los documentos del curso que ya no están en ella.
+  const sql = buildSql(course, built, docs, existsSync(join(courseDir, "docs")));
   const outDir = join(process.cwd(), "out");
   mkdirSync(outDir, { recursive: true });
   const sqlPath = join(outDir, `${course.courseId}.sql`);
@@ -184,9 +222,86 @@ function main(): void {
   console.log(`  pnpm --filter @smartkids/api exec wrangler d1 execute smartkids --remote --file="${sqlPath}"`);
 }
 
+/** Carga y valida los documentos de estudio de `docs/` (si existe). Un documento inválido aborta sin SQL. */
+function loadDocs(courseDir: string, course: Course, mods: BuiltModule[]): BuiltDoc[] {
+  const dir = join(courseDir, "docs");
+  if (!existsSync(dir)) return [];
+  const out: BuiltDoc[] = [];
+  const ids = new Set<string>();
+  let bad = 0;
+  const moduleFiles = course.modules.map((m) => m.file);
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
+    const m = DOC_FILE_RE.exec(file);
+    if (!m) {
+      bad++;
+      console.log(`  x [docs/${file}] el nombre debe ser NN-<slug>.<tipo>.json`);
+      continue;
+    }
+    const f = CourseDocFileSchema.safeParse(JSON.parse(readFileSync(join(dir, file), "utf8")));
+    if (!f.success) {
+      bad++;
+      console.log(`  x [docs/${file}] ${f.error.issues[0]?.message} (${f.error.issues[0]?.path.join(".")})`);
+      continue;
+    }
+    const p = StudyDocSchema.safeParse(f.data.doc);
+    if (!p.success) {
+      bad++;
+      console.log(`  x [docs/${file}] ${p.error.issues[0]?.message} (doc.${p.error.issues[0]?.path.join(".")})`);
+      continue;
+    }
+    const doc = p.data;
+    if (doc.kind !== m[2]) {
+      bad++;
+      console.log(`  x [docs/${file}] el tipo del nombre (${m[2]}) no coincide con doc.kind (${doc.kind})`);
+      continue;
+    }
+    const v = validateStudyDoc(doc);
+    if (!v.ok) {
+      bad++;
+      console.log(`  x [docs/${file}] ${v.reason}`);
+      continue;
+    }
+    let skillId: string | null = null;
+    let moduleIndex: number | null = null;
+    if (f.data.module) {
+      const mi = moduleFiles.indexOf(f.data.module);
+      if (mi < 0) {
+        bad++;
+        console.log(`  x [docs/${file}] module "${f.data.module}" no está en course.json`);
+        continue;
+      }
+      skillId = mods[mi]!.skillId;
+      moduleIndex = mi;
+    }
+    const id = f.data.id ?? `doc_${course.courseId}_${file.replace(/\.json$/, "")}`;
+    if (ids.has(id)) {
+      bad++;
+      console.log(`  x [docs/${file}] id repetido: ${id}`);
+      continue;
+    }
+    ids.add(id);
+    for (const w of lintStudyDoc(doc)) console.log(`  ! [docs/${file}] ${w}`);
+    out.push({
+      id,
+      doc,
+      skillId,
+      moduleIndex,
+      position: f.data.position ?? Number(m[1]),
+      childAnswers: f.data.childAnswers ?? CHILD_ANSWERS_DEFAULT[doc.kind],
+      hash: createHash("sha256").update(canonicalStudyDocJson(doc)).digest("hex"),
+    });
+    console.log(`  docs/${file}: ok (${doc.kind}, ${studyDocBytes(doc)} bytes)`);
+  }
+  if (bad > 0) {
+    console.error(`Hay ${bad} documento(s) inválido(s); corrígelos antes de publicar. No se escribe SQL.`);
+    process.exit(1);
+  }
+  return out;
+}
+
 /* ---------- Emisión de SQL (idempotente, acotado a los ids del curso) ---------- */
 
-function buildSql(course: Course, mods: BuiltModule[]): string {
+function buildSql(course: Course, mods: BuiltModule[], docs: BuiltDoc[], docsDir: boolean): string {
   const createdAt = new Date().toISOString();
   const L: string[] = [];
   L.push(`-- Curso fijo: ${course.courseId} · ${mods.length} módulos · ${mods.reduce((n, m) => n + m.exercises.length, 0)} ejercicios`);
@@ -269,6 +384,35 @@ function buildSql(course: Course, mods: BuiltModule[]): string {
           `difficulty_numeric=excluded.difficulty_numeric, difficulty_level=excluded.difficulty_level, retired=0;`,
       );
     });
+  }
+
+  // Documentos de estudio del curso: GLOBALES (owner_id NULL), los ve el niño con un curso de esta
+  // asignatura+nivel. Se retiran todos los del curso y cada UPSERT reactiva el suyo (lo que ya no está en
+  // docs/ queda retirado). La versión solo sube si cambia el contenido; `child_answers` y `hidden` quedan
+  // fuera del SET, y el WHERE impide convertir en global un documento PRIVADO que comparta id.
+  if (docsDir) {
+    L.push(`UPDATE study_docs SET retired=1 WHERE course_id=${sqlStr(course.courseId)} AND owner_id IS NULL;`);
+    for (const d of docs) {
+      const stmt =
+        `INSERT INTO study_docs (id, kind, owner_id, subject_id, grade_band, title, language, body, stats, bytes, version, content_hash, ` +
+        `skill_id, path_id, course_id, module_index, position, request_id, child_answers, hidden, retired, created_at, updated_at) VALUES (` +
+        `${sqlStr(d.id)}, ${sqlStr(d.doc.kind)}, NULL, ${sqlStr(course.subjectId)}, ${sqlStr(course.gradeBand)}, ${sqlStr(d.doc.title)}, ` +
+        `${sqlStr(d.doc.language)}, ${sqlStr(JSON.stringify(d.doc))}, ${sqlStr(JSON.stringify(studyDocStats(d.doc)))}, ${studyDocBytes(d.doc)}, 1, ` +
+        `${sqlStr(d.hash)}, ${sqlVal(d.skillId)}, NULL, ${sqlStr(course.courseId)}, ${d.moduleIndex === null ? "NULL" : d.moduleIndex}, ${d.position}, ` +
+        `NULL, ${d.childAnswers ? 1 : 0}, 0, 0, ${sqlStr(createdAt)}, ${sqlStr(createdAt)}) ` +
+        `ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, subject_id=excluded.subject_id, grade_band=excluded.grade_band, ` +
+        `title=excluded.title, language=excluded.language, body=excluded.body, stats=excluded.stats, bytes=excluded.bytes, ` +
+        `skill_id=excluded.skill_id, course_id=excluded.course_id, module_index=excluded.module_index, position=excluded.position, retired=0, ` +
+        `version=CASE WHEN study_docs.content_hash<>excluded.content_hash THEN study_docs.version+1 ELSE study_docs.version END, ` +
+        `updated_at=CASE WHEN study_docs.content_hash<>excluded.content_hash THEN excluded.updated_at ELSE study_docs.updated_at END, ` +
+        `content_hash=excluded.content_hash WHERE study_docs.owner_id IS NULL;`;
+      const bytes = Buffer.byteLength(stmt, "utf8");
+      if (bytes > MAX_STATEMENT_BYTES) {
+        console.error(`El documento ${d.id} genera una sentencia de ${bytes} bytes (D1 admite ${MAX_STATEMENT_BYTES}). Divídelo.`);
+        process.exit(1);
+      }
+      L.push(stmt);
+    }
   }
 
   return L.join("\n") + "\n";

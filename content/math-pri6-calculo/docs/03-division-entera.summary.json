@@ -1,0 +1,72 @@
+{
+  "module": "03-division-entera.json",
+  "position": 3,
+  "doc": {
+    "kind": "summary",
+    "title": "Divisiones con resto",
+    "subtitle": "Matemáticas · 6.º de Primaria",
+    "language": "es",
+    "goals": ["Hacer divisiones de una y dos cifras en el divisor", "Saber qué son el cociente y el resto", "Comprobar una división con la prueba"],
+    "estimatedMinutes": 15,
+    "blocks": [
+      { "type": "heading", "level": 1, "text": "Las partes de una división" },
+      {
+        "type": "definitions",
+        "items": [
+          { "term": "Dividendo", "definition": "El número que se reparte." },
+          { "term": "Divisor", "definition": "En cuántas partes se reparte." },
+          { "term": "Cociente", "definition": "Lo que le toca a cada parte." },
+          { "term": "Resto", "definition": "Lo que sobra. Siempre es menor que el divisor." }
+        ]
+      },
+      { "type": "heading", "level": 1, "text": "Cómo se hace" },
+      {
+        "type": "worked_example",
+        "title": "Divisor de una cifra",
+        "statement": "Divide 965 entre 4.",
+        "operation": { "type": "column_operation", "operation": "divide", "operands": [965, 4] },
+        "steps": [
+          { "text": "Cogemos la primera cifra: $9 : 4 = 2$ y sobra 1." },
+          { "text": "Bajamos el 6: $16 : 4 = 4$ y sobra 0." },
+          { "text": "Bajamos el 5: $5 : 4 = 1$ y sobra 1." }
+        ],
+        "answer": "Cociente 241 y resto 1.",
+        "check": "Prueba: $4 · 241 + 1 = 965$."
+      },
+      {
+        "type": "worked_example",
+        "title": "Divisor de dos cifras",
+        "statement": "Divide 7384 entre 23.",
+        "operation": { "type": "column_operation", "operation": "divide", "operands": [7384, 23] },
+        "steps": [
+          { "text": "73 entre 23 cabe a 3: $3 · 23 = 69$ y sobran 4." },
+          { "text": "Bajamos el 8: 48 entre 23 cabe a 2: $2 · 23 = 46$ y sobran 2." },
+          { "text": "Bajamos el 4: 24 entre 23 cabe a 1 y sobra 1." }
+        ],
+        "answer": "Cociente 321 y resto 1.",
+        "check": "Prueba: $23 · 321 + 1 = 7384$."
+      },
+      {
+        "type": "callout",
+        "variant": "warning",
+        "title": "Error típico",
+        "text": "Si al bajar una cifra el número no llega al divisor, escribe un **0** en el cociente y baja la siguiente."
+      },
+      {
+        "type": "callout",
+        "variant": "remember",
+        "title": "Recuerda",
+        "text": "Prueba de la división: $divisor · cociente + resto = dividendo$."
+      },
+      {
+        "type": "questions",
+        "title": "Comprueba lo que sabes",
+        "items": [
+          { "kind": "fill", "id": "d1", "prompt": "En $85 : 4$ el cociente es {{1}} y el resto es {{2}}.", "answers": ["21", "1"] },
+          { "kind": "true_false", "id": "d2", "prompt": "En una división el resto puede ser mayor que el divisor.", "correct": false, "explanation": "Si fuera mayor, aún cabría otra vez el divisor." },
+          { "kind": "choice", "id": "d3", "prompt": "¿Qué división está bien hecha?", "options": ["$50 : 6$ da 8 y resto 2", "$50 : 6$ da 7 y resto 8", "$50 : 6$ da 9 y resto 4"], "correct": 0, "explanation": "$6 · 8 + 2 = 50$ y el resto 2 es menor que 6." }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "kind": "summary",
+  "title": "Múltiplos y divisores",
+  "subtitle": "Matemáticas · 6.º de Primaria",
+  "language": "es",
+  "goals": [
+    "Saber qué es un múltiplo y qué es un divisor",
+    "Usar los criterios de divisibilidad del 2, 3, 5, 9 y 10",
+    "Calcular el m.c.m. y el M.C.D. de dos números"
+  ],
+  "estimatedMinutes": 20,
+  "blocks": [
+    { "type": "heading", "level": 1, "text": "Múltiplos de un número" },
+    {
+      "type": "paragraph",
+      "text": "Los **múltiplos** de un número se obtienen multiplicándolo por 0, 1, 2, 3... Por ejemplo, los múltiplos de 5 son $0, 5, 10, 15, 20$... Un número tiene **infinitos** múltiplos."
+    },
+    {
+      "type": "callout",
+      "variant": "remember",
+      "title": "Recuerda",
+      "text": "Un número es múltiplo de otro si al dividirlos la división es **exacta** (resto 0)."
+    },
+    { "type": "heading", "level": 1, "text": "Divisores y criterios de divisibilidad" },
+    {
+      "type": "paragraph",
+      "text": "Los **divisores** de un número son los números que lo dividen de forma exacta. Los divisores de 12 son 1, 2, 3, 4, 6 y 12."
+    },
+    {
+      "type": "table",
+      "caption": "Criterios de divisibilidad",
+      "header": ["Divisible por", "Si...", "Ejemplo"],
+      "rows": [
+        ["2", "termina en 0 o en cifra par", "14652"],
+        ["3", "la suma de sus cifras es múltiplo de 3", "231: $2 + 3 + 1 = 6$"],
+        ["5", "termina en 0 o en 5", "3235"],
+        ["9", "la suma de sus cifras es múltiplo de 9", "4293: $4 + 2 + 9 + 3 = 18$"],
+        ["10", "termina en 0", "6230"]
+      ],
+      "headerColumn": true
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Truco",
+      "text": "Los divisores van por parejas: si $4 · 9 = 36$, el 4 y el 9 son divisores de 36. Así no se te escapa ninguno."
+    },
+    { "type": "heading", "level": 1, "text": "m.c.m. y M.C.D. con factorización" },
+    {
+      "type": "definitions",
+      "items": [
+        {
+          "term": "m.c.m.",
+          "definition": "Mínimo común múltiplo: factores comunes y no comunes con el **mayor** exponente.",
+          "example": "$12 = 2^2 · 3$ y $18 = 2 · 3^2$, así que m.c.m. $= 2^2 · 3^2 = 36$."
+        },
+        {
+          "term": "M.C.D.",
+          "definition": "Máximo común divisor: solo los factores comunes con el **menor** exponente.",
+          "example": "Con los mismos números, M.C.D. $= 2 · 3 = 6$."
+        }
+      ]
+    },
+    {
+      "type": "worked_example",
+      "title": "Factorizar 120",
+      "statement": "Descompón 120 en factores primos.",
+      "operation": { "type": "prime_factorization", "number": 120 },
+      "steps": [
+        { "text": "Dividimos entre el primo más pequeño que se pueda: $120 : 2 = 60$." },
+        { "text": "Seguimos: $60 : 2 = 30$, $30 : 2 = 15$, $15 : 3 = 5$ y $5 : 5 = 1$." },
+        { "text": "Escribimos los primos de la derecha como producto de potencias." }
+      ],
+      "answer": "$120 = 2^3 · 3 · 5$",
+      "check": "Comprobamos: $8 · 3 · 5 = 120$."
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Error típico",
+      "text": "No confundas las dos reglas: el m.c.m. usa el exponente **mayor** y el M.C.D. el **menor**."
+    },
+    {
+      "type": "questions",
+      "title": "Comprueba lo que sabes",
+      "items": [
+        {
+          "kind": "choice",
+          "id": "q1",
+          "prompt": "¿Cuál de estos números es divisible por 3?",
+          "options": ["2451", "2453", "1024"],
+          "correct": 0,
+          "explanation": "$2 + 4 + 5 + 1 = 12$, que está en la tabla del 3."
+        },
+        { "kind": "true_false", "id": "q2", "prompt": "El 1 es un número primo.", "correct": false, "explanation": "Solo tiene un divisor." },
+        { "kind": "fill", "id": "q3", "prompt": "m.c.m.(4, 6) = {{1}}", "answers": ["12"] },
+        { "kind": "open", "id": "q4", "prompt": "Explica con tus palabras qué es un número primo.", "answer": "Un número que solo se puede dividir entre 1 y entre él mismo.", "lines": 2 }
+      ]
+    }
+  ]
+}

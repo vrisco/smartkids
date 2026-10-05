@@ -5,6 +5,8 @@ import "./styles/tokens.css";
 import "./styles/global.css";
 import "./styles/app.css";
 import "./styles/auth.css";
+import "./styles/print.css";
+import "./styles/studydoc.css";
 import { App } from "./App";
 import { applyTheme, getTheme } from "./settings";
 

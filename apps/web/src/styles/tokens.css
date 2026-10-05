@@ -27,11 +27,16 @@
   --btn-primary-bg: linear-gradient(94deg, #37e1e8, #4bf0d0);
   --btn-primary-fg: #04121b;
 
-  /* Fichas impresas (Worksheet): papel blanco y tinta negra en cualquier tema */
+  /* Papel impreso (fichas, exámenes, apuntes): blanco y tinta negra en CUALQUIER tema. No dependen del
+     tema, así que NO se repiten en los bloques del tema oscuro. */
   --print-paper: #ffffff;
   --print-ink: #111111;
   --print-dim: #555555;
   --print-line: #8a8a8a;
+  --print-fill: #f0f0f0; /* rellenos suaves (decorativos: el navegador puede no imprimirlos) */
+  --print-grid: #b5b5b5; /* cuadrícula de cuaderno */
+  --print-guide: #c8c8c8; /* guías de la pauta de caligrafía */
+  --print-cut: #9a9a9a; /* líneas de corte de las tarjetas */
 
   /* ----- TEMA CLARO (por defecto) ----- */
   color-scheme: light;
