@@ -1,0 +1,29 @@
+{
+  "kind": "timeline",
+  "title": "La Edad Media en la Península Ibérica",
+  "subtitle": "Ciencias sociales · 2.º de ESO",
+  "language": "es",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "La Edad Media va desde la caída del Imperio romano de Occidente (476) hasta la llegada de Colón a América (1492)."
+    },
+    {
+      "type": "timeline",
+      "title": "Fechas clave",
+      "events": [
+        { "when": "476", "sortKey": 476, "title": "Fin del Imperio romano de Occidente", "text": "Empieza la Edad Media." },
+        { "when": "711", "sortKey": 711, "title": "Llegada de los musulmanes", "text": "Derrotan a los visigodos en Guadalete." },
+        { "when": "722", "sortKey": 722, "title": "Batalla de Covadonga", "text": "Origen del reino de Asturias." },
+        { "when": "929", "sortKey": 929, "title": "Califato de Córdoba", "text": "Abderramán III se proclama califa." },
+        { "when": "1212", "sortKey": 1212, "title": "Las Navas de Tolosa", "text": "Victoria cristiana que abre el sur peninsular." },
+        { "when": "1492", "sortKey": 1492, "title": "Conquista de Granada y viaje de Colón", "text": "Termina la Edad Media." }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "remember",
+      "text": "Una fecha sola no dice nada: aprende **qué pasó** y **por qué fue importante**."
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "kind": "concept_map",
+  "title": "Los seres vivos",
+  "subtitle": "Ciencias naturales · 4.º de Primaria",
+  "language": "es",
+  "print": { "orientation": "landscape" },
+  "blocks": [
+    {
+      "type": "tree",
+      "title": "Clasificación de los seres vivos",
+      "layout": "braces",
+      "root": {
+        "label": "Seres vivos",
+        "children": [
+          {
+            "label": "Animales",
+            "children": [
+              { "label": "Vertebrados", "text": "Tienen esqueleto interno: mamíferos, aves, peces, reptiles y anfibios." },
+              { "label": "Invertebrados", "text": "Sin esqueleto interno: insectos, moluscos, gusanos..." }
+            ]
+          },
+          {
+            "label": "Plantas",
+            "children": [
+              { "label": "Con flores", "text": "Producen semillas: el rosal, el trigo." },
+              { "label": "Sin flores", "text": "Musgos y helechos." }
+            ]
+          },
+          { "label": "Hongos", "text": "Setas, mohos y levaduras." },
+          { "label": "Microorganismos", "text": "Solo se ven al microscopio: bacterias, algas microscópicas." }
+        ]
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "fact",
+      "title": "¿Sabías que...?",
+      "text": "Los hongos no son plantas: no hacen la fotosíntesis."
+    }
+  ]
+}

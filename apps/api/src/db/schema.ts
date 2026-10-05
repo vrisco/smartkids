@@ -325,12 +325,14 @@ export const contentRequests = sqliteTable("content_requests", {
   modules: integer("modules"), // 1 = ficha única; >1 = path con N módulos
   questionTypes: text("question_types", { mode: "json" }).$type<string[]>(), // tipos de ejercicio pedidos (null = variados)
   sessionLength: integer("session_length"), // preguntas por misión del contenido generado
+  outputs: text("outputs", { mode: "json" }).$type<string[]>(), // qué generar: "exercises" + tipos de documento (null = solo ejercicios, solicitudes antiguas)
   sourceRequestId: text("source_request_id"), // si es una copia regenerada: la solicitud de la que sale (y sus ficheros)
   status: text("status").notNull().default("uploaded"), // uploaded | processing | published | failed
   note: text("note"), // nota/error del procesado
   skillId: text("skill_id"), // skill privado publicado al terminar
   packageId: text("package_id"), // paquete publicado
   exerciseCount: integer("exercise_count"),
+  docCount: integer("doc_count"), // documentos de estudio publicados (vigentes) al cerrar
   createdAt: text("created_at").notNull(),
   publishedAt: text("published_at"),
   notifiedAt: text("notified_at"),
@@ -387,6 +389,64 @@ export const contentRequestAssets = sqliteTable("content_request_assets", {
   size: integer("size").notNull(),
   createdAt: text("created_at").notNull(),
 }, (t) => [index("request_assets_request_idx").on(t.requestId)]);
+
+/* ---------- Documentos de estudio («Apuntes»: resúmenes, trucos, tarjetas... se ven en la app y se imprimen) ---------- */
+
+/** Documento de estudio: JSON por bloques validado con `StudyDocSchema` (packages/shared/src/studydoc.ts).
+ *  Como los skills: `owner_id` null = catálogo GLOBAL (lo ve el niño con un curso de esa asignatura+nivel);
+ *  con dueño = PRIVADO del hogar (lo ve el niño con `child_study_docs` Y si el dueño sigue en su hogar). */
+export const studyDocs = sqliteTable(
+  "study_docs",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(), // StudyDocKind
+    ownerId: text("owner_id"), // null = GLOBAL; tutor = PRIVADO del hogar (sin FK, como skills.owner_id)
+    subjectId: text("subject_id")
+      .notNull()
+      .references(() => subjects.id),
+    gradeBand: text("grade_band").notNull(),
+    title: text("title").notNull(), // copia de body.title para listar sin leer el cuerpo
+    language: text("language").notNull().default("es"),
+    body: text("body", { mode: "json" }).notNull(), // StudyDoc validado
+    stats: text("stats", { mode: "json" }), // studyDocStats(): palabras, tarjetas, preguntas...
+    bytes: integer("bytes").notNull().default(0),
+    version: integer("version").notNull().default(1), // +1 solo si cambia el contenido (content_hash)
+    contentHash: text("content_hash").notNull(),
+    skillId: text("skill_id"), // módulo al que pertenece (agrupación; sin FK: un doc sobrevive a su skill)
+    pathId: text("path_id"),
+    courseId: text("course_id"), // curso fijo de origen (Vía C): agrupación y retirada, NO da acceso
+    moduleIndex: integer("module_index"),
+    position: integer("position").notNull().default(0),
+    requestId: text("request_id"), // solicitud de origen (Vía B)
+    childAnswers: integer("child_answers", { mode: "boolean" }).notNull().default(true), // el niño ve las soluciones (curación del tutor)
+    hidden: integer("hidden", { mode: "boolean" }).notNull().default(false), // el tutor lo oculta al niño (solo privados)
+    retired: integer("retired", { mode: "boolean" }).notNull().default(false), // retirado al republicar (Vía C)
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("study_docs_owner_idx").on(t.ownerId),
+    index("study_docs_subject_grade_idx").on(t.subjectId, t.gradeBand, t.retired),
+    index("study_docs_request_idx").on(t.requestId),
+    index("study_docs_skill_idx").on(t.skillId),
+    index("study_docs_course_idx").on(t.courseId),
+  ],
+);
+
+/** Acceso de un niño a un documento PRIVADO (como child_skills). */
+export const childStudyDocs = sqliteTable(
+  "child_study_docs",
+  {
+    childId: text("child_id")
+      .notNull()
+      .references(() => childProfiles.id),
+    docId: text("doc_id")
+      .notNull()
+      .references(() => studyDocs.id),
+    assignedAt: text("assigned_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.childId, t.docId] }), index("child_study_docs_doc_idx").on(t.docId)],
+);
 
 /** Suscripción de Web Push (tutor o niño). Sin FK a propósito (ownerId es par_ o kid_);
  *  se limpia por ownerId al borrar. `endpoint` único para poder hacer upsert. */

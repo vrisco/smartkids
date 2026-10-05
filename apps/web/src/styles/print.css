@@ -1,0 +1,515 @@
+/* =========================================================================
+   Impresión (fichas, exámenes, tarjetas) y su diálogo «Imprimir».
+   Lo básico de la ficha (.ws-sheet, .ws-q, la clave...) sigue en app.css; aquí, el motor común, las
+   piezas del papel (cuadrícula, pauta, recuadros...), los perfiles por materia y edad y la UI nueva.
+   Solo tokens: el papel usa los --print-* (iguales en los dos temas).
+   ========================================================================= */
+
+/* ---------- Diálogos ---------- */
+.modal.print-modal {
+  max-width: 660px;
+  width: 100%;
+}
+.modal.studydoc-modal {
+  max-width: 780px;
+  width: 100%;
+}
+.print-modal .btn-primary,
+.studydoc-modal .btn-primary {
+  gap: var(--sp-2);
+}
+.print-modes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: var(--sp-3);
+}
+@media (min-width: 560px) {
+  .print-modes {
+    grid-template-columns: 1fr 1fr;
+  }
+  .type-checks.three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.print-more summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-dim);
+  padding: var(--sp-2) 0;
+}
+.print-more[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.print-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.modal-actions.top {
+  justify-content: flex-start;
+}
+
+/* ---------- Panel del tutor: documentos, módulos y cursos del catálogo ---------- */
+.doc-list,
+.module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.doc-row,
+.module-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+}
+.doc-row.off {
+  opacity: 0.6;
+}
+.doc-row .list-main,
+.module-row .list-main {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.shop-ic.xs {
+  width: 28px;
+  height: 28px;
+  font-size: 0.9rem;
+}
+.icon-btn.on {
+  color: var(--green);
+  border-color: var(--green);
+}
+.icon-btn.danger {
+  color: var(--coral);
+}
+.module-n {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  font-weight: 700;
+  font-size: 0.8rem;
+  flex: 0 0 auto;
+}
+.field.sm {
+  height: var(--btn-h-sm);
+  width: auto;
+  padding: 0 0.5rem;
+}
+.content-row-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 0.5rem;
+}
+.course-check.partial {
+  border-style: dashed;
+}
+.catalog-courses {
+  margin-top: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ---------- Papel: común ---------- */
+
+/* Los colores del tema, a tinta de papel: así las cuentas resueltas, las fórmulas, las figuras y los
+   documentos salen negros sobre blanco aunque la app esté en el tema oscuro. */
+.ws-sheet,
+.sd.paper {
+  color-scheme: light;
+  --text: var(--print-ink);
+  --text-dim: var(--print-dim);
+  --text-faint: var(--print-dim);
+  --line: var(--print-line);
+  --line-soft: var(--print-line);
+  --surface: var(--print-paper);
+  --surface-2: var(--print-fill);
+  --green: var(--print-ink);
+  --coral: var(--print-ink);
+  --cyan: var(--print-ink);
+  --violet: var(--print-ink);
+  --gold: var(--print-ink);
+  --gold-wash: var(--print-fill);
+}
+.ws-print-root {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.ws-sheet {
+  font-size: var(--ws-font, 12pt);
+}
+.ws-page-break {
+  page-break-before: always;
+  break-before: page;
+}
+.ws-pack-doc + .ws-pack-doc {
+  page-break-before: always;
+  break-before: page;
+}
+/* Tamaño de la casilla de las cuentas según la edad (perfil). */
+.ws-sheet .cg.paper {
+  --cell: var(--ws-cell, 7mm);
+}
+/* Cuentas RESUELTAS en papel (clave explicada, ejemplos resueltos): la casilla de pantalla usa vw. */
+.ws-sheet .cg:not(.paper),
+.sd.paper .cg {
+  --cell: 6mm;
+}
+.ws-sheet .cg:not(.paper) .cg-cell,
+.sd.paper .cg .cg-cell {
+  font-size: 11pt;
+}
+.ws-sheet .worked-op,
+.sd.paper .worked-op {
+  justify-content: flex-start;
+  margin: 1.5mm 0;
+}
+.ws-sheet .fe.solved,
+.sd.paper .fe.solved {
+  font-size: 12pt;
+}
+.ws-sheet .frac .num,
+.sd.paper .frac .num {
+  border-bottom-width: 0.8pt;
+}
+
+/* Cabecera */
+.ws-head-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 4mm;
+}
+.ws-kicker {
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--print-dim);
+}
+.ws-code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 9pt;
+  color: var(--print-dim);
+  white-space: nowrap;
+}
+.ws-code b {
+  color: var(--print-ink);
+  font-size: 11pt;
+}
+.ws-fields {
+  flex-wrap: wrap;
+  row-gap: 3mm;
+}
+.ws-filled {
+  border-bottom: 0.8pt solid var(--print-line);
+  padding: 0 1mm;
+}
+.ws-instructions {
+  border: 0.8pt solid var(--print-ink);
+  border-radius: 2mm;
+  padding: 2mm 3mm;
+  margin-bottom: 5mm;
+  font-size: 10pt;
+  break-inside: avoid;
+}
+.ws-instructions ul {
+  margin: 1mm 0 0 5mm;
+  padding: 0;
+}
+
+/* Secciones (módulos) */
+.ws-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13pt;
+  margin: 4mm 0 3mm;
+  padding-bottom: 1mm;
+  border-bottom: 0.8pt solid var(--print-line);
+  break-after: avoid;
+}
+.ws-pts {
+  margin-left: 2mm;
+  font-style: normal;
+  font-weight: 700;
+  color: var(--print-ink);
+  white-space: nowrap;
+}
+.ws-remember {
+  margin-top: 2mm;
+  font-size: 9.5pt;
+  border-left: 1.2pt solid var(--print-ink);
+  padding-left: 2mm;
+}
+
+/* Diseño compacto: las preguntas cortas a dos columnas; las anchas, a toda la línea. */
+.ws-qs.compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 8mm;
+}
+.ws-qs.compact .ws-q.wide {
+  grid-column: 1 / -1;
+}
+/* Cálculo rápido: rejilla de cuentas sin instrucción por pregunta. */
+.ws-qs.drill {
+  grid-template-columns: repeat(var(--ws-drill-cols, 4), 1fr);
+}
+.ws-qs.drill .ws-q.wide {
+  grid-column: auto;
+}
+.ws-qs.drill .ws-inst {
+  display: none;
+}
+.ws-qs.drill .ws-q {
+  margin-bottom: 5mm;
+}
+.ws-drill-inst {
+  font-size: 10pt;
+  font-style: italic;
+  color: var(--print-dim);
+  margin: 0 0 4mm;
+}
+
+/* Espacios para trabajar */
+.ws-area {
+  margin-top: 2.5mm;
+  break-inside: avoid;
+}
+.ws-area.long {
+  break-inside: auto;
+}
+.ws-area.long .ws-area-label {
+  break-after: avoid;
+}
+.ws-lines .ws-row {
+  break-inside: avoid;
+}
+.ws-area-label {
+  display: block;
+  font-size: 8pt;
+  color: var(--print-dim);
+  margin-bottom: 0.8mm;
+}
+.ws-grid {
+  display: block;
+  color: var(--print-grid);
+}
+.ws-lines .ws-row {
+  position: relative;
+  height: var(--ws-line-h, 8mm);
+  border-bottom: 0.6pt solid var(--print-line);
+}
+/* Doble pauta: línea central punteada. */
+.ws-lines.double .ws-row::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 0.5pt dotted var(--print-guide);
+}
+/* Pauta Montessori (1.º-2.º): cuatro guías, la base más marcada. */
+.ws-lines.montessori .ws-row {
+  border-top: 0.4pt solid var(--print-guide);
+  border-bottom: 0.4pt solid var(--print-guide);
+  margin-bottom: 2.5mm;
+}
+.ws-lines.montessori .ws-row::before,
+.ws-lines.montessori .ws-row::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.ws-lines.montessori .ws-row::before {
+  top: 33%;
+  border-top: 0.4pt dashed var(--print-guide);
+}
+.ws-lines.montessori .ws-row::after {
+  top: 66%;
+  border-top: 0.9pt solid var(--print-line);
+}
+.ws-box-area {
+  margin-top: 2.5mm;
+  padding: 1mm 2mm;
+  border: 0.8pt dashed var(--print-line);
+  border-radius: 2mm;
+  break-inside: avoid;
+}
+.ws-problem {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 3mm;
+  margin-top: 2.5mm;
+  break-inside: avoid;
+}
+/* La etiqueta de la respuesta («126 =») no se parte; en columnas estrechas encoge la raya. */
+.ws-answer > span:first-child {
+  flex: none;
+  white-space: nowrap;
+}
+.ws-qs.compact .ws-answer .ws-line {
+  min-width: 14mm;
+}
+.ws-answer-box {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  margin-top: 3mm;
+}
+.ws-rbox {
+  width: 32mm;
+  height: 9mm;
+  border: 1pt solid var(--print-ink);
+  border-radius: 1.5mm;
+}
+
+/* Examen: tabla de nota y firma */
+.ws-score {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6mm;
+  font-size: 10.5pt;
+  break-inside: avoid;
+}
+.ws-score th,
+.ws-score td {
+  border: 0.8pt solid var(--print-ink);
+  padding: 1.5mm 2mm;
+  text-align: left;
+}
+.ws-score th:nth-child(n + 2),
+.ws-score td:nth-child(n + 2) {
+  width: 26mm;
+  text-align: center;
+}
+.ws-score .total td {
+  font-weight: 700;
+}
+.ws-signature {
+  display: flex;
+  align-items: flex-end;
+  gap: 2mm;
+  margin-top: 8mm;
+  font-size: 10pt;
+  break-inside: avoid;
+}
+
+/* Hoja de soluciones */
+.ws-key-list.one {
+  columns: 1;
+}
+.ws-key-code {
+  float: right;
+  font-size: 9pt;
+  font-weight: 400;
+  color: var(--print-dim);
+}
+.ws-key-pts {
+  margin-left: 2mm;
+  font-size: 8.5pt;
+  color: var(--print-dim);
+}
+.ws-key-explained {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5mm;
+}
+.ws-key-note {
+  font-size: 10pt;
+}
+
+/* ---------- Tarjetas recortables ---------- */
+.ws-cards-title {
+  font-size: 12pt;
+  font-weight: 700;
+  margin-bottom: 3mm;
+}
+.ws-card-page {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 60mm;
+}
+.ws-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 6mm;
+  font-size: 14pt;
+  border: 0.6pt dashed var(--print-cut);
+  overflow: hidden;
+  break-inside: avoid;
+}
+.ws-card.back {
+  font-size: 13pt;
+}
+.ws-card.long {
+  font-size: 10.5pt;
+}
+.ws-card-text {
+  white-space: pre-line;
+}
+.ws-card.empty {
+  border-color: transparent;
+}
+.ws-card-num {
+  position: absolute;
+  top: 2mm;
+  left: 3mm;
+  font-size: 7.5pt;
+  color: var(--print-dim);
+}
+.ws-card-hint {
+  margin-top: 3mm;
+  font-size: 8.5pt;
+  color: var(--print-dim);
+}
+.ws-card-page.fold {
+  grid-template-columns: 1fr;
+  grid-auto-rows: auto;
+}
+.ws-fold-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 50mm;
+}
+/* La línea de doblar, continua; las de recortar, discontinuas. */
+.ws-fold-row .ws-card.front {
+  border-right: 0.8pt solid var(--print-ink);
+}
+.ws-cards-tip {
+  margin-top: 3mm;
+  font-size: 8.5pt;
+  color: var(--print-dim);
+}

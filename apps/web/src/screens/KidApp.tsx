@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, tx, type ChildMe, type Course, type CustomContent, type ProfileStats, type ScopeProgress } from "../api";
+import { api, tx, type ChildMe, type ChildStudyDocMeta, type Course, type CustomContent, type ProfileStats, type ScopeProgress } from "../api";
 import { Hud } from "../components/Hud";
 import { Icon } from "../components/Icon";
+import { NotesReader, NotesSection, NotesStrip, groupNotes } from "../components/KidNotes";
 import { ProgressLine, ReviewButton } from "../components/KidProgress";
 import { Mascot, MascotContext, MascotPick, mascotKeyOf, rememberMascot, type MascotKey } from "../components/Mascot";
 import { StatsView } from "../components/StatsView";
@@ -51,6 +52,15 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   const [progress, setProgress] = useState<Record<string, ScopeProgress> | null>(null);
   const [balance, setBalance] = useState(data.balance);
   const [mascot, setMascot] = useState<MascotKey>(mascotKeyOf(data.child.mascot));
+  // «Apuntes»: resúmenes, trucos, tarjetas... (null = cargando; si falla, sin apuntes).
+  const [notes, setNotes] = useState<ChildStudyDocMeta[] | null>(null);
+  const [openNote, setOpenNote] = useState<ChildStudyDocMeta | null>(null);
+  useEffect(() => {
+    api
+      .childStudyDocs()
+      .then(setNotes)
+      .catch(() => setNotes([]));
+  }, []);
   // El login muestra el último compañero usado en este dispositivo.
   useEffect(() => rememberMascot(mascot), [mascot]);
 
@@ -78,7 +88,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
   }
 
   const inSession = customSkill !== null || sessionSkillId !== null || reviewIds !== null;
-  useScrollTop(`${tab}|${course?.id ?? ""}|${openPath?.pathId ?? ""}|${customSkill?.skillId ?? ""}|${sessionSkillId ?? ""}|${reviewIds ? "repaso" : ""}`);
+  useScrollTop(`${tab}|${course?.id ?? ""}|${openPath?.pathId ?? ""}|${customSkill?.skillId ?? ""}|${sessionSkillId ?? ""}|${reviewIds ? "repaso" : ""}|${openNote?.id ?? ""}`);
 
   // Misión a pantalla completa, sin HUD ni barra: ficha/módulo, skill de la galaxia o repaso de fallos.
   if (inSession) {
@@ -103,7 +113,23 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
     );
   }
 
+  // Un apunte abierto: a pantalla completa, como una misión.
+  if (openNote) {
+    return (
+      <MascotContext.Provider value={mascot}>
+        <div className="app-shell">
+          <div className="app-body">
+            <NotesReader meta={openNote} onClose={() => setOpenNote(null)} />
+          </div>
+        </div>
+      </MascotContext.Provider>
+    );
+  }
+
   const ready = progress !== null;
+  const allNotes = notes ?? [];
+  const notesOfCourse = (c: Course) => allNotes.filter((d) => d.courseIds.includes(c.id) && !d.pathId && d.origin === "course");
+  const notesOfPath = (p: PathGroup) => allNotes.filter((d) => d.pathId === p.pathId || (d.skillId && p.modules.some((m) => m.skillId === d.skillId)));
   const prog = (scope: string) => progress?.[scope];
   const review = (scope: string) => (
     <ReviewButton pending={prog(scope)?.pending ?? 0} busy={reviewBusy === scope} onClick={() => void startReview(scope)} />
@@ -128,6 +154,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
               onBack={data.courses.length > 1 || hasCustom ? () => setCourse(null) : undefined}
               progress={<ProgressLine p={prog(`course:${course.id}`)} ready={ready} />}
               review={review(`course:${course.id}`)}
+              notes={<NotesStrip docs={notesOfCourse(course)} onOpen={setOpenNote} />}
             />
           ) : openPath ? (
             <>
@@ -138,6 +165,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
               <div className="galaxy-progress">
                 <ProgressLine p={prog(`path:${openPath.pathId}`)} ready={ready} total={openPath.modules.reduce((n, m) => n + m.exercises, 0)} />
               </div>
+              <NotesStrip docs={notesOfPath(openPath)} onOpen={setOpenNote} />
               <div className="course-grid">
                 <div className="course-item">{review(`path:${openPath.pathId}`)}</div>
                 {openPath.modules.map((m, i) => (
@@ -155,7 +183,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                 ))}
               </div>
             </>
-          ) : noContent ? (
+          ) : noContent && allNotes.length === 0 ? (
             <div className="screen-pad">
               <h2 className="screen-title">
                 {t("kid.noCoursesTitle")} <Icon name="satellite" size={20} />
@@ -228,6 +256,7 @@ export function KidApp({ data, onLogout }: { data: ChildMe; onLogout: () => void
                   </div>
                 </>
               )}
+              <NotesSection groups={groupNotes(allNotes, data.courses, custom, t("kid.notesOther"))} onOpen={setOpenNote} />
             </>
           )}
         </div>

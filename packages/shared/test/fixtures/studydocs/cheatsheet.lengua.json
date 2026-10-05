@@ -1,0 +1,46 @@
+{
+  "kind": "cheatsheet",
+  "title": "Reglas de acentuación",
+  "subtitle": "Lengua · 5.º de Primaria",
+  "language": "es",
+  "print": { "columns": 2 },
+  "blocks": [
+    { "type": "heading", "level": 2, "text": "La sílaba tónica" },
+    { "type": "paragraph", "text": "Es la sílaba que suena más fuerte. Para encontrarla, di la palabra como si llamaras a alguien: **ca-MI-ón**." },
+    {
+      "type": "table",
+      "caption": "Agudas, llanas y esdrújulas",
+      "header": ["Tipo", "Tónica", "Llevan tilde si...", "Ejemplos"],
+      "rows": [
+        ["Agudas", "última", "terminan en vocal, -n o -s", "camión, sofá, reloj"],
+        ["Llanas", "penúltima", "NO terminan en vocal, -n o -s", "árbol, lápiz, casa"],
+        ["Esdrújulas", "antepenúltima", "siempre", "pájaro, música"]
+      ],
+      "headerColumn": true
+    },
+    {
+      "type": "callout",
+      "variant": "tip",
+      "title": "Truco",
+      "text": "Las llanas hacen justo lo contrario que las agudas."
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "title": "Error típico",
+      "items": ["«Reloj» es aguda pero termina en -j: no lleva tilde.", "Las palabras de una sola sílaba no llevan tilde (sol, pan), salvo la tilde diacrítica."]
+    },
+    { "type": "heading", "level": 2, "text": "Tilde diacrítica" },
+    {
+      "type": "list",
+      "ordered": false,
+      "items": ["**tú** (pronombre) / **tu** (posesivo)", "**él** (pronombre) / **el** (artículo)", "**sí** (afirmación) / **si** (condición)", "**más** (cantidad) / **mas** (pero)"]
+    },
+    {
+      "type": "callout",
+      "variant": "remember",
+      "title": "Recuerda",
+      "text": "Primero busca la sílaba tónica; después mira cómo termina la palabra."
+    }
+  ]
+}

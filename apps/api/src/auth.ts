@@ -50,7 +50,7 @@ export async function verifySecret(secret: string, stored: string): Promise<bool
   return diff === 0;
 }
 
-async function sha256Hex(s: string): Promise<string> {
+export async function sha256Hex(s: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", enc.encode(s));
   return toHex(new Uint8Array(buf));
 }

@@ -3,10 +3,10 @@
 > **Nota (M9, 2026-07-12):** el **sistema de contenido** (hoy 10 tipos con modelo unificado en `packages/shared`,
 > generación en dos vías, contenido privado del hogar, anti-farm atómico) es posterior a partes de este documento.
 > Para el estado ACTUAL de contenido/economía la verdad viva es `../CLAUDE.md` §8, `docs/adr/` y `apps/api/src/db/schema.ts`
-> (28 tablas). Este documento conserva el modelo de datos base, la jerarquía de usuarios y los flujos de auth.
-> Migraciones al día hasta `0021` (0018: preguntas por misión `skills.session_length`, y en `content_requests`
+> (30 tablas). Este documento conserva el modelo de datos base, la jerarquía de usuarios y los flujos de auth.
+> Migraciones al día hasta `0022` (0018: preguntas por misión `skills.session_length`, y en `content_requests`
 > `question_types`, `session_length` y `source_request_id` para las copias regeneradas; 0019: `exercise_reports`,
-> los avisos «esta pregunta está mal» que el niño manda y el tutor revisa; 0020: `child_profiles.mascot`; 0021: `content_requests.examples`, los ejemplos o guía de ejercicios del tutor). La «sesión de juego» del §6
+> los avisos «esta pregunta está mal» que el niño manda y el tutor revisa; 0020: `child_profiles.mascot`; 0021: `content_requests.examples`, los ejemplos o guía de ejercicios del tutor; 0022: `study_docs` y `child_study_docs`, los documentos de estudio, y `outputs`/`doc_count` en `content_requests`, ver §3.8). La «sesión de juego» del §6
 > hoy sirve una tanda de `sessionLength` preguntas con selección priorizada y repaso de los fallos (ver `../CLAUDE.md` §8).
 
 Referencia profunda del sistema. Para la guía operativa breve, ver `../CLAUDE.md`. Para el catálogo de
@@ -193,6 +193,20 @@ asignaciones que queden cruzadas al desvincular un cónyuge.
 - Los campos JSON (`name_i18n`, `payload`, `fsrs`) se guardan como `text`; `mode: "json"` en Drizzle es
   serialización de app, no validación de BD.
 
+### 3.8 Documentos de estudio (migración 0022)
+
+| Tabla | Claves | Para qué |
+|---|---|---|
+| `study_docs` | PK `id` (`doc_<kind>_<solicitud>[_m<i>]` privados, `DOC.<SUBJ>.<GRADE>.<TEMA>.<KIND>` globales), FK `subject_id`, `owner_id` → tutor (null = global) | documento de estudio: `kind` (10 tipos), `title`, `language`, `body` (el JSON entero de `StudyDocSchema`, hasta 90 KB), `stats`, `bytes`, `version` + `content_hash` (la versión solo sube si cambia el contenido), enlaces opcionales `skill_id`/`path_id`/`course_id`/`module_index`/`position`/`request_id`, y curación del tutor `hidden` y `child_answers`; `retired` = retirado por una republicación |
+| `child_study_docs` | PK compuesta `(child_id, doc_id)` | acceso niño ↔ documento PRIVADO (como `child_skills`) |
+
+Índices por dueño, por (asignatura, nivel, retirado), por solicitud, por skill y por curso. Un documento GLOBAL lo
+ve el niño con un curso de su asignatura+nivel; uno PRIVADO exige el grant Y que el dueño siga en el hogar del
+niño (la misma doble comprobación del ADR 0003). Las listas leen solo metadatos: `body` se lee de uno en uno. Al
+niño le llega redactado (`redactStudyDocForChild`): sin el texto del dictado y, si `child_answers` es falso, sin
+respuestas. `content_requests.outputs` (JSON, null = solo ejercicios) dice qué generar y `doc_count` cuántos
+documentos vigentes tiene. El PORQUÉ, en `adr/0005-documentos-de-estudio.md`.
+
 ## 4. Jerarquía de usuarios y «hogar»
 
 ```
@@ -296,6 +310,11 @@ Ojo con las tres convenciones de nivel coexistiendo: `ESO-5` (columnas), `eso5` 
 - **Diseño sin emojis**: iconos SVG (`Icon.tsx`, unión `IconName`). Todo el color/espaciado sale de tokens. El
   personaje del niño (su avatar y su compañero de viaje: Orbi o un animal astronauta) sale de `Mascot.tsx` según
   `child_profiles.mascot`.
+
+- **Apuntes e impresión**: el niño lee sus documentos en «Apuntes» (`KidNotes.tsx` + `components/studydoc/`); el
+  tutor imprime con `components/print/PrintDialog.tsx` (fichas, exámenes A/B, repaso de fallos, cálculo rápido,
+  tarjetas, ejemplos resueltos, hoja «Recuerda» y documentos). El PDF lo hace el navegador (`window.print()`); el
+  papel cambia por materia y edad (`print/profiles.ts`) y siempre sale en tinta negra, también con el tema oscuro.
 
 Los gotchas concretos del frontend están en `../apps/web/CLAUDE.md`.
 

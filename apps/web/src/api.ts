@@ -1,5 +1,13 @@
 import i18n from "./i18n";
-import type { Answer, Exercise as FullExercise, RenderPayload } from "@smartkids/shared";
+import type {
+  Answer,
+  Exercise as FullExercise,
+  RenderPayload,
+  StudyDoc,
+  StudyDocKind,
+  StudyDocStats,
+  ViewableStudyDoc,
+} from "@smartkids/shared";
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
@@ -8,7 +16,7 @@ import type {
 } from "@simplewebauthn/browser";
 
 // Re-export de los tipos del modelo unificado para el resto de la web.
-export type { Answer, FullExercise, RenderPayload };
+export type { Answer, FullExercise, RenderPayload, StudyDoc, StudyDocKind, StudyDocStats, ViewableStudyDoc };
 
 export type LocaleText = Record<string, string>;
 
@@ -132,7 +140,79 @@ export interface ExerciseReport {
 export interface PreviewExercise {
   templateId: string;
   hidden: boolean;
+  canHide?: boolean; // false en el contenido global (de un curso): se ve e imprime, no se oculta
   exercise: FullExercise;
+}
+
+/* ---------- Documentos de estudio («Apuntes») ---------- */
+
+// Metadatos de un documento (listas: nunca el cuerpo).
+export interface StudyDocMeta {
+  id: string;
+  kind: StudyDocKind;
+  title: string;
+  subjectId: string;
+  gradeBand: string;
+  language: string;
+  skillId: string | null;
+  pathId: string | null;
+  courseId: string | null;
+  moduleIndex: number | null;
+  position: number;
+  requestId?: string | null;
+  childAnswers?: boolean;
+  hidden?: boolean;
+  stats: StudyDocStats | null;
+  version: number;
+  updatedAt: string;
+  childIds?: string[];
+}
+// El documento completo que ve el tutor (con soluciones y el texto del dictado).
+export interface TutorStudyDoc extends StudyDocMeta {
+  global: boolean;
+  canEdit: boolean;
+  body: StudyDoc;
+}
+// Lo que ve el niño en su lista de «Apuntes».
+export interface ChildStudyDocMeta extends StudyDocMeta {
+  origin: "course" | "private";
+  courseIds: string[];
+  pathName: LocaleText | null;
+}
+export interface ChildStudyDoc {
+  id: string;
+  kind: StudyDocKind;
+  title: string;
+  subjectId: string;
+  gradeBand: string;
+  language: string;
+  showAnswers: boolean;
+  doc: ViewableStudyDoc;
+}
+
+// Fallos pendientes de un niño (para imprimir un repaso).
+export interface PendingScope {
+  scope: string;
+  label: LocaleText | null;
+  pending: number;
+  attempts: number;
+  accuracyPct: number;
+  trend: string | null;
+}
+export interface PendingItem {
+  templateId: string;
+  skillId: string;
+  skillName: LocaleText | null;
+  subjectId: string | null;
+  fails: number;
+  exercise: FullExercise;
+}
+
+// Curso del catálogo: módulos y documentos (para imprimirlo).
+export interface CourseContent {
+  course: Course;
+  skills: { id: string; nameI18n: LocaleText; position: number; exercises: number }[];
+  docs: StudyDocMeta[];
 }
 export interface AttemptResult {
   correct: boolean;
@@ -216,8 +296,11 @@ export interface ContentRequest {
   modules?: number | null;
   questionTypes?: string[] | null; // null = tipos variados
   sessionLength?: number | null; // preguntas por misión
+  outputs?: string[]; // qué generar: "exercises" + tipos de documento
   sourceRequestId?: string | null; // copia regenerada: solicitud de la que sale
   exerciseCount?: number | null;
+  docCount?: number | null;
+  note?: string | null;
   skillId?: string | null;
   createdAt: string;
   publishedAt?: string | null;
@@ -233,6 +316,9 @@ export interface PrivateSkill {
   childIds: string[];
   sessionLength: number; // preguntas por misión
   requestId?: string | null; // solicitud de origen (permite "Regenerar")
+  pathId?: string | null; // módulos de un mismo path (se agrupan en el panel)
+  pathName?: LocaleText | null;
+  moduleIndex?: number;
 }
 
 export interface StatsOverview {
@@ -542,6 +628,25 @@ export const api = {
     j<{ ok: boolean; sessionLength: number }>(`/api/tutor/skills/${encodeURIComponent(skillId)}/settings`, post({ sessionLength })),
   deleteContentSkill: (skillId: string) => j<{ ok: boolean }>(`/api/tutor/skills/${skillId}`, { method: "DELETE" }),
   deleteContentRequest: (id: string) => j<{ ok: boolean }>(`/api/tutor/content-requests/${id}`, { method: "DELETE" }),
+
+  // Documentos de estudio («Apuntes») e impresión
+  tutorStudyDocs: (requestId?: string) =>
+    j<StudyDocMeta[]>(`/api/tutor/study-docs${requestId ? `?requestId=${encodeURIComponent(requestId)}` : ""}`),
+  tutorStudyDoc: (id: string) => j<TutorStudyDoc>(`/api/tutor/study-docs/${encodeURIComponent(id)}`),
+  assignStudyDoc: (id: string, childIds: string[]) =>
+    j<{ ok: boolean; childIds: string[] }>(`/api/tutor/study-docs/${encodeURIComponent(id)}/assign`, post({ childIds })),
+  studyDocSettings: (id: string, settings: { hidden?: boolean; childAnswers?: boolean }) =>
+    j<{ ok: boolean; hidden: boolean; childAnswers: boolean }>(`/api/tutor/study-docs/${encodeURIComponent(id)}/settings`, post(settings)),
+  deleteStudyDoc: (id: string) => j<{ ok: boolean }>(`/api/tutor/study-docs/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  tutorChildStudyDocs: (childId: string) => j<ChildStudyDocMeta[]>(`/api/tutor/children/${encodeURIComponent(childId)}/study-docs`),
+  childPending: (childId: string, scope?: string, limit = 50) =>
+    j<{ scopes: PendingScope[]; items?: PendingItem[] }>(
+      `/api/tutor/children/${encodeURIComponent(childId)}/pending` + (scope ? `?scope=${encodeURIComponent(scope)}&limit=${limit}` : ""),
+    ),
+  courseContent: (courseId: string, childId?: string) =>
+    j<CourseContent>(`/api/tutor/courses/${encodeURIComponent(courseId)}/content${childId ? `?childId=${encodeURIComponent(childId)}` : ""}`),
+  childStudyDocs: () => j<ChildStudyDocMeta[]>(`/api/child/study-docs`),
+  childStudyDoc: (id: string) => j<ChildStudyDoc>(`/api/child/study-docs/${encodeURIComponent(id)}`),
 };
 
 export const tx = (m: LocaleText | null | undefined, locale: string = i18n.language): string =>

@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GRADE_BANDS, isGradeBand } from "../grades";
-import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type ExerciseReport, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type TutorReward } from "../api";
+import { api, tx, type Child, type ChildSummary, type ContentAsset, type ContentRequest, type Course, type ExerciseReport, type Me, type Mistake, type PrivateSkill, type ProfileStats, type Redemption, type StudyDocMeta, type TutorReward } from "../api";
+import { DEFAULT_REQUEST_OUTPUTS, STUDY_DOC_KINDS, SUBJECTS, SUGGESTED_DOC_KINDS, subjectFamily } from "@smartkids/shared/catalog";
 import { MascotAvatar, MascotPick, mascotKeyOf, type MascotKey } from "../components/Mascot";
 import { ContentPreview } from "../components/ContentPreview";
-import { WorksheetDialog } from "../components/Worksheet";
+import type { PrintSource } from "../components/print/PrintDialog";
+import { KIND_ICON } from "../components/studydoc/kinds";
 import { correctAnswerString } from "../components/ExerciseInput";
 import { MathText } from "../components/MathText";
 import { StatsView } from "../components/StatsView";
@@ -14,6 +16,10 @@ import { PasskeySettings } from "../components/PasskeySettings";
 import { Icon, type IconName } from "../components/Icon";
 import { SettingsToggle } from "../components/SettingsToggle";
 import { setBadge } from "../pwa";
+
+// La impresión y el visor de documentos solo se cargan al abrirlos (no engordan la carga inicial de la app).
+const PrintDialog = lazy(() => import("../components/print/PrintDialog").then((m) => ({ default: m.PrintDialog })));
+const StudyDocModal = lazy(() => import("../components/studydoc/StudyDocModal").then((m) => ({ default: m.StudyDocModal })));
 
 export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () => void; onRefresh: () => void }) {
   const { t } = useTranslation();
@@ -144,7 +150,7 @@ export function TutorPanel({ me, onLogout, onRefresh }: { me: Me; onLogout: () =
 
         <RewardsSection me={me} />
 
-        <ContentSection me={me} />
+        <ContentSection me={me} courses={courses} />
       </div>
 
       {creating && <ChildForm courses={courses} onClose={() => setCreating(false)} onDone={() => { setCreating(false); onRefresh(); }} />}
@@ -168,6 +174,7 @@ function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void
   const { t } = useTranslation();
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [error, setError] = useState(false);
+  const [printReview, setPrintReview] = useState(false);
 
   const loadStats = useCallback(() => {
     setError(false);
@@ -200,13 +207,119 @@ function ChildStatsModal({ child, onClose }: { child: Child; onClose: () => void
           <StatsView stats={stats} showSlowest />
         )}
         <Mistakes childId={child.id} />
+        <ChildDocs childId={child.id} />
         <WalletAdjust childId={child.id} onDone={loadStats} />
         <div className="modal-actions" style={{ marginTop: "var(--sp-3)" }}>
+          <button className="btn-ghost sm" type="button" onClick={() => setPrintReview(true)}>
+            <Icon name="printer" size={14} /> {t("stats.printReview")}
+          </button>
           <a className="btn-ghost sm" href={api.exportChildUrl(child.id)} download>
             {t("stats.exportData")}
           </a>
         </div>
       </div>
+      {printReview && (
+        <Suspense fallback={null}>
+          <PrintDialog source={{ kind: "pending", childId: child.id, childName: child.displayName, gradeBand: child.gradeBand }} onClose={() => setPrintReview(false)} />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+// Los «Apuntes» que ve el niño (de sus cursos y los del hogar), para verlos o imprimirlos.
+function ChildDocs({ childId }: { childId: string }) {
+  const { t } = useTranslation();
+  const [docs, setDocs] = useState<StudyDocMeta[] | null>(null);
+  const [open, setOpen] = useState<{ id: string; print: boolean } | null>(null);
+  useEffect(() => {
+    api
+      .tutorChildStudyDocs(childId)
+      .then(setDocs)
+      .catch(() => setDocs([]));
+  }, [childId]);
+  if (!docs || docs.length === 0) return null;
+  return (
+    <div className="stat-block">
+      <div className="stat-block-title">{t("content.childDocs")}</div>
+      <DocList docs={docs} onOpen={(id, print) => setOpen({ id, print })} />
+      {open && (
+        <Suspense fallback={null}>
+          <StudyDocModal docId={open.id} autoPrint={open.print} onClose={() => setOpen(null)} />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Lista de documentos de estudio con Ver / Imprimir. Con `onSettings`/`onDelete` (contenido PRIVADO del
+ * hogar) también ocultar al niño, dejarle ver las soluciones y borrar.
+ */
+function DocList({
+  docs,
+  onOpen,
+  onSettings,
+  onDelete,
+}: {
+  docs: StudyDocMeta[];
+  onOpen: (id: string, print: boolean) => void;
+  onSettings?: (id: string, s: { hidden?: boolean; childAnswers?: boolean }) => void;
+  onDelete?: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="doc-list">
+      {docs.map((d) => (
+        <div className={"doc-row" + (d.hidden ? " off" : "")} key={d.id}>
+          <div className="shop-ic xs">
+            <Icon name={KIND_ICON[d.kind]} size={16} />
+          </div>
+          <div className="list-main">
+            <b>{d.title}</b>
+            <span>
+              {t(`studydoc.kind_${d.kind}`)}
+              {d.hidden ? ` · ${t("content.docHidden")}` : ""}
+            </span>
+          </div>
+          <div className="doc-actions">
+            <button className="btn-ghost sm" type="button" onClick={() => onOpen(d.id, false)}>
+              {t("content.view")}
+            </button>
+            <button className="icon-btn" type="button" onClick={() => onOpen(d.id, true)} aria-label={t("print.print")} title={t("print.print")}>
+              <Icon name="printer" size={16} />
+            </button>
+            {onSettings && (
+              <>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  onClick={() => onSettings(d.id, { hidden: !d.hidden })}
+                  aria-label={d.hidden ? t("content.docShow") : t("content.docHide")}
+                  title={d.hidden ? t("content.docShow") : t("content.docHide")}
+                >
+                  <Icon name={d.hidden ? "eyeOff" : "eye"} size={16} />
+                </button>
+                <button
+                  className={"icon-btn" + (d.childAnswers ? " on" : "")}
+                  type="button"
+                  aria-pressed={Boolean(d.childAnswers)}
+                  onClick={() => onSettings(d.id, { childAnswers: !d.childAnswers })}
+                  aria-label={t("content.docAnswers")}
+                  title={d.childAnswers ? t("content.docAnswersOn") : t("content.docAnswersOff")}
+                >
+                  <Icon name="check" size={16} />
+                </button>
+              </>
+            )}
+            {onDelete && (
+              <button className="icon-btn danger" type="button" onClick={() => onDelete(d.id)} aria-label={t("common.delete")} title={t("common.delete")}>
+                <Icon name="close" size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1064,17 +1177,68 @@ function ExerciseReports() {
   );
 }
 
-function ContentSection({ me }: { me: Me }) {
+/** Un contenido del hogar tal como se lista: un skill suelto, un path (sus módulos) o solo documentos. */
+interface ContentGroup {
+  key: string;
+  title: string;
+  pathId: string | null;
+  requestId: string | null;
+  skills: PrivateSkill[];
+  docs: StudyDocMeta[];
+}
+
+/** Agrupa los módulos de un mismo path y reparte los documentos entre su contenido (o en grupos propios). */
+function buildGroups(content: PrivateSkill[], docs: StudyDocMeta[], reqs: ContentRequest[]): ContentGroup[] {
+  const groups: ContentGroup[] = [];
+  const byPath = new Map<string, ContentGroup>();
+  for (const s of content) {
+    if (s.pathId) {
+      let g = byPath.get(s.pathId);
+      if (!g) {
+        g = { key: "path:" + s.pathId, title: tx(s.pathName) || tx(s.nameI18n), pathId: s.pathId, requestId: s.requestId ?? null, skills: [], docs: [] };
+        byPath.set(s.pathId, g);
+        groups.push(g);
+      }
+      g.skills.push(s);
+      g.requestId = g.requestId ?? s.requestId ?? null;
+    } else groups.push({ key: "skill:" + s.id, title: tx(s.nameI18n), pathId: null, requestId: s.requestId ?? null, skills: [s], docs: [] });
+  }
+  for (const g of byPath.values()) g.skills.sort((a, b) => (a.moduleIndex ?? 0) - (b.moduleIndex ?? 0));
+  for (const d of docs) {
+    const g =
+      groups.find((x) => (d.skillId && x.skills.some((s) => s.id === d.skillId)) || (d.pathId && x.pathId === d.pathId)) ??
+      groups.find((x) => d.requestId && x.requestId === d.requestId);
+    if (g) g.docs.push(d);
+    else {
+      // Solicitud de solo documentos: un grupo con el título de la solicitud.
+      const key = "docs:" + (d.requestId ?? d.id);
+      let dg = groups.find((x) => x.key === key);
+      if (!dg) {
+        const r = reqs.find((x) => x.id === d.requestId);
+        dg = { key, title: r?.title || d.title, pathId: null, requestId: d.requestId ?? null, skills: [], docs: [] };
+        groups.push(dg);
+      }
+      dg.docs.push(d);
+    }
+  }
+  return groups;
+}
+
+function ContentSection({ me, courses }: { me: Me; courses: Course[] }) {
   const { t } = useTranslation();
   const [reqs, setReqs] = useState<ContentRequest[] | null>(null);
   const [content, setContent] = useState<PrivateSkill[] | null>(null);
+  const [docs, setDocs] = useState<StudyDocMeta[]>([]);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState<ContentRequest | null>(null);
   const [regenerating, setRegenerating] = useState<ContentRequest | null>(null);
   const [preview, setPreview] = useState<PrivateSkill | null>(null);
-  const [worksheet, setWorksheet] = useState<PrivateSkill | null>(null);
+  const [printing, setPrinting] = useState<{ source: PrintSource; docs: StudyDocMeta[] } | null>(null);
+  const [docView, setDocView] = useState<{ id: string; print: boolean } | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const [showOld, setShowOld] = useState(false);
   const contentRef = useRef<PrivateSkill[]>([]);
+  const docsRef = useRef<StudyDocMeta[]>([]);
 
   function load() {
     api.contentRequests().then(setReqs).catch(() => setReqs([]));
@@ -1088,6 +1252,58 @@ function ContentSection({ me }: { me: Me }) {
         contentRef.current = [];
         setContent([]);
       });
+    api
+      .tutorStudyDocs()
+      .then((d) => {
+        docsRef.current = d;
+        setDocs(d);
+      })
+      .catch(() => {
+        docsRef.current = [];
+        setDocs([]);
+      });
+  }
+
+  function setDocsNow(next: StudyDocMeta[]) {
+    docsRef.current = next;
+    setDocs(next);
+  }
+
+  // Los documentos siguen a su contenido: asignar un contenido a un niño le da también sus apuntes.
+  function assignDoc(docId: string, childId: string, on: boolean) {
+    const cur = docsRef.current.find((d) => d.id === docId)?.childIds ?? [];
+    const ids = on ? [...new Set([...cur, childId])] : cur.filter((x) => x !== childId);
+    setDocsNow(docsRef.current.map((d) => (d.id === docId ? { ...d, childIds: ids } : d)));
+    api.assignStudyDoc(docId, ids).catch(() => load());
+  }
+
+  function assignGroup(g: ContentGroup, childId: string, on: boolean) {
+    for (const s of g.skills) assign(s.id, childId, on);
+    for (const d of g.docs) assignDoc(d.id, childId, on);
+  }
+
+  function docSettings(id: string, s: { hidden?: boolean; childAnswers?: boolean }) {
+    setDocsNow(docsRef.current.map((d) => (d.id === id ? { ...d, ...s } : d)));
+    api.studyDocSettings(id, s).catch(() => load());
+  }
+
+  async function delDoc(id: string) {
+    if (!window.confirm(t("content.docDeleteConfirm"))) return;
+    try {
+      await api.deleteStudyDoc(id);
+      setDocsNow(docsRef.current.filter((d) => d.id !== id));
+    } catch {
+      /* noop */
+    }
+  }
+
+  function toggleOpen(key: string) {
+    setOpen((o) => {
+      const n = new Set(o);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
   }
   useEffect(() => {
     load();
@@ -1169,6 +1385,7 @@ function ContentSection({ me }: { me: Me }) {
                           <span>
                             {t(`content.status_${r.status}`)}
                             {r.exerciseCount ? ` · ${r.exerciseCount}` : r.assets && r.assets.length ? ` · ${r.assets.length}` : ""}
+                            {r.status === "failed" && r.note ? ` · ${r.note}` : ""}
                           </span>
                         </div>
                         {r.status === "uploaded" && (
@@ -1205,7 +1422,9 @@ function ContentSection({ me }: { me: Me }) {
                               <b>{r.title || t("content.untitled")}</b>
                               <span>
                                 {t(`content.status_${r.status}`)}
-                                {r.exerciseCount ? ` · ${r.exerciseCount}` : ""}
+                                {r.exerciseCount ? ` · ${r.exerciseCount} ${t("content.exercises")}` : ""}
+                                {r.docCount ? ` · ${t("content.documentsN", { count: r.docCount })}` : ""}
+                                {r.note ? ` · ${r.note}` : ""}
                               </span>
                             </div>
                             <button className="btn-ghost sm" type="button" onClick={() => setRegenerating(r)}>
@@ -1223,57 +1442,160 @@ function ContentSection({ me }: { me: Me }) {
               </>
             );
           })()}
-          {(content ?? []).length > 0 && (
-            <div className="list">
-              {(content ?? []).map((s) => {
-                const regen = regenerableOf(s.requestId);
-                return (
-                  <div className="list-row col" key={s.id}>
-                    <div className="content-row-head">
-                      <div className="list-main">
-                        <b>{tx(s.nameI18n)}</b>
-                        <span>
-                          {s.exercises} {t("content.exercises")} · {t("content.perMission", { count: s.sessionLength })}
-                        </span>
+          {(() => {
+            const groups = buildGroups(content ?? [], docs, reqs ?? []);
+            if (groups.length === 0) return null;
+            return (
+              <div className="list">
+                {groups.map((g) => {
+                  const regen = regenerableOf(g.requestId);
+                  const exercises = g.skills.reduce((n, s) => n + s.exercises, 0);
+                  const single = g.skills.length === 1 ? g.skills[0]! : null;
+                  const first = g.skills[0];
+                  const isOpen = open.has(g.key);
+                  const source: PrintSource | null = single
+                    ? { kind: "skill", skillId: single.id, title: g.title, subjectId: single.subjectId, gradeBand: single.gradeBand }
+                    : first && g.pathId
+                      ? {
+                          kind: "path",
+                          pathId: g.pathId,
+                          title: g.title,
+                          subjectId: first.subjectId,
+                          gradeBand: first.gradeBand,
+                          modules: g.skills.filter((s) => s.exercises > 0).map((s, i) => ({ skillId: s.id, title: tx(s.nameI18n), index: s.moduleIndex ?? i })),
+                        }
+                      : null;
+                  // Estado de cada niño: con todo el contenido, con parte (indeterminado) o sin nada.
+                  const parts = [...g.skills.map((s) => s.childIds), ...g.docs.map((d) => d.childIds ?? [])];
+                  return (
+                    <div className="list-row col" key={g.key}>
+                      <div className="content-row-head">
+                        <div className="list-main">
+                          <b>{g.title}</b>
+                          <span>
+                            {g.skills.length > 1 && `${t("content.modulesN", { count: g.skills.length })} · `}
+                            {g.skills.length > 0 && `${exercises} ${t("content.exercises")}`}
+                            {single && ` · ${t("content.perMission", { count: single.sessionLength })}`}
+                            {g.docs.length > 0 && `${g.skills.length > 0 ? " · " : ""}${t("content.documentsN", { count: g.docs.length })}`}
+                          </span>
+                        </div>
+                        {single && (
+                          <button className="btn-ghost sm" type="button" onClick={() => setPreview(single)}>
+                            {t("content.preview")}
+                          </button>
+                        )}
+                        {source && exercises > 0 && (
+                          <button className="btn-ghost sm" type="button" onClick={() => setPrinting({ source, docs: g.docs })}>
+                            <Icon name="printer" size={14} /> {t("content.print")}
+                          </button>
+                        )}
+                        {(g.skills.length > 1 || g.docs.length > 0) && (
+                          <button className="btn-ghost sm" type="button" aria-expanded={isOpen} onClick={() => toggleOpen(g.key)}>
+                            <Icon name={isOpen ? "chevronDown" : "chevronRight"} size={14} />
+                            {g.skills.length > 1 ? t("content.modulesAndDocs") : t("content.documents")}
+                          </button>
+                        )}
                       </div>
-                      <button className="btn-ghost sm" type="button" onClick={() => setPreview(s)}>
-                        {t("content.preview")}
-                      </button>
-                      <button className="btn-ghost sm" type="button" onClick={() => setWorksheet(s)} disabled={s.exercises === 0}>
-                        {t("worksheet.button")}
-                      </button>
-                      {regen && (
-                        <button className="btn-ghost sm" type="button" onClick={() => setRegenerating(regen)}>
-                          {t("content.regenerate")}
-                        </button>
-                      )}
-                      <button className="btn-ghost sm danger" type="button" onClick={() => delContent(s.id)}>
-                        {t("common.delete")}
-                      </button>
-                    </div>
-                    <div className="course-checks">
-                      {me.children.map((ch) => (
-                        <label className={"course-check" + (s.childIds.includes(ch.id) ? " on" : "")} key={ch.id}>
-                          <input type="checkbox" checked={s.childIds.includes(ch.id)} onChange={(e) => assign(s.id, ch.id, e.target.checked)} />
-                          {ch.displayName}
+                      <div className="course-checks">
+                        {me.children.map((ch) => {
+                          const has = parts.filter((p) => p.includes(ch.id)).length;
+                          const all = parts.length > 0 && has === parts.length;
+                          const some = has > 0 && !all;
+                          return (
+                            <label className={"course-check" + (all ? " on" : some ? " partial" : "")} key={ch.id}>
+                              <input
+                                type="checkbox"
+                                checked={all}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = some;
+                                }}
+                                onChange={(e) => assignGroup(g, ch.id, e.target.checked)}
+                              />
+                              {ch.displayName}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {single && (
+                        <label className="mission-len">
+                          <span>{t("content.sessionLength")}</span>
+                          <select className="field" value={single.sessionLength} onChange={(e) => setMissionLength(single.id, Number(e.target.value))}>
+                            {withValue(SESSION_LENGTHS, single.sessionLength).map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
                         </label>
-                      ))}
+                      )}
+                      {isOpen && g.skills.length > 1 && (
+                        <div className="module-list">
+                          {g.skills.map((s, i) => (
+                            <div className="module-row" key={s.id}>
+                              <span className="module-n">{i + 1}</span>
+                              <div className="list-main">
+                                <b>{tx(s.nameI18n)}</b>
+                                <span>
+                                  {s.exercises} {t("content.exercises")}
+                                </span>
+                              </div>
+                              <select
+                                className="field sm"
+                                value={s.sessionLength}
+                                aria-label={t("content.sessionLength")}
+                                title={t("content.sessionLength")}
+                                onChange={(e) => setMissionLength(s.id, Number(e.target.value))}
+                              >
+                                {withValue(SESSION_LENGTHS, s.sessionLength).map((n) => (
+                                  <option key={n} value={n}>
+                                    {t("content.perMission", { count: n })}
+                                  </option>
+                                ))}
+                              </select>
+                              <button className="btn-ghost sm" type="button" onClick={() => setPreview(s)}>
+                                {t("content.preview")}
+                              </button>
+                              <button
+                                className="icon-btn"
+                                type="button"
+                                disabled={s.exercises === 0}
+                                aria-label={t("content.print")}
+                                title={t("content.print")}
+                                onClick={() => setPrinting({ source: { kind: "skill", skillId: s.id, title: tx(s.nameI18n), subjectId: s.subjectId, gradeBand: s.gradeBand }, docs: g.docs })}
+                              >
+                                <Icon name="printer" size={16} />
+                              </button>
+                              <button className="icon-btn danger" type="button" onClick={() => delContent(s.id)} aria-label={t("common.delete")} title={t("common.delete")}>
+                                <Icon name="close" size={16} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isOpen && g.docs.length > 0 && (
+                        <DocList docs={g.docs} onOpen={(id, print) => setDocView({ id, print })} onSettings={docSettings} onDelete={delDoc} />
+                      )}
+                      {(regen || single) && (
+                        <div className="content-row-foot">
+                          {regen && (
+                            <button className="btn-ghost sm" type="button" onClick={() => setRegenerating(regen)}>
+                              {t("content.regenerate")}
+                            </button>
+                          )}
+                          {single && (
+                            <button className="btn-ghost sm danger" type="button" onClick={() => delContent(single.id)}>
+                              {t("common.delete")}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <label className="mission-len">
-                      <span>{t("content.sessionLength")}</span>
-                      <select className="field" value={s.sessionLength} onChange={(e) => setMissionLength(s.id, Number(e.target.value))}>
-                        {withValue(SESSION_LENGTHS, s.sessionLength).map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
+          <CatalogCourses me={me} courses={courses} onPrint={(source, d) => setPrinting({ source, docs: d })} onOpenDoc={(id, print) => setDocView({ id, print })} />
         </>
       )}
       {(uploading || editing || regenerating) && (
@@ -1295,14 +1617,98 @@ function ContentSection({ me }: { me: Me }) {
         />
       )}
       {preview && <ContentPreview skillId={preview.id} title={tx(preview.nameI18n)} onClose={() => setPreview(null)} />}
-      {worksheet && (
-        <WorksheetDialog
-          skillId={worksheet.id}
-          title={tx(worksheet.nameI18n)}
-          level={isGradeBand(worksheet.gradeBand) ? t(`grades.${worksheet.gradeBand}`) : undefined}
-          onClose={() => setWorksheet(null)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {printing && <PrintDialog source={printing.source} docs={printing.docs} onClose={() => setPrinting(null)} />}
+        {docView && <StudyDocModal docId={docView.id} autoPrint={docView.print} onClose={() => setDocView(null)} />}
+      </Suspense>
+    </div>
+  );
+}
+
+/** Cursos del catálogo asignados a los niños del hogar: imprimir sus módulos y ver sus apuntes. */
+function CatalogCourses({
+  me,
+  courses,
+  onPrint,
+  onOpenDoc,
+}: {
+  me: Me;
+  courses: Course[];
+  onPrint: (source: PrintSource, docs: StudyDocMeta[]) => void;
+  onOpenDoc: (id: string, print: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const [kidsOf, setKidsOf] = useState<Map<string, Child[]> | null>(null);
+  const [openCourse, setOpenCourse] = useState<string | null>(null);
+  const [courseDocs, setCourseDocs] = useState<Record<string, StudyDocMeta[]>>({});
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all(me.children.map((ch) => api.childCourses(ch.id).then((cs) => cs.map((c) => [c.id, ch] as const))))
+      .then((pairs) => {
+        if (!alive) return;
+        const m = new Map<string, Child[]>();
+        for (const [cid, ch] of pairs.flat()) m.set(cid, [...(m.get(cid) ?? []), ch]);
+        setKidsOf(m);
+      })
+      .catch(() => alive && setKidsOf(new Map()));
+    return () => {
+      alive = false;
+    };
+  }, [me.children]);
+
+  const assigned = courses.filter((c) => kidsOf?.has(c.id));
+  if (assigned.length === 0) return null;
+
+  function toggleDocs(c: Course) {
+    if (openCourse === c.id) return setOpenCourse(null);
+    setOpenCourse(c.id);
+    const kid = kidsOf?.get(c.id)?.[0];
+    if (!courseDocs[c.id])
+      api
+        .courseContent(c.id, kid?.id)
+        .then((cc) => setCourseDocs((m) => ({ ...m, [c.id]: cc.docs })))
+        .catch(() => setCourseDocs((m) => ({ ...m, [c.id]: [] })));
+  }
+
+  return (
+    <div className="catalog-courses">
+      <div className="course-label">{t("content.catalogCourses")}</div>
+      <div className="list">
+        {assigned.map((c) => {
+          const kids = kidsOf?.get(c.id) ?? [];
+          return (
+            <div className="list-row col" key={c.id}>
+              <div className="content-row-head">
+                <div className="list-main">
+                  <b>{tx(c.nameI18n)}</b>
+                  <span>{kids.map((k) => k.displayName).join(", ")}</span>
+                </div>
+                <button
+                  className="btn-ghost sm"
+                  type="button"
+                  onClick={() =>
+                    onPrint({ kind: "course", courseId: c.id, title: tx(c.nameI18n), subjectId: c.subjectId, gradeBand: c.gradeBand, childId: kids[0]?.id }, courseDocs[c.id] ?? [])
+                  }
+                >
+                  <Icon name="printer" size={14} /> {t("content.print")}
+                </button>
+                <button className="btn-ghost sm" type="button" aria-expanded={openCourse === c.id} onClick={() => toggleDocs(c)}>
+                  <Icon name={openCourse === c.id ? "chevronDown" : "chevronRight"} size={14} /> {t("content.documents")}
+                </button>
+              </div>
+              {openCourse === c.id &&
+                (courseDocs[c.id] === undefined ? (
+                  <p className="muted">{t("content.previewLoading")}</p>
+                ) : courseDocs[c.id]!.length === 0 ? (
+                  <p className="muted">{t("content.noDocs")}</p>
+                ) : (
+                  <DocList docs={courseDocs[c.id]!} onOpen={onOpenDoc} />
+                ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1335,6 +1741,10 @@ const TYPE_PRESETS: Record<string, QuestionType[]> = {
   social: ["multiple_choice", "multiple_select", "true_false", "ordering", "matching", "fill_in_blank"],
   all: [...QUESTION_TYPES],
 };
+/** Preset de tipos que corresponde a cada familia de materia. */
+const PRESET_OF_FAMILY: Record<string, string> = { math: "math", language: "language", foreign: "foreign", science: "science", social: "social", generic: "all" };
+/** Lo que puede pedir una solicitud, en el orden del formulario. */
+const OUTPUT_ORDER: string[] = ["exercises", ...STUDY_DOC_KINDS];
 
 /** Opciones de un select + el valor actual si no está entre ellas (datos antiguos), ordenadas. */
 function withValue(opts: number[], v: number | null | undefined): number[] {
@@ -1373,15 +1783,31 @@ function UploadContent({
   const [points, setPoints] = useState(String(request?.pointsPerCorrect ?? 10));
   const [modules, setModules] = useState(String(request?.modules ?? 1));
   const [types, setTypes] = useState<string[]>(request?.questionTypes ?? []);
+  const [subject, setSubject] = useState<string>(request?.subjectId ?? "");
+  const [outputs, setOutputs] = useState<string[]>(request?.outputs ?? [...DEFAULT_REQUEST_OUTPUTS]);
   const [regenMode, setRegenMode] = useState<"replace" | "copy">("replace");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hasNewFiles = Boolean(files && files.length > 0);
-  const canSave = Boolean(title.trim() || instructions.trim() || examples.trim() || hasNewFiles || assets.length > 0);
+  const wantsExercises = outputs.includes("exercises");
+  const canSave = outputs.length > 0 && Boolean(title.trim() || instructions.trim() || examples.trim() || hasNewFiles || assets.length > 0);
 
   function toggleType(ty: string, on: boolean) {
     setTypes((cur) => (on ? QUESTION_TYPES.filter((x) => x === ty || cur.includes(x)) : cur.filter((x) => x !== ty)));
+  }
+  function toggleOutput(o: string, on: boolean) {
+    setOutputs((cur) => (on ? OUTPUT_ORDER.filter((x) => x === o || cur.includes(x)) : cur.filter((x) => x !== o)));
+  }
+  /** Preset de una materia: tipos de pregunta y documentos que mejor le van. */
+  function applyPreset(key: string) {
+    setTypes([...(TYPE_PRESETS[key] ?? QUESTION_TYPES)]);
+    const family = key === "all" ? "generic" : subjectFamily(key);
+    setOutputs((cur) => [...new Set([...(cur.includes("exercises") ? ["exercises"] : []), ...SUGGESTED_DOC_KINDS[family]])]);
+  }
+  function chooseSubject(id: string) {
+    setSubject(id);
+    if (id) applyPreset(PRESET_OF_FAMILY[subjectFamily(id)] ?? "all");
   }
 
   async function removeAsset(assetId: string) {
@@ -1410,6 +1836,8 @@ function UploadContent({
       form.set("pointsPerCorrect", points);
       form.set("modules", modules);
       form.set("questionTypes", types.join(",")); // vacío = variados
+      form.set("outputs", outputs.join(",")); // ejercicios y/o documentos de estudio
+      form.set("subjectId", subject); // vacío = la detecta la skill del material
       if (files) for (const f of Array.from(files)) form.append("files", f);
       if (mode === "regenerate" && request) {
         form.set("mode", regenMode);
@@ -1482,7 +1910,35 @@ function UploadContent({
           ))}
         </select>
         <p className="reward-hint">{t("content.levelHint")}</p>
+        <div className="course-label">{t("content.subject")}</div>
+        <select className="field" value={subject} onChange={(e) => chooseSubject(e.target.value)}>
+          <option value="">{t("content.subjectAuto")}</option>
+          {SUBJECTS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {tx(s.nameI18n)}
+            </option>
+          ))}
+        </select>
 
+        <div className="course-label">{t("content.outputs")}</div>
+        <div className="type-checks">
+          {OUTPUT_ORDER.map((o) => {
+            const on = outputs.includes(o);
+            return (
+              <label className={"course-check option-card" + (on ? " on" : "")} key={o}>
+                <input type="checkbox" checked={on} onChange={(e) => toggleOutput(o, e.target.checked)} />
+                <span className="option-text">
+                  <b>{t(`content.out_${o}`)}</b>
+                  <span>{t(`content.outd_${o}`)}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="reward-hint">{outputs.length === 0 ? t("content.outputsRequired") : t("content.outputsHint")}</p>
+
+        {wantsExercises && (
+        <>
         <div className="form-grid-2">
           <label className="form-cell">
             <span className="course-label">{t("content.numQuestions")}</span>
@@ -1531,7 +1987,7 @@ function UploadContent({
           <span className="reward-hint">{t("content.suggestFor")}</span>
           <div className="seg wrap">
             {Object.keys(TYPE_PRESETS).map((k) => (
-              <button type="button" key={k} onClick={() => setTypes([...TYPE_PRESETS[k]!])}>
+              <button type="button" key={k} onClick={() => applyPreset(k)}>
                 {t(`content.subj_${k}`)}
               </button>
             ))}
@@ -1552,6 +2008,8 @@ function UploadContent({
           })}
         </div>
         <p className="reward-hint">{t("content.questionTypesHint")}</p>
+        </>
+        )}
 
         <div className="course-label">{t("content.examples")}</div>
         <textarea

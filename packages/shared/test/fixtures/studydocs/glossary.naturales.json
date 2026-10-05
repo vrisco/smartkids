@@ -1,0 +1,28 @@
+{
+  "kind": "glossary",
+  "title": "La célula",
+  "subtitle": "Ciencias naturales · 1.º de ESO",
+  "language": "es",
+  "blocks": [
+    {
+      "type": "definitions",
+      "title": "Palabras clave",
+      "items": [
+        { "term": "Célula", "definition": "La unidad más pequeña de un ser vivo capaz de realizar las funciones vitales.", "example": "Una bacteria es un ser vivo de una sola célula." },
+        { "term": "Membrana plasmática", "definition": "Capa fina que rodea la célula y controla lo que entra y lo que sale." },
+        { "term": "Citoplasma", "definition": "Medio interior de la célula donde están los orgánulos." },
+        { "term": "Núcleo", "definition": "Orgánulo que contiene el material genético (ADN) y dirige la actividad de la célula." },
+        { "term": "Mitocondria", "definition": "Orgánulo que obtiene energía a partir de los nutrientes (respiración celular)." },
+        { "term": "Cloroplasto", "definition": "Orgánulo de las células vegetales donde se hace la fotosíntesis." },
+        { "term": "Pared celular", "definition": "Cubierta rígida que rodea la membrana en las células vegetales." },
+        { "term": "Célula eucariota", "definition": "Célula con núcleo definido.", "example": "Las células animales y vegetales." },
+        { "term": "Célula procariota", "definition": "Célula sin núcleo definido.", "example": "Las bacterias." }
+      ]
+    },
+    {
+      "type": "callout",
+      "variant": "remember",
+      "text": "Solo las células **vegetales** tienen pared celular y cloroplastos."
+    }
+  ]
+}

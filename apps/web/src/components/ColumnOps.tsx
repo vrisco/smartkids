@@ -733,6 +733,12 @@ export function PaperOperation({ ex }: { ex: OperationSpec }) {
   );
 }
 
+/** Columnas de la cuadrícula en papel de una cuenta (0 en la escalera, que es estrecha). Para repartir las
+ *  cuentas del cálculo rápido sin que una ancha se salga de su columna. */
+export function operationCols(ex: OperationSpec): number {
+  return ex.type === "column_operation" ? layoutColumn(ex, "paper", ",").cols : 0;
+}
+
 /** La solución en texto a partir de los números (hoja de soluciones de la ficha). */
 export function operationSolutionText(ex: OperationSpec, sep: string, remainderWord: string): string {
   const ca: Answer =

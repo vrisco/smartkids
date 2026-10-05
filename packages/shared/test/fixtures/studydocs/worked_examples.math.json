@@ -1,0 +1,47 @@
+{
+  "kind": "worked_examples",
+  "title": "Divisiones con decimales",
+  "subtitle": "Matemáticas · 6.º de Primaria",
+  "language": "es",
+  "blocks": [
+    {
+      "type": "callout",
+      "variant": "remember",
+      "text": "Al bajar la primera cifra decimal del dividendo, pon la coma en el cociente."
+    },
+    {
+      "type": "worked_example",
+      "title": "Dividendo decimal",
+      "statement": "Divide 47,6 entre 4.",
+      "operation": { "type": "column_operation", "operation": "divide", "operands": [47.6, 4], "decimals": 1 },
+      "steps": [
+        { "text": "Dividimos la parte entera: $47 : 4 = 11$ y sobran 3." },
+        { "text": "Bajamos el 6 (primera cifra decimal) y ponemos la coma en el cociente: $36 : 4 = 9$." }
+      ],
+      "answer": "$47,6 : 4 = 11,9$",
+      "check": "Comprobamos: $11,9 · 4 = 47,6$."
+    },
+    {
+      "type": "worked_example",
+      "title": "Sacar decimales en el cociente",
+      "statement": "Divide 25 entre 4 sacando dos decimales.",
+      "operation": { "type": "column_operation", "operation": "divide", "operands": [25, 4], "decimals": 2 },
+      "steps": [
+        { "text": "$25 : 4 = 6$ y sobra 1." },
+        { "text": "Ponemos la coma en el cociente y añadimos un 0 al resto: $10 : 4 = 2$ y sobran 2." },
+        { "text": "Añadimos otro 0: $20 : 4 = 5$ y no sobra nada." }
+      ],
+      "answer": "$25 : 4 = 6,25$"
+    },
+    {
+      "type": "worked_example",
+      "title": "Problema",
+      "statement": "Tres amigos pagan 13,50 euros por una pizza a partes iguales. ¿Cuánto paga cada uno?",
+      "steps": [
+        { "text": "Repartir en partes iguales es dividir.", "work": "13,50 : 3" },
+        { "text": "$13 : 3 = 4$ y sobra 1; bajamos el 5: $15 : 3 = 5$; bajamos el 0: $0 : 3 = 0$." }
+      ],
+      "answer": "Cada uno paga 4,50 euros."
+    }
+  ]
+}

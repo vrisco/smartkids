@@ -17,6 +17,8 @@
 DELETE FROM coin_awards;
 DELETE FROM exercise_reports;
 DELETE FROM child_rewards;
+DELETE FROM child_study_docs;
+DELETE FROM study_docs;
 DELETE FROM child_skills;
 DELETE FROM child_courses;
 DELETE FROM child_sessions;

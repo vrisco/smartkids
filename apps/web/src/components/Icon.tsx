@@ -33,7 +33,11 @@ export type IconName =
   | "eye"
   | "eyeOff"
   | "flag"
-  | "printer";
+  | "printer"
+  | "doc"
+  | "cards"
+  | "pencil"
+  | "tree";
 
 const STROKE: Partial<Record<IconName, ReactElement>> = {
   lock: (
@@ -137,6 +141,34 @@ const STROKE: Partial<Record<IconName, ReactElement>> = {
       <circle cx="12" cy="12" r="8.5" />
       <circle cx="12" cy="12" r="4.5" />
       <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  // Documento (resumen): hoja con la esquina doblada y dos renglones.
+  doc: (
+    <>
+      <path d="M6 3h8l4 4v14H6V3Z" />
+      <path d="M14 3v4h4" />
+      <path d="M9 12h6M9 16h6" />
+    </>
+  ),
+  // Tarjetas de estudio: dos tarjetas desplazadas.
+  cards: (
+    <>
+      <rect x="3" y="7" width="13" height="10" rx="1.5" />
+      <path d="M8 4h11.5A1.5 1.5 0 0 1 21 5.5V14" />
+    </>
+  ),
+  pencil: (
+    <>
+      <path d="M15.5 4.5l4 4L8 20H4v-4L15.5 4.5Z" />
+      <path d="M13 7l4 4" />
+    </>
+  ),
+  // Esquema: una llave que abre tres ramas.
+  tree: (
+    <>
+      <path d="M9 4c-2 0-2 2-2 4s-1 4-3 4c2 0 3 2 3 4s0 4 2 4" />
+      <path d="M12 6h8M12 12h8M12 18h8" />
     </>
   ),
 };

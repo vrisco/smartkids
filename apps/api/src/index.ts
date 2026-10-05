@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
+import type { SQLWrapper } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { getDb, schema } from "./db";
 import {
@@ -19,6 +20,7 @@ import {
   recordAttempt,
   setChildCookie,
   setSessionCookie,
+  sha256Hex,
   verifySecret,
 } from "./auth";
 import { devLinksEnabled, emailLayout, sendEmail } from "./email";
@@ -42,6 +44,20 @@ import {
   toStoredPayload,
   validateExercise,
   type Exercise,
+  CHILD_ANSWERS_DEFAULT,
+  DEFAULT_REQUEST_OUTPUTS,
+  REQUEST_OUTPUTS,
+  STUDY_DOC_KIND_LABELS,
+  STUDY_DOC_LIMITS,
+  StudyDocMetaSchema,
+  StudyDocSchema,
+  canonicalStudyDocJson,
+  redactStudyDocForChild,
+  studyDocBytes,
+  studyDocStats,
+  validateStudyDoc,
+  type StudyDoc,
+  type StudyDocKind,
 } from "@smartkids/shared";
 
 export interface Env {
@@ -82,6 +98,8 @@ const {
   pushSubscriptions,
   webauthnCredentials,
   webauthnFlows,
+  studyDocs,
+  childStudyDocs,
 } = schema;
 
 const COINS_PER_CORRECT = 10;
@@ -218,9 +236,16 @@ async function deleteChildCascade(db: DB, childId: string): Promise<void> {
   await db.delete(coinAwards).where(eq(coinAwards.profileId, childId));
   await db.delete(exerciseReports).where(eq(exerciseReports.profileId, childId));
   await db.delete(childSkills).where(eq(childSkills.childId, childId));
+  await db.delete(childStudyDocs).where(eq(childStudyDocs.childId, childId));
   await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, childId));
   await db.update(contentRequests).set({ childId: null }).where(eq(contentRequests.childId, childId));
   await db.delete(childProfiles).where(eq(childProfiles.id, childId));
+}
+
+/** Borra un documento de estudio y sus asignaciones. */
+async function deleteStudyDocCascade(db: DB, docId: string): Promise<void> {
+  await db.delete(childStudyDocs).where(eq(childStudyDocs.docId, docId));
+  await db.delete(studyDocs).where(eq(studyDocs.id, docId));
 }
 
 /** Borra un skill PRIVADO con su paquete, plantillas y todo lo que las referencia. */
@@ -237,6 +262,15 @@ async function deletePrivateSkillCascade(db: DB, skillId: string, household: str
   await db.delete(exerciseReports).where(inArray(exerciseReports.exerciseTemplateId, plantillasDelSkill));
   await db.delete(exerciseTemplates).where(eq(exerciseTemplates.skillId, skillId));
   await db.update(contentRequests).set({ skillId: null, packageId: null }).where(eq(contentRequests.skillId, skillId));
+  // Los documentos de ESTE módulo se van con él (los del path entero o de la solicitud sobreviven).
+  if (household.length > 0) {
+    const docsDelSkill = db
+      .select({ id: studyDocs.id })
+      .from(studyDocs)
+      .where(and(eq(studyDocs.skillId, skillId), inArray(studyDocs.ownerId, household)));
+    await db.delete(childStudyDocs).where(inArray(childStudyDocs.docId, docsDelSkill));
+    await db.delete(studyDocs).where(and(eq(studyDocs.skillId, skillId), inArray(studyDocs.ownerId, household)));
+  }
   for (const { pkg } of pkgRows) {
     const [rem] = await db.select({ n: sql<number>`count(*)` }).from(exerciseTemplates).where(eq(exerciseTemplates.packageId, pkg));
     if ((rem?.n ?? 0) === 0) await db.delete(contentPackages).where(and(eq(contentPackages.id, pkg), inArray(contentPackages.ownerId, household)));
@@ -249,6 +283,8 @@ async function deletePrivateSkillCascade(db: DB, skillId: string, household: str
 async function deleteContentRequestCascade(env: Env, db: DB, reqId: string): Promise<void> {
   const assets = await db.select({ r2Key: contentRequestAssets.r2Key }).from(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
   await db.delete(contentRequestAssets).where(eq(contentRequestAssets.requestId, reqId));
+  // Los documentos publicados sobreviven a su solicitud (como los skills): solo pierden el enlace.
+  await db.update(studyDocs).set({ requestId: null }).where(eq(studyDocs.requestId, reqId));
   await db.delete(contentRequests).where(eq(contentRequests.id, reqId));
   for (const key of new Set(assets.map((as) => as.r2Key))) await deleteR2IfUnreferenced(env, db, key);
 }
@@ -266,6 +302,124 @@ async function householdIds(db: DB, parentId: string): Promise<string[]> {
   if (!p?.spouseId) return [parentId];
   const [s] = await db.select({ spouseId: parentAccounts.spouseId }).from(parentAccounts).where(eq(parentAccounts.id, p.spouseId)).limit(1);
   return s?.spouseId === parentId ? [parentId, p.spouseId] : [parentId];
+}
+
+/* ---------- Documentos de estudio: quién ve qué ---------- */
+
+/** ¿Algún niño del hogar tiene un curso de esta asignatura+nivel? (acceso del tutor al contenido GLOBAL). */
+async function householdHasCourseFor(db: DB, household: string[], subjectId: string, gradeBand: string): Promise<boolean> {
+  if (household.length === 0) return false;
+  const [row] = await db
+    .select({ c: childCourses.courseId })
+    .from(childCourses)
+    .innerJoin(courses, eq(courses.id, childCourses.courseId))
+    .innerJoin(childProfiles, eq(childProfiles.id, childCourses.childId))
+    .where(and(inArray(childProfiles.parentId, household), eq(courses.subjectId, subjectId), eq(courses.gradeBand, gradeBand)))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** Columnas de un documento para LISTAR: nunca el cuerpo (puede ocupar decenas de KB). */
+const DOC_META = {
+  id: studyDocs.id,
+  kind: studyDocs.kind,
+  title: studyDocs.title,
+  subjectId: studyDocs.subjectId,
+  gradeBand: studyDocs.gradeBand,
+  language: studyDocs.language,
+  ownerId: studyDocs.ownerId,
+  skillId: studyDocs.skillId,
+  pathId: studyDocs.pathId,
+  courseId: studyDocs.courseId,
+  moduleIndex: studyDocs.moduleIndex,
+  position: studyDocs.position,
+  requestId: studyDocs.requestId,
+  childAnswers: studyDocs.childAnswers,
+  hidden: studyDocs.hidden,
+  stats: studyDocs.stats,
+  bytes: studyDocs.bytes,
+  version: studyDocs.version,
+  updatedAt: studyDocs.updatedAt,
+};
+
+/** Nombre de los paths (para agrupar documentos en la app), en tandas de 50 ids. */
+async function pathNamesOf(db: DB, pathIds: string[]): Promise<Map<string, unknown>> {
+  const out = new Map<string, unknown>();
+  const ids = [...new Set(pathIds)];
+  for (let i = 0; i < ids.length; i += 50) {
+    const rows = await db
+      .selectDistinct({ pathId: skills.pathId, pathName: skills.pathName })
+      .from(skills)
+      .where(inArray(skills.pathId, ids.slice(i, i + 50)));
+    for (const r of rows) if (r.pathId && r.pathName && !out.has(r.pathId)) out.set(r.pathId, r.pathName);
+  }
+  return out;
+}
+
+/**
+ * Documentos que puede ver un niño (solo metadatos): los GLOBALES de la asignatura+nivel de sus cursos y los
+ * PRIVADOS asignados cuyo dueño siga en su hogar (el grant solo no basta, como con los skills). Nunca los
+ * ocultos por el tutor ni los retirados.
+ */
+async function docsVisibleToChild(db: DB, kid: string) {
+  const [child] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, kid)).limit(1);
+  if (!child) return [];
+  const cursos = await childCoursesOf(db, kid);
+  const household = await householdIds(db, child.parentId);
+  const vigente = and(eq(studyDocs.retired, false), eq(studyDocs.hidden, false));
+  const globales =
+    cursos.length === 0
+      ? []
+      : await db
+          .select(DOC_META)
+          .from(studyDocs)
+          .where(
+            and(
+              isNull(studyDocs.ownerId),
+              vigente,
+              or(...cursos.map((co) => and(eq(studyDocs.subjectId, co.subjectId), eq(studyDocs.gradeBand, co.gradeBand)))),
+            ),
+          );
+  const privados = await db
+    .select(DOC_META)
+    .from(childStudyDocs)
+    .innerJoin(studyDocs, eq(studyDocs.id, childStudyDocs.docId))
+    .where(and(eq(childStudyDocs.childId, kid), isNotNull(studyDocs.ownerId), inArray(studyDocs.ownerId, household), vigente));
+  const all = [...globales.map((d) => ({ ...d, origin: "course" as const })), ...privados.map((d) => ({ ...d, origin: "private" as const }))];
+  const names = await pathNamesOf(db, all.map((d) => d.pathId).filter((p): p is string => Boolean(p)));
+  return all
+    .map(({ ownerId: _o, requestId: _r, hidden: _h, childAnswers: _c, bytes: _b, ...d }) => ({
+      ...d,
+      // Cursos del niño en los que encaja el documento (un privado de la misma asignatura+nivel sale también en el curso).
+      courseIds: cursos.filter((co) => co.subjectId === d.subjectId && co.gradeBand === d.gradeBand).map((co) => co.id),
+      pathName: d.pathId ? (names.get(d.pathId) ?? null) : null,
+    }))
+    .sort((a, b) => (a.moduleIndex ?? 0) - (b.moduleIndex ?? 0) || a.position - b.position || a.title.localeCompare(b.title));
+}
+
+type DocRow = typeof studyDocs.$inferSelect;
+
+/** ¿Puede el niño abrir este documento? Mismas reglas que docsVisibleToChild, para uno solo. */
+async function childCanReadDoc(db: DB, kid: string, doc: DocRow): Promise<boolean> {
+  if (doc.retired || doc.hidden) return false;
+  if (doc.ownerId) {
+    const [child] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, kid)).limit(1);
+    if (!child) return false;
+    if (!(await householdIds(db, child.parentId)).includes(doc.ownerId)) return false;
+    const [grant] = await db
+      .select({ d: childStudyDocs.docId })
+      .from(childStudyDocs)
+      .where(and(eq(childStudyDocs.childId, kid), eq(childStudyDocs.docId, doc.id)))
+      .limit(1);
+    return Boolean(grant);
+  }
+  const [row] = await db
+    .select({ c: childCourses.courseId })
+    .from(childCourses)
+    .innerJoin(courses, eq(courses.id, childCourses.courseId))
+    .where(and(eq(childCourses.childId, kid), eq(courses.subjectId, doc.subjectId), eq(courses.gradeBand, doc.gradeBand)))
+    .limit(1);
+  return Boolean(row);
 }
 
 /** Acota un valor a un entero en [lo, hi], con defecto si no es número. */
@@ -343,8 +497,43 @@ function requestConfigFromForm(form: Record<string, unknown>, prev?: RequestRow)
     // Presente pero vacío = "variados" (null); ausente = se conserva lo que hubiera.
     questionTypes: form["questionTypes"] !== undefined ? parseQuestionTypes(form["questionTypes"]) : (prev?.questionTypes ?? null),
     examples: form["examples"] !== undefined ? parseExamples(form["examples"]) : (prev?.examples ?? ""),
+    // Qué generar. Presente pero vacío/inválido = null (el handler responde 400 empty_outputs); ausente = se
+    // hereda, y en una solicitud nueva va lo de por defecto (ejercicios + resumen + hoja de trucos).
+    outputs: form["outputs"] !== undefined ? parseOutputs(form["outputs"]) : prev ? requestOutputs(prev) : [...DEFAULT_REQUEST_OUTPUTS],
   };
 }
+
+/** Lo que puede pedir una solicitud ("a,b,c" o campo repetido), en el orden canónico. Vacía o inválida = null. */
+function parseOutputs(v: unknown): string[] | null {
+  const raw = new Set((Array.isArray(v) ? v : [v]).flatMap((x) => String(x ?? "").split(",")).map((x) => x.trim()));
+  const out = REQUEST_OUTPUTS.filter((o) => raw.has(o));
+  return out.length > 0 ? out : null;
+}
+
+/** Salidas de una solicitud; las anteriores a los documentos (outputs NULL) eran solo ejercicios. */
+function requestOutputs(row: { outputs: string[] | null }): string[] {
+  return row.outputs && row.outputs.length > 0 ? row.outputs : ["exercises"];
+}
+
+/** Tipos de documento que pide una solicitud. */
+function requestDocKinds(row: { outputs: string[] | null }): StudyDocKind[] {
+  return requestOutputs(row).filter((o): o is StudyDocKind => o !== "exercises");
+}
+
+/** Ejercicios a GENERAR para una solicitud (0 si solo pide documentos). */
+function requestTargetExercises(row: { outputs: string[] | null; numQuestions: number | null }): number {
+  return requestOutputs(row).includes("exercises") ? targetExercises(row.numQuestions) : 0;
+}
+
+/** Ids de asignatura: minúsculas, como «math», «lengua», «ingles». */
+const SUBJECT_ID_RE = /^[a-z][a-z0-9_]{1,39}$/;
+function parseSubjectId(v: unknown): string | null {
+  const s = String(v ?? "").trim().toLowerCase();
+  return SUBJECT_ID_RE.test(s) ? s : null;
+}
+
+/** Respuesta 400 cuando una solicitud no pide nada. */
+const EMPTY_OUTPUTS = { error: "empty_outputs", message: "Elige al menos un material que generar." } as const;
 
 /**
  * Skills PRIVADOS publicados por una solicitud: el que apunta `skill_id` y todos los módulos de su
@@ -681,6 +870,7 @@ app.delete("/api/admin/tutors/:id", async (c) => {
     await db.update(skills).set({ ownerId: t.spouseId }).where(eq(skills.ownerId, id));
     await db.update(contentPackages).set({ ownerId: t.spouseId }).where(eq(contentPackages.ownerId, id));
     await db.update(contentRequests).set({ ownerId: t.spouseId }).where(eq(contentRequests.ownerId, id));
+    await db.update(studyDocs).set({ ownerId: t.spouseId }).where(eq(studyDocs.ownerId, id));
     await db.update(parentAccounts).set({ spouseId: null }).where(eq(parentAccounts.id, t.spouseId));
   } else {
     // Sin cónyuge: se borra todo lo suyo. El orden importa (FKs sin ON DELETE).
@@ -694,6 +884,9 @@ app.delete("/api/admin/tutors/:id", async (c) => {
     // clave ajena DESPUÉS de haber destruido su hogar, dejando la cuenta viva y el estado roto.
     const reqs = await db.select({ id: contentRequests.id }).from(contentRequests).where(eq(contentRequests.ownerId, id));
     for (const r of reqs) await deleteContentRequestCascade(c.env, db, r.id);
+    // Sus documentos de estudio (owner_id sin FK: no fallaría, pero quedarían huérfanos e invisibles).
+    await db.delete(childStudyDocs).where(inArray(childStudyDocs.docId, db.select({ id: studyDocs.id }).from(studyDocs).where(eq(studyDocs.ownerId, id))));
+    await db.delete(studyDocs).where(eq(studyDocs.ownerId, id));
   }
   // Limpia cualquier invitación de cónyuge pendiente que apuntara a este tutor.
   await db.update(parentAccounts).set({ spousePendingFrom: null }).where(eq(parentAccounts.spousePendingFrom, id));
@@ -897,6 +1090,10 @@ app.delete("/api/tutor/spouse", async (c) => {
   const bSkills = (await db.select({ id: skills.id }).from(skills).where(eq(skills.ownerId, other))).map((s) => s.id);
   if (aKids.length && bSkills.length) await db.delete(childSkills).where(and(inArray(childSkills.childId, aKids), inArray(childSkills.skillId, bSkills)));
   if (bKids.length && aSkills.length) await db.delete(childSkills).where(and(inArray(childSkills.childId, bKids), inArray(childSkills.skillId, aSkills)));
+  // Y los documentos de estudio (subconsultas: sin listas de ids que pasen del límite de D1).
+  const docsDe = (owner: string) => db.select({ id: studyDocs.id }).from(studyDocs).where(eq(studyDocs.ownerId, owner));
+  if (aKids.length) await db.delete(childStudyDocs).where(and(inArray(childStudyDocs.childId, aKids), inArray(childStudyDocs.docId, docsDe(other))));
+  if (bKids.length) await db.delete(childStudyDocs).where(and(inArray(childStudyDocs.childId, bKids), inArray(childStudyDocs.docId, docsDe(parentId))));
   return c.json({ ok: true });
 });
 
@@ -1139,11 +1336,14 @@ type ProgresoAmbito = {
  * tiene acceso HOY (cursos asignados; privados con grant y dueño en su hogar). Devuelve además, por
  * ámbito, los ejercicios pendientes ordenados para el repaso: los que más falla primero.
  */
-async function progresoDelNino(db: DB, kid: string): Promise<{ scopes: Record<string, ProgresoAmbito>; pendientes: Map<string, string[]> }> {
+async function progresoDelNino(
+  db: DB,
+  kid: string,
+): Promise<{ scopes: Record<string, ProgresoAmbito>; pendientes: Map<string, string[]>; fallos: Map<string, number> }> {
   const scopes: Record<string, ProgresoAmbito> = {};
   const pendientes = new Map<string, string[]>();
   const [child] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, kid)).limit(1);
-  if (!child) return { scopes, pendientes };
+  if (!child) return { scopes, pendientes, fallos: new Map() };
   const crs = await childCoursesOf(db, kid);
   const household = await householdIds(db, child.parentId);
   const priv = await db
@@ -1217,6 +1417,7 @@ async function progresoDelNino(db: DB, kid: string): Promise<{ scopes: Record<st
   }
 
   const pct = (bs: boolean[]) => (bs.filter(Boolean).length / bs.length) * 100;
+  const fallos = new Map<string, number>(); // veces que ha fallado cada ejercicio pendiente (para el repaso impreso)
   for (const [key, g] of accs) {
     const recent = g.seq.slice(-20);
     const prev = g.seq.slice(-40, -20);
@@ -1225,6 +1426,7 @@ async function progresoDelNino(db: DB, kid: string): Promise<{ scopes: Record<st
       .filter(([, t]) => t.visible && esPendiente(t.lastFail, t.lastOk))
       .sort((a, b) => b[1].fails - a[1].fails || ((b[1].lastFail ?? "") > (a[1].lastFail ?? "") ? 1 : -1));
     pendientes.set(key, pend.map(([id]) => id));
+    for (const [id, t] of pend) fallos.set(id, Math.max(fallos.get(id) ?? 0, t.fails));
     scopes[key] = {
       attempts: g.n,
       correct: g.ok,
@@ -1260,7 +1462,7 @@ async function progresoDelNino(db: DB, kid: string): Promise<{ scopes: Record<st
       scopes[key] = { ...base, totalSkills: courseSkills.length, mastered: courseSkills.filter((sk) => mastered.has(sk.id)).length };
     }
   }
-  return { scopes, pendientes };
+  return { scopes, pendientes, fallos };
 }
 
 // El niño ve cómo va en cada curso, ficha y path: aciertos, tendencia, tiempo por pregunta y avance.
@@ -1718,12 +1920,18 @@ app.get("/api/tutor/children/:id/export", async (c) => {
     .from(childSkills)
     .innerJoin(skills, eq(skills.id, childSkills.skillId))
     .where(eq(childSkills.childId, childId));
+  const studyDocsAsignados = await db
+    .select({ id: studyDocs.id, kind: studyDocs.kind, title: studyDocs.title, assignedAt: childStudyDocs.assignedAt })
+    .from(childStudyDocs)
+    .innerJoin(studyDocs, eq(studyDocs.id, childStudyDocs.docId))
+    .where(eq(childStudyDocs.childId, childId));
   const payload = {
     schema: "smartkids-child-export/1",
     exportedAt: new Date().toISOString(),
     profile,
     courses: crs,
     customSkills,
+    studyDocs: studyDocsAsignados,
     wallet: { balance: wallet?.balance ?? 0, ledger },
     progress,
     attempts: attemptRows,
@@ -1841,6 +2049,79 @@ app.get("/api/tutor/children/:id/mistakes", async (c) => {
     out.push({ ts: r.ts, skillName: nameById.get(r.skillId) ?? { es: r.skillId }, stem: tpl.stem, type: tpl.type, render, given: r.answer ?? null, correctAnswer });
   }
   return c.json(out);
+});
+
+/** Ejercicio completo (con solución) de una plantilla, o null si no cumple el modelo. */
+function exerciseOfTemplate(tpl: typeof exerciseTemplates.$inferSelect): Exercise | null {
+  try {
+    return exerciseFromRow({
+      id: tpl.id,
+      packageId: tpl.packageId,
+      skillId: tpl.skillId,
+      type: tpl.type,
+      language: tpl.language,
+      contentVersion: tpl.contentVersion,
+      stem: tpl.stem,
+      payload: tpl.payload,
+      difficultyNumeric: tpl.difficultyNumeric,
+      difficultyLevel: tpl.difficultyLevel,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Nombre legible de cada ámbito de progreso (`course:` / `skill:` / `path:`) de un niño. */
+async function etiquetasDeAmbitos(db: DB, kid: string, keys: string[]): Promise<Map<string, unknown>> {
+  const out = new Map<string, unknown>();
+  const cursos = await childCoursesOf(db, kid);
+  for (const co of cursos) out.set(`course:${co.id}`, co.nameI18n);
+  const skillIds = keys.filter((k) => k.startsWith("skill:")).map((k) => k.slice(6));
+  for (let i = 0; i < skillIds.length; i += 50) {
+    const rows = await db.select({ id: skills.id, name: skills.nameI18n }).from(skills).where(inArray(skills.id, skillIds.slice(i, i + 50)));
+    for (const r of rows) out.set(`skill:${r.id}`, r.name);
+  }
+  const paths = await pathNamesOf(db, keys.filter((k) => k.startsWith("path:")).map((k) => k.slice(5)));
+  for (const [id, name] of paths) out.set(`path:${id}`, name);
+  return out;
+}
+
+// Ejercicios que un niño SIGUE fallando (los «pendientes» de «Repasar fallos»), COMPLETOS y con solución,
+// para que el tutor imprima una ficha de repaso. Sin `scope`: los ámbitos con su etiqueta y cuántos tiene.
+app.get("/api/tutor/children/:id/pending", async (c) => {
+  const db = getDb(c.env.DB);
+  const parentId = await requireParent(c, db);
+  if (typeof parentId !== "string") return parentId;
+  const childId = c.req.param("id");
+  if (!(await ownsProfile(db, parentId, childId))) return c.json({ error: "forbidden" }, 403);
+  const { scopes, pendientes, fallos } = await progresoDelNino(db, childId);
+  const labels = await etiquetasDeAmbitos(db, childId, Object.keys(scopes));
+  const lista = Object.entries(scopes)
+    .map(([scope, s]) => ({ scope, label: labels.get(scope) ?? null, pending: s.pending, attempts: s.attempts, accuracyPct: s.accuracyPct, trend: s.trend }))
+    .sort((a, b) => b.pending - a.pending);
+  const scope = c.req.query("scope");
+  if (!scope) return c.json({ scopes: lista });
+
+  const limit = clampInt(c.req.query("limit"), 1, 50, 30);
+  const ids = (pendientes.get(scope) ?? []).slice(0, limit);
+  if (ids.length === 0) return c.json({ scopes: lista, items: [] });
+  const tpls = await db
+    .select()
+    .from(exerciseTemplates)
+    .where(and(inArray(exerciseTemplates.id, ids), eq(exerciseTemplates.retired, false), eq(exerciseTemplates.hidden, false)));
+  const byId = new Map(tpls.map((t) => [t.id, t]));
+  const skillIds = [...new Set(tpls.map((t) => t.skillId))];
+  const srows = skillIds.length ? await db.select({ id: skills.id, name: skills.nameI18n, subjectId: skills.subjectId }).from(skills).where(inArray(skills.id, skillIds)) : [];
+  const nameById = new Map(srows.map((s) => [s.id, s.name]));
+  const subjectById = new Map(srows.map((s) => [s.id, s.subjectId]));
+  const items: Array<Record<string, unknown>> = [];
+  for (const id of ids) {
+    const tpl = byId.get(id);
+    const exercise = tpl ? exerciseOfTemplate(tpl) : null;
+    if (!tpl || !exercise) continue;
+    items.push({ templateId: id, skillId: tpl.skillId, skillName: nameById.get(tpl.skillId) ?? null, subjectId: subjectById.get(tpl.skillId) ?? null, fails: fallos.get(id) ?? 1, exercise });
+  }
+  return c.json({ scopes: lista, items });
 });
 
 /* ================= Preguntas marcadas como erróneas ================= */
@@ -1973,15 +2254,34 @@ function escHtml(s: string): string {
 
 /** Avisa a los administradores (push + email) de que hay una solicitud de contenido por procesar.
  *  Sin esto la solicitud esperaba en 'uploaded' hasta que alguien ejecutase la skill por su cuenta. */
-async function notifyAdminsContentRequest(env: Env, db: DB, title: string, numQuestions: number | null, regenerate: boolean): Promise<void> {
+/** Lista en castellano: «a», «a y b», «a, b y c». */
+function listaEs(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`;
+}
+
+/** Qué pide una solicitud, en una frase («20 preguntas pedidas, 30 a generar, más resumen y hoja de trucos»). */
+function pedidoEs(cfg: { numQuestions: number | null; outputs: string[] | null }): string {
+  const docs = requestDocKinds(cfg).map((k) => STUDY_DOC_KIND_LABELS[k].esLower);
+  if (!requestOutputs(cfg).includes("exercises")) return `solo documentos: ${listaEs(docs)}`;
+  const base = `${cfg.numQuestions ?? 20} preguntas pedidas, ${targetExercises(cfg.numQuestions)} a generar`;
+  return docs.length > 0 ? `${base}, más ${listaEs(docs)}` : base;
+}
+
+async function notifyAdminsContentRequest(
+  env: Env,
+  db: DB,
+  title: string,
+  cfg: { numQuestions: number | null; outputs: string[] | null },
+  regenerate: boolean,
+): Promise<void> {
   const admins = await db.select({ id: parentAccounts.id, email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.role, "admin"));
   if (!admins.length) return;
   for (const ad of admins) await notifyOwner(env, db, ad.id); // push (best-effort)
   const nombre = escHtml(title || "(sin título)");
   const html = emailLayout(
     regenerate ? "Contenido a regenerar" : "Nueva solicitud de contenido",
-    `Un tutor ha ${regenerate ? "pedido regenerar" : "enviado"} <b>${nombre}</b>: ${numQuestions ?? 20} preguntas pedidas, ` +
-      `${targetExercises(numQuestions)} a generar. Procésala con <b>/smartkids_content</b>.`,
+    `Un tutor ha ${regenerate ? "pedido regenerar" : "enviado"} <b>${nombre}</b>: ${escHtml(pedidoEs(cfg))}. ` +
+      `Procésala con <b>/smartkids_content</b>.`,
   );
   const subject = regenerate ? "smartkids · contenido a regenerar" : "smartkids · nueva solicitud de contenido";
   for (const ad of admins) await sendEmail(env, ad.email, subject, html);
@@ -2296,6 +2596,8 @@ app.post("/api/admin/content/import", async (c) => {
     replaceSkillContent?: boolean;
     /** Solo en la llamada que CIERRA una regeneración: skills de la publicación anterior que ya no se usan (se borran). */
     retireSkillIds?: string[];
+    /** Con `requestId`: false = enlaza el skill a la solicitud SIN cerrarla (vienen documentos detrás). Por defecto, cierra. */
+    close?: boolean;
   }>();
   if (!body?.package?.id || !Array.isArray(body?.exercises)) return c.json({ error: "invalid body" }, 400);
   const offset = Math.max(0, Math.floor(Number(body.offset ?? 0)) || 0);
@@ -2343,6 +2645,9 @@ app.post("/api/admin/content/import", async (c) => {
       .onConflictDoUpdate({
         target: skills.id,
         set: {
+          // Asignatura y nivel también: una regeneración puede cambiar el curso escolar del contenido.
+          subjectId: body.skill.subjectId,
+          gradeBand: body.skill.gradeBand,
           nameI18n: body.skill.nameI18n,
           coinsPerCorrect: skillCoins,
           pathId: body.skill.pathId ?? null,
@@ -2435,49 +2740,327 @@ app.post("/api/admin/content/import", async (c) => {
     }
   }
 
-  // Cierre de la solicitud (Vía B): marcar publicada + avisar al tutor por email.
+  // Vía B: enlaza el skill a su solicitud y, salvo `close:false` (vienen documentos detrás), la cierra.
+  let closed: CloseResult | null = null;
   if (body.requestId) {
     const [req] = await db.select().from(contentRequests).where(eq(contentRequests.id, body.requestId)).limit(1);
     if (req) {
-      // Regeneración: los skills de la publicación anterior que ya no se usan (p. ej. al pasar de 3
-      // módulos a 2) se borran. Solo se aceptan skills que SEAN de esta solicitud y nunca el actual.
-      const propios = await requestSkills(db, req);
-      const propiosIds = new Set(propios.map((p) => p.id));
-      const retirar = (body.retireSkillIds ?? []).filter((id) => propiosIds.has(id) && id !== targetSkillId);
-      if (retirar.length > 0) {
-        const hogar = await householdIds(db, req.ownerId);
-        for (const id of retirar) await deletePrivateSkillCascade(db, id, hogar);
-      }
-      // Total de la solicitud (todos sus módulos, sin lo retirado), no solo el del último lote.
-      const vivos = propios.map((p) => p.id).filter((id) => !retirar.includes(id));
-      if (!vivos.includes(targetSkillId)) vivos.push(targetSkillId);
-      const [cnt] = await db
-        .select({ n: sql<number>`count(*)` })
-        .from(exerciseTemplates)
-        .where(and(inArray(exerciseTemplates.skillId, vivos), eq(exerciseTemplates.retired, false)));
-      const exerciseCount = cnt?.n ?? parsed.length;
-      await db
-        .update(contentRequests)
-        .set({ status: "published", skillId: targetSkillId, packageId: body.package.id, exerciseCount, publishedAt: now })
-        .where(eq(contentRequests.id, body.requestId));
-      const [owner] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, req.ownerId)).limit(1);
-      if (owner) {
-        await sendEmail(
-          c.env,
-          owner.email,
-          "Tu contenido esta listo · smartkids",
-          emailLayout("Contenido listo", `Ya hemos generado "${req.title}" (${exerciseCount} ejercicios). Entra para asignarlo o revisarlo.`, {
-            url: "https://app.smart-kids.uk",
-            label: "Abrir smartkids",
-          }),
-        );
-        await db.update(contentRequests).set({ notifiedAt: new Date().toISOString() }).where(eq(contentRequests.id, body.requestId));
-      }
-      await notifyOwner(c.env, db, req.ownerId); // push al tutor: "contenido listo"
+      const linked = await linkRequestSkills(db, req, { targetSkillId, packageId: body.package.id, retireSkillIds: body.retireSkillIds ?? [] });
+      if (body.close !== false) closed = await closeRequest(c.env, db, linked, { extraSkillIds: [targetSkillId] });
     }
   }
 
-  return c.json({ ok: true, packageId: body.package.id, skillId: targetSkillId, exercises: parsed.length, offset, assigned: assigned.length });
+  return c.json({
+    ok: true,
+    packageId: body.package.id,
+    skillId: targetSkillId,
+    exercises: parsed.length,
+    offset,
+    assigned: assigned.length,
+    ...(closed?.ok ? { closed: { exerciseCount: closed.exerciseCount, docCount: closed.docCount, missing: closed.missing } } : {}),
+  });
+});
+
+/**
+ * Enlaza a su solicitud el skill de ejercicios recién publicado (skill_id/package_id: el puntero que usan
+ * la regeneración y el conteo) y, en una regeneración, borra los skills de la publicación anterior que ya
+ * no se usan (p. ej. al pasar de 3 módulos a 2). Solo acepta skills que SEAN de esta solicitud y nunca el actual.
+ */
+async function linkRequestSkills(
+  db: DB,
+  req: RequestRow,
+  o: { targetSkillId: string; packageId: string; retireSkillIds: string[] },
+): Promise<RequestRow> {
+  const propios = await requestSkills(db, req);
+  const propiosIds = new Set(propios.map((p) => p.id));
+  const retirar = o.retireSkillIds.filter((id) => propiosIds.has(id) && id !== o.targetSkillId);
+  if (retirar.length > 0) {
+    const hogar = await householdIds(db, req.ownerId);
+    for (const id of retirar) await deletePrivateSkillCascade(db, id, hogar);
+  }
+  await db.update(contentRequests).set({ skillId: o.targetSkillId, packageId: o.packageId }).where(eq(contentRequests.id, req.id));
+  return { ...req, skillId: o.targetSkillId, packageId: o.packageId };
+}
+
+type CloseResult = { ok: true; exerciseCount: number; docCount: number; missing: string[] } | { ok: false; error: "nothing_published" };
+
+/**
+ * Cierra una solicitud (Vía B): cuenta lo VIGENTE (ejercicios de todos sus módulos y documentos), borra los
+ * documentos sobrantes de una regeneración, la marca `published` (anotando lo que se pidió y no se generó) y
+ * avisa al tutor por email y push. La llama la ÚLTIMA publicación (de ejercicios o de documentos).
+ */
+async function closeRequest(env: Env, db: DB, req: RequestRow, o: { extraSkillIds?: string[]; retireDocIds?: string[] } = {}): Promise<CloseResult> {
+  const propios = await requestSkills(db, req);
+  const skillIds = [...new Set([...propios.map((p) => p.id), ...(o.extraSkillIds ?? [])])];
+  let exerciseCount = 0;
+  if (skillIds.length > 0) {
+    const [cnt] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(exerciseTemplates)
+      .where(and(inArray(exerciseTemplates.skillId, skillIds), eq(exerciseTemplates.retired, false)));
+    exerciseCount = cnt?.n ?? 0;
+  }
+  // Documentos de la publicación anterior que ya no se usan: solo los de ESTA solicitud.
+  for (const id of o.retireDocIds ?? []) {
+    const [d] = await db.select({ requestId: studyDocs.requestId }).from(studyDocs).where(eq(studyDocs.id, id)).limit(1);
+    if (d?.requestId === req.id) await deleteStudyDocCascade(db, id);
+  }
+  const docs = await db
+    .select({ kind: studyDocs.kind, title: studyDocs.title })
+    .from(studyDocs)
+    .where(and(eq(studyDocs.requestId, req.id), eq(studyDocs.retired, false)));
+  const docCount = docs.length;
+  if (exerciseCount === 0 && docCount === 0) return { ok: false, error: "nothing_published" };
+
+  const hechos = new Set<string>(docs.map((d) => d.kind));
+  if (exerciseCount > 0) hechos.add("exercises");
+  const missing = requestOutputs(req).filter((x) => !hechos.has(x));
+  const now = new Date().toISOString();
+  await db
+    .update(contentRequests)
+    .set({
+      status: "published",
+      exerciseCount,
+      docCount,
+      publishedAt: now,
+      note: missing.length > 0 ? `Sin generar: ${listaEs(missing.map((m) => (m === "exercises" ? "ejercicios" : STUDY_DOC_KIND_LABELS[m as StudyDocKind]?.esLower ?? m)))}` : null,
+    })
+    .where(eq(contentRequests.id, req.id));
+
+  // Qué se ha generado, en una frase: «45 ejercicios, resumen y hoja de trucos».
+  const partes = [
+    ...(exerciseCount > 0 ? [`${exerciseCount} ejercicios`] : []),
+    ...[...new Set(docs.map((d) => d.kind))].map((k) => STUDY_DOC_KIND_LABELS[k as StudyDocKind]?.esLower ?? k),
+  ];
+  // Sin título (el tutor puede dejarlo vacío): el nombre del path/módulo o del primer documento.
+  const primero = propios[0];
+  const nombreAuto =
+    (primero?.pathName as Record<string, string> | null)?.es ?? (primero?.nameI18n as Record<string, string> | null)?.es ?? docs[0]?.title ?? "tu contenido";
+  const nombre = escHtml(req.title || nombreAuto);
+  const [owner] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, req.ownerId)).limit(1);
+  if (owner) {
+    await sendEmail(
+      env,
+      owner.email,
+      "Tu contenido está listo · smartkids",
+      emailLayout("Contenido listo", `Ya hemos generado «${nombre}»: ${escHtml(listaEs(partes))}. Entra para asignarlo, revisarlo o imprimirlo.`, {
+        url: "https://app.smart-kids.uk",
+        label: "Abrir smartkids",
+      }),
+    );
+    await db.update(contentRequests).set({ notifiedAt: new Date().toISOString() }).where(eq(contentRequests.id, req.id));
+  }
+  await notifyOwner(env, db, req.ownerId); // push al tutor: "contenido listo"
+  return { ok: true, exerciseCount, docCount, missing };
+}
+
+/** Niños asignados a cada documento, de UNA consulta (subconsulta: nada de listas de ids que pasen de 100 parámetros). */
+async function docChildIds(db: DB, docIds: SQLWrapper): Promise<Map<string, string[]>> {
+  const rows = await db
+    .select({ docId: childStudyDocs.docId, childId: childStudyDocs.childId })
+    .from(childStudyDocs)
+    .where(inArray(childStudyDocs.docId, docIds));
+  const out = new Map<string, string[]>();
+  for (const r of rows) out.set(r.docId, [...(out.get(r.docId) ?? []), r.childId]);
+  return out;
+}
+
+/* ================= Documentos de estudio: publicación (máquina/admin) ================= */
+
+// Publica UN documento de estudio (global o privado) generado por la skill o por el builder de cursos.
+// Valida con el modelo de shared, hace upsert por id (la versión solo sube si cambia el contenido), asigna
+// a los niños del hogar y, con `requestId` + `close:true`, cierra la solicitud.
+app.post("/api/admin/study-docs/import", async (c) => {
+  const db = getDb(c.env.DB);
+  const gate = await requireImporter(c, db);
+  if (gate !== true) return gate;
+
+  const raw = await c.req.text();
+  if (raw.length > STUDY_DOC_LIMITS.importMaxChars) return c.json({ error: "too_large", message: "La petición es demasiado grande." }, 413);
+  const body = JSON.parse(raw) as {
+    subject?: { id: string; nameI18n: LocaleTextIn };
+    doc?: Record<string, unknown>;
+    assign?: { childIds?: string[] };
+    requestId?: string;
+    /** Con `requestId`: true = esta es la última publicación de la solicitud y la cierra. */
+    close?: boolean;
+    /** Al cerrar una regeneración: documentos de la publicación anterior que ya no se usan (se borran). */
+    retireDocIds?: string[];
+  };
+  const meta = StudyDocMetaSchema.safeParse(body?.doc);
+  if (!meta.success) {
+    const is = meta.error.issues[0];
+    return c.json({ error: "invalid_doc", detail: is?.message ?? "?", path: is?.path.join(".") }, 400);
+  }
+  const parsedDoc = StudyDocSchema.safeParse(body.doc?.["body"]);
+  if (!parsedDoc.success) {
+    const is = parsedDoc.error.issues[0];
+    return c.json({ error: "invalid_doc", detail: is?.message ?? "?", path: is ? ["body", ...is.path].join(".") : "body" }, 400);
+  }
+  const doc = parsedDoc.data;
+  const bytes = studyDocBytes(doc);
+  if (bytes > STUDY_DOC_LIMITS.maxBytes) return c.json({ error: "doc_too_large", detail: `${bytes} bytes (máximo ${STUDY_DOC_LIMITS.maxBytes})` }, 413);
+  const v = validateStudyDoc(doc);
+  if (!v.ok) return c.json({ error: "invalid_doc", detail: v.reason }, 400);
+  const m = meta.data;
+
+  if (body.subject) {
+    if (body.subject.id !== m.subjectId || !SUBJECT_ID_RE.test(body.subject.id)) return c.json({ error: "invalid_subject" }, 400);
+    await db.insert(subjects).values({ id: body.subject.id, nameI18n: body.subject.nameI18n }).onConflictDoNothing();
+  }
+  const [subj] = await db.select({ id: subjects.id }).from(subjects).where(eq(subjects.id, m.subjectId)).limit(1);
+  if (!subj) return c.json({ error: "unknown_subject", message: "Manda también `subject` para crear la asignatura." }, 400);
+
+  let household: string[] = [];
+  if (m.ownerId) {
+    const [owner] = await db.select({ id: parentAccounts.id }).from(parentAccounts).where(eq(parentAccounts.id, m.ownerId)).limit(1);
+    if (!owner) return c.json({ error: "unknown_owner" }, 400);
+    household = await householdIds(db, m.ownerId);
+  }
+
+  // Solo se asigna a niños del hogar del dueño, y solo contenido privado (el global llega por curso).
+  const childIds = [...new Set(body.assign?.childIds ?? [])];
+  if (childIds.length > 0) {
+    if (!m.ownerId) return c.json({ error: "global_not_assignable", message: "Un documento global se ve por curso; no se asigna." }, 400);
+    if (childIds.length > 50) return c.json({ error: "too_many_children" }, 400);
+    const kids = await db.select({ id: childProfiles.id, parentId: childProfiles.parentId }).from(childProfiles).where(inArray(childProfiles.id, childIds));
+    if (kids.length !== childIds.length || kids.some((k) => !household.includes(k.parentId))) return c.json({ error: "child_forbidden" }, 400);
+  }
+
+  if (m.skillId) {
+    const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, m.skillId)).limit(1);
+    const mismoAmbito = sk && (m.ownerId ? Boolean(sk.ownerId && household.includes(sk.ownerId)) : sk.ownerId === null);
+    if (!mismoAmbito) return c.json({ error: "unknown_skill", message: "El skill no existe o es de otro ámbito." }, 400);
+  }
+
+  let req: RequestRow | undefined;
+  if (body.requestId) {
+    [req] = await db.select().from(contentRequests).where(eq(contentRequests.id, body.requestId)).limit(1);
+    if (!req) return c.json({ error: "request_not_found" }, 404);
+    if (!m.ownerId || !(await householdIds(db, req.ownerId)).includes(m.ownerId)) return c.json({ error: "owner_mismatch" }, 400);
+  }
+
+  // El id no puede «saltar» de ámbito (global/hogar) ni robar el documento de otra solicitud (copia regenerada).
+  const [existing] = await db
+    .select({ ownerId: studyDocs.ownerId, requestId: studyDocs.requestId, contentHash: studyDocs.contentHash, version: studyDocs.version })
+    .from(studyDocs)
+    .where(eq(studyDocs.id, m.id))
+    .limit(1);
+  if (existing) {
+    const mismoDueno = m.ownerId === null ? existing.ownerId === null : existing.ownerId !== null && household.includes(existing.ownerId);
+    const mismaSolicitud = !existing.requestId || !body.requestId || existing.requestId === body.requestId;
+    if (!mismoDueno || !mismaSolicitud) return c.json({ error: "id_conflict", message: "Ese id ya es de otro documento." }, 409);
+  }
+
+  const hash = await sha256Hex(canonicalStudyDocJson(doc));
+  const changed = !existing || existing.contentHash !== hash;
+  const version = existing ? (changed ? existing.version + 1 : existing.version) : 1;
+  const now = new Date().toISOString();
+  const campos = {
+    kind: doc.kind,
+    subjectId: m.subjectId,
+    gradeBand: m.gradeBand,
+    title: doc.title,
+    language: doc.language,
+    body: doc,
+    stats: studyDocStats(doc),
+    bytes,
+    skillId: m.skillId ?? null,
+    pathId: m.pathId ?? null,
+    courseId: m.courseId ?? null,
+    moduleIndex: m.moduleIndex ?? null,
+    position: m.position ?? 0,
+    requestId: body.requestId ?? existing?.requestId ?? null,
+    retired: false,
+    version,
+    contentHash: hash,
+  };
+  const stmts: BatchItem<"sqlite">[] = [
+    db
+      .insert(studyDocs)
+      .values({
+        id: m.id,
+        ownerId: m.ownerId,
+        ...campos,
+        childAnswers: m.childAnswers ?? CHILD_ANSWERS_DEFAULT[doc.kind],
+        hidden: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      // `child_answers` y `hidden` quedan FUERA del SET: son curación del tutor y republicar no la deshace.
+      .onConflictDoUpdate({ target: studyDocs.id, set: { ...campos, ...(changed ? { updatedAt: now } : {}) } }),
+    ...childIds.map((childId) => db.insert(childStudyDocs).values({ childId, docId: m.id, assignedAt: now }).onConflictDoNothing()),
+  ];
+  await db.batch(stmts as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+
+  let closed: CloseResult | null = null;
+  if (req && body.close === true) {
+    closed = await closeRequest(c.env, db, req, { retireDocIds: (body.retireDocIds ?? []).filter((id) => id !== m.id) });
+    if (!closed.ok) return c.json({ error: "nothing_published" }, 409);
+  }
+  return c.json({
+    ok: true,
+    id: m.id,
+    version,
+    changed,
+    bytes,
+    assigned: childIds.length,
+    ...(closed?.ok ? { closed: { exerciseCount: closed.exerciseCount, docCount: closed.docCount, missing: closed.missing } } : {}),
+  });
+});
+
+// Cierra una solicitud a mano: `published` (lo que haya publicado) o `failed` (no se pudo generar; avisa al tutor).
+app.post("/api/admin/content-requests/:id/close", async (c) => {
+  const db = getDb(c.env.DB);
+  const gate = await requireImporter(c, db);
+  if (gate !== true) return gate;
+  const body = await c.req
+    .json<{ status?: "published" | "failed"; note?: string; retireDocIds?: string[] }>()
+    .catch(() => ({}) as { status?: "published" | "failed"; note?: string; retireDocIds?: string[] });
+  const [req] = await db.select().from(contentRequests).where(eq(contentRequests.id, c.req.param("id"))).limit(1);
+  if (!req) return c.json({ error: "request_not_found" }, 404);
+  if (body.status === "failed") {
+    const note = String(body.note ?? "").trim().slice(0, 500) || "No se ha podido generar.";
+    await db.update(contentRequests).set({ status: "failed", note }).where(eq(contentRequests.id, req.id));
+    const [owner] = await db.select({ email: parentAccounts.email }).from(parentAccounts).where(eq(parentAccounts.id, req.ownerId)).limit(1);
+    if (owner) {
+      await sendEmail(
+        c.env,
+        owner.email,
+        "No hemos podido generar tu contenido · smartkids",
+        emailLayout("No se ha podido generar", `No hemos podido generar «${escHtml(req.title || "tu solicitud")}»: ${escHtml(note)} Puedes editarla y regenerarla.`, {
+          url: "https://app.smart-kids.uk",
+          label: "Abrir smartkids",
+        }),
+      );
+    }
+    await notifyOwner(c.env, db, req.ownerId);
+    return c.json({ ok: true, status: "failed" });
+  }
+  const r = await closeRequest(c.env, db, req, { retireDocIds: body.retireDocIds ?? [] });
+  if (!r.ok) return c.json({ error: "nothing_published", message: "La solicitud no tiene nada publicado." }, 409);
+  return c.json({ ok: true, status: "published", exerciseCount: r.exerciseCount, docCount: r.docCount, missing: r.missing });
+});
+
+// Lista de documentos para verificar una publicación (metadatos + niños asignados). Exige algún filtro.
+app.get("/api/admin/study-docs", async (c) => {
+  const db = getDb(c.env.DB);
+  const gate = await requireImporter(c, db);
+  if (gate !== true) return gate;
+  const requestId = c.req.query("requestId");
+  const ownerId = c.req.query("ownerId");
+  const courseId = c.req.query("courseId");
+  const filtro = requestId
+    ? eq(studyDocs.requestId, requestId)
+    : ownerId
+      ? eq(studyDocs.ownerId, ownerId)
+      : courseId
+        ? eq(studyDocs.courseId, courseId)
+        : undefined;
+  if (!filtro) return c.json({ error: "filter_required", message: "Filtra por requestId, ownerId o courseId." }, 400);
+  const rows = await db.select({ ...DOC_META, retired: studyDocs.retired }).from(studyDocs).where(filtro).orderBy(asc(studyDocs.position));
+  const kids = await docChildIds(db, db.select({ id: studyDocs.id }).from(studyDocs).where(filtro));
+  return c.json(rows.map((r) => ({ ...r, childIds: kids.get(r.id) ?? [] })));
 });
 
 // Contenido privado del hogar: lista de skills propios con conteo y niños asignados.
@@ -2487,7 +3070,16 @@ app.get("/api/tutor/content", async (c) => {
   if (typeof a !== "string") return a;
   const household = await householdIds(db, a);
   const rows = await db
-    .select({ id: skills.id, nameI18n: skills.nameI18n, subjectId: skills.subjectId, gradeBand: skills.gradeBand, pathId: skills.pathId, sessionLength: skills.sessionLength })
+    .select({
+      id: skills.id,
+      nameI18n: skills.nameI18n,
+      subjectId: skills.subjectId,
+      gradeBand: skills.gradeBand,
+      pathId: skills.pathId,
+      pathName: skills.pathName,
+      moduleIndex: skills.moduleIndex,
+      sessionLength: skills.sessionLength,
+    })
     .from(skills)
     .where(inArray(skills.ownerId, household));
   // Solicitud de la que sale cada skill (para ofrecer "Regenerar" desde el propio contenido).
@@ -2514,6 +3106,10 @@ app.get("/api/tutor/content", async (c) => {
       nameI18n: s.nameI18n,
       subjectId: s.subjectId,
       gradeBand: s.gradeBand,
+      // Para agrupar los módulos de un path en el panel.
+      pathId: s.pathId,
+      pathName: s.pathName,
+      moduleIndex: s.moduleIndex,
       sessionLength: s.sessionLength ?? SESSION_LENGTH_DEFAULT,
       requestId,
       exercises: cnt?.n ?? 0,
@@ -2556,20 +3152,46 @@ app.post("/api/tutor/skills/:skillId/assign", async (c) => {
   return c.json({ ok: true, childIds: valid });
 });
 
-// Preview del tutor: TODOS los ejercicios (incluidos los ocultos) de un skill privado del hogar, CON solución.
+/** ¿Puede el tutor ver (e imprimir) los ejercicios y documentos de este ámbito? Privado: si es de su hogar.
+ *  Global: si algún niño de su hogar tiene un curso de esa asignatura+nivel (o es admin). */
+async function tutorCanRead(
+  db: DB,
+  parentId: string,
+  household: string[],
+  row: { ownerId: string | null; subjectId: string; gradeBand: string },
+): Promise<boolean> {
+  if (row.ownerId) return household.includes(row.ownerId);
+  if (await householdHasCourseFor(db, household, row.subjectId, row.gradeBand)) return true;
+  const [p] = await db.select({ role: parentAccounts.role }).from(parentAccounts).where(eq(parentAccounts.id, parentId)).limit(1);
+  return p?.role === "admin";
+}
+
+// Preview del tutor: los ejercicios de un skill CON solución. Privado del hogar: todos (también los ocultos,
+// para poder mostrarlos). Global (de un curso de sus niños): solo lectura y solo los visibles (para imprimir).
 app.get("/api/tutor/skills/:skillId/exercises", async (c) => {
   const db = getDb(c.env.DB);
   const a = await requireParent(c, db);
   if (typeof a !== "string") return a;
   const skillId = c.req.param("skillId");
   const household = await householdIds(db, a);
-  const [sk] = await db.select({ ownerId: skills.ownerId }).from(skills).where(eq(skills.id, skillId)).limit(1);
-  if (!sk || !sk.ownerId || !household.includes(sk.ownerId)) return c.json({ error: "forbidden" }, 403);
+  const [sk] = await db
+    .select({ ownerId: skills.ownerId, subjectId: skills.subjectId, gradeBand: skills.gradeBand })
+    .from(skills)
+    .where(eq(skills.id, skillId))
+    .limit(1);
+  if (!sk || !(await tutorCanRead(db, a, household, sk))) return c.json({ error: "forbidden" }, 403);
   const rows = await db
     .select()
     .from(exerciseTemplates)
-    .where(and(eq(exerciseTemplates.skillId, skillId), eq(exerciseTemplates.retired, false)));
-  const out: Array<{ templateId: string; hidden: boolean; exercise: Exercise }> = [];
+    .where(
+      and(
+        eq(exerciseTemplates.skillId, skillId),
+        eq(exerciseTemplates.retired, false),
+        sk.ownerId ? undefined : eq(exerciseTemplates.hidden, false),
+      ),
+    );
+  const canHide = Boolean(sk.ownerId);
+  const out: Array<{ templateId: string; hidden: boolean; canHide: boolean; exercise: Exercise }> = [];
   for (const ex of rows) {
     try {
       const exercise = exerciseFromRow({
@@ -2584,7 +3206,7 @@ app.get("/api/tutor/skills/:skillId/exercises", async (c) => {
         difficultyNumeric: ex.difficultyNumeric,
         difficultyLevel: ex.difficultyLevel,
       });
-      out.push({ templateId: ex.id, hidden: ex.hidden, exercise });
+      out.push({ templateId: ex.id, hidden: ex.hidden, canHide, exercise });
     } catch {
       /* plantilla no conforme al modelo: la omitimos del preview */
     }
@@ -2622,6 +3244,193 @@ app.delete("/api/tutor/skills/:skillId", async (c) => {
   return c.json({ ok: true });
 });
 
+/* ================= Documentos de estudio: tutor y niño ================= */
+
+/** Documento PRIVADO del hogar (o null): lo único que el tutor puede asignar, ocultar o borrar. */
+async function householdDoc(db: DB, household: string[], id: string): Promise<DocRow | null> {
+  const [d] = await db.select().from(studyDocs).where(eq(studyDocs.id, id)).limit(1);
+  return d && d.ownerId && household.includes(d.ownerId) && !d.retired ? d : null;
+}
+
+// Documentos PRIVADOS del hogar: metadatos (nunca el cuerpo) + niños asignados. `?requestId=` filtra.
+app.get("/api/tutor/study-docs", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const household = await householdIds(db, a);
+  const requestId = c.req.query("requestId");
+  const filtro = and(
+    isNotNull(studyDocs.ownerId),
+    inArray(studyDocs.ownerId, household),
+    eq(studyDocs.retired, false),
+    requestId ? eq(studyDocs.requestId, requestId) : undefined,
+  );
+  const rows = await db.select(DOC_META).from(studyDocs).where(filtro).orderBy(asc(studyDocs.moduleIndex), asc(studyDocs.position));
+  const kids = await docChildIds(db, db.select({ id: studyDocs.id }).from(studyDocs).where(filtro));
+  return c.json(rows.map((r) => ({ ...r, childIds: kids.get(r.id) ?? [] })));
+});
+
+// Un documento COMPLETO (con soluciones y el texto del dictado) para verlo o imprimirlo. Privado del hogar,
+// o global de un curso que tenga algún niño del hogar.
+app.get("/api/tutor/study-docs/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const household = await householdIds(db, a);
+  const [d] = await db.select().from(studyDocs).where(eq(studyDocs.id, c.req.param("id"))).limit(1);
+  if (!d || d.retired) return c.json({ error: "not_found" }, 404);
+  if (!(await tutorCanRead(db, a, household, d))) return c.json({ error: "forbidden" }, 403);
+  const kids = d.ownerId ? (await db.select({ childId: childStudyDocs.childId }).from(childStudyDocs).where(eq(childStudyDocs.docId, d.id))).map((k) => k.childId) : [];
+  const { body, contentHash: _h, ...meta } = d;
+  return c.json({ ...meta, global: !d.ownerId, canEdit: Boolean(d.ownerId), childIds: kids, body });
+});
+
+// Reasigna un documento PRIVADO a un conjunto de niños del hogar (como los skills).
+app.post("/api/tutor/study-docs/:id/assign", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const household = await householdIds(db, a);
+  const d = await householdDoc(db, household, c.req.param("id"));
+  if (!d) return c.json({ error: "forbidden" }, 403);
+  const body = await c.req.json<{ childIds?: string[] }>().catch(() => ({}) as { childIds?: string[] });
+  const kids = await db.select({ id: childProfiles.id }).from(childProfiles).where(inArray(childProfiles.parentId, household));
+  const allowed = new Set(kids.map((k) => k.id));
+  const valid = [...new Set(body.childIds ?? [])].filter((id) => allowed.has(id));
+  const now = new Date().toISOString();
+  await db.delete(childStudyDocs).where(eq(childStudyDocs.docId, d.id));
+  for (const childId of valid) await db.insert(childStudyDocs).values({ childId, docId: d.id, assignedAt: now }).onConflictDoNothing();
+  return c.json({ ok: true, childIds: valid });
+});
+
+// Ajustes de un documento PRIVADO: ocultarlo al niño o dejarle ver las soluciones.
+app.post("/api/tutor/study-docs/:id/settings", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const household = await householdIds(db, a);
+  const d = await householdDoc(db, household, c.req.param("id"));
+  if (!d) return c.json({ error: "forbidden" }, 403);
+  const body = await c.req.json<{ hidden?: boolean; childAnswers?: boolean }>().catch(() => ({}) as { hidden?: boolean; childAnswers?: boolean });
+  const set: { hidden?: boolean; childAnswers?: boolean } = {};
+  if (typeof body.hidden === "boolean") set.hidden = body.hidden;
+  if (typeof body.childAnswers === "boolean") set.childAnswers = body.childAnswers;
+  if (Object.keys(set).length > 0) await db.update(studyDocs).set(set).where(eq(studyDocs.id, d.id));
+  return c.json({ ok: true, hidden: set.hidden ?? d.hidden, childAnswers: set.childAnswers ?? d.childAnswers });
+});
+
+// Borra un documento PRIVADO del hogar y sus asignaciones.
+app.delete("/api/tutor/study-docs/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const household = await householdIds(db, a);
+  const d = await householdDoc(db, household, c.req.param("id"));
+  if (!d) return c.json({ error: "forbidden" }, 403);
+  await deleteStudyDocCascade(db, d.id);
+  return c.json({ ok: true });
+});
+
+// Los documentos que ve un niño (lo mismo que su sección «Apuntes»), para que el tutor los imprima.
+app.get("/api/tutor/children/:id/study-docs", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const childId = c.req.param("id");
+  if (!(await ownsProfile(db, a, childId))) return c.json({ error: "forbidden" }, 403);
+  return c.json(await docsVisibleToChild(db, childId));
+});
+
+// Contenido de un curso del catálogo (módulos globales + documentos) para imprimirlo. Solo si lo tiene
+// algún niño del hogar (o el `childId` indicado).
+app.get("/api/tutor/courses/:courseId/content", async (c) => {
+  const db = getDb(c.env.DB);
+  const a = await requireParent(c, db);
+  if (typeof a !== "string") return a;
+  const courseId = c.req.param("courseId");
+  const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
+  if (!course) return c.json({ error: "not_found" }, 404);
+  const household = await householdIds(db, a);
+  const childId = c.req.query("childId");
+  if (childId) {
+    if (!(await ownsProfile(db, a, childId)) || !(await hasCourse(db, childId, courseId))) return c.json({ error: "forbidden" }, 403);
+  } else {
+    const [row] = await db
+      .select({ c: childCourses.courseId })
+      .from(childCourses)
+      .innerJoin(childProfiles, eq(childProfiles.id, childCourses.childId))
+      .where(and(eq(childCourses.courseId, courseId), inArray(childProfiles.parentId, household)))
+      .limit(1);
+    if (!row) return c.json({ error: "forbidden" }, 403);
+  }
+  const delCurso = and(eq(skills.subjectId, course.subjectId), eq(skills.gradeBand, course.gradeBand), isNull(skills.ownerId));
+  const mods = await db.select({ id: skills.id, nameI18n: skills.nameI18n, position: skills.position }).from(skills).where(delCurso).orderBy(asc(skills.position));
+  // Ejercicios visibles por módulo en UNA consulta agrupada.
+  const counts = await db
+    .select({ skillId: exerciseTemplates.skillId, n: sql<number>`count(*)` })
+    .from(exerciseTemplates)
+    .where(
+      and(
+        inArray(exerciseTemplates.skillId, db.select({ id: skills.id }).from(skills).where(delCurso)),
+        eq(exerciseTemplates.retired, false),
+        eq(exerciseTemplates.hidden, false),
+      ),
+    )
+    .groupBy(exerciseTemplates.skillId);
+  const nBy = new Map(counts.map((r) => [r.skillId, r.n]));
+  const docs = await db
+    .select(DOC_META)
+    .from(studyDocs)
+    .where(
+      and(
+        isNull(studyDocs.ownerId),
+        eq(studyDocs.subjectId, course.subjectId),
+        eq(studyDocs.gradeBand, course.gradeBand),
+        eq(studyDocs.retired, false),
+        eq(studyDocs.hidden, false),
+      ),
+    )
+    .orderBy(asc(studyDocs.position));
+  return c.json({
+    course: { id: course.id, nameI18n: course.nameI18n, subjectId: course.subjectId, gradeBand: course.gradeBand },
+    skills: mods.map((m) => ({ ...m, exercises: nBy.get(m.id) ?? 0 })),
+    docs,
+  });
+});
+
+// «Apuntes» del niño: los documentos que puede ver (metadatos).
+app.get("/api/child/study-docs", async (c) => {
+  const db = getDb(c.env.DB);
+  const kid = await currentChildId(c, db);
+  if (!kid) return c.json({ error: "unauthorized" }, 401);
+  return c.json(await docsVisibleToChild(db, kid));
+});
+
+// Un documento para el niño: SIN el texto del dictado y, si el tutor no quiere, sin las soluciones.
+app.get("/api/child/study-docs/:id", async (c) => {
+  const db = getDb(c.env.DB);
+  const kid = await currentChildId(c, db);
+  if (!kid) return c.json({ error: "unauthorized" }, 401);
+  const [d] = await db.select().from(studyDocs).where(eq(studyDocs.id, c.req.param("id"))).limit(1);
+  if (!d || d.retired || d.hidden) return c.json({ error: "not_found" }, 404);
+  if (!(await childCanReadDoc(db, kid, d))) return c.json({ error: "forbidden" }, 403);
+  return c.json({
+    id: d.id,
+    kind: d.kind,
+    title: d.title,
+    subjectId: d.subjectId,
+    gradeBand: d.gradeBand,
+    language: d.language,
+    skillId: d.skillId,
+    pathId: d.pathId,
+    moduleIndex: d.moduleIndex,
+    version: d.version,
+    updatedAt: d.updatedAt,
+    showAnswers: d.childAnswers,
+    doc: redactStudyDocForChild(d.body as StudyDoc, { answers: d.childAnswers }),
+  });
+});
+
 // Borra una solicitud de contenido del hogar y sus ficheros en R2. No borra el contenido ya publicado.
 app.delete("/api/tutor/content-requests/:id", async (c) => {
   const db = getDb(c.env.DB);
@@ -2648,7 +3457,7 @@ app.get("/api/tutor/content-requests", async (c) => {
       .select({ id: contentRequestAssets.id, filename: contentRequestAssets.filename, kind: contentRequestAssets.kind, size: contentRequestAssets.size })
       .from(contentRequestAssets)
       .where(eq(contentRequestAssets.requestId, r.id));
-    out.push({ ...r, assets });
+    out.push({ ...r, outputs: requestOutputs(r), assets });
   }
   return c.json(out);
 });
@@ -2678,8 +3487,9 @@ app.post("/api/tutor/content-requests", async (c) => {
   const title = String(form["title"] ?? "").trim();
   const instructions = String(form["instructions"] ?? "").trim();
   const childId = form["childId"] ? String(form["childId"]) : null;
-  const subjectId = form["subjectId"] ? String(form["subjectId"]) : null;
+  const subjectId = parseSubjectId(form["subjectId"]);
   const cfg = requestConfigFromForm(form);
+  if (!cfg.outputs) return c.json(EMPTY_OUTPUTS, 400);
 
   const household = await householdIds(db, a);
   if (childId) {
@@ -2713,7 +3523,7 @@ app.post("/api/tutor/content-requests", async (c) => {
     stored.push({ id: assetId, filename: file.name, kind });
   }
   // El aviso no retiene la respuesta al tutor (y si falla, la solicitud ya está guardada).
-  c.executionCtx.waitUntil(notifyAdminsContentRequest(c.env, db, title, cfg.numQuestions, false).catch(() => {}));
+  c.executionCtx.waitUntil(notifyAdminsContentRequest(c.env, db, title, cfg, false).catch(() => {}));
   return c.json({ ok: true, requestId, assets: stored });
 });
 
@@ -2734,6 +3544,8 @@ app.post("/api/tutor/content-requests/:id", async (c) => {
   const instructions = String(form["instructions"] ?? "").trim();
   const childId = form["childId"] ? String(form["childId"]) : null;
   const cfg = requestConfigFromForm(form, req);
+  if (!cfg.outputs) return c.json(EMPTY_OUTPUTS, 400);
+  const subjectId = form["subjectId"] !== undefined ? parseSubjectId(form["subjectId"]) : req.subjectId;
   if (childId) {
     const [ch] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
     if (!ch || !household.includes(ch.parentId)) return c.json({ error: "child_forbidden" }, 403);
@@ -2750,7 +3562,7 @@ app.post("/api/tutor/content-requests/:id", async (c) => {
 
   const now = new Date().toISOString();
   const gradeBand = form["gradeBand"] !== undefined ? (parseGradeBand(form["gradeBand"]) ?? (await childGradeBand(db, childId))) : req.gradeBand;
-  await db.update(contentRequests).set({ title, instructions, childId, gradeBand, ...cfg }).where(eq(contentRequests.id, reqId));
+  await db.update(contentRequests).set({ title, instructions, childId, subjectId, gradeBand, ...cfg }).where(eq(contentRequests.id, reqId));
   for (const file of newFiles) {
     const kind = UPLOAD_KINDS[file.type]!;
     const assetId = `asset_${crypto.randomUUID()}`;
@@ -2807,6 +3619,8 @@ app.post("/api/tutor/content-requests/:id/regenerate", async (c) => {
   const instructions = form["instructions"] !== undefined ? String(form["instructions"]).trim() : req.instructions;
   const childId = form["childId"] ? String(form["childId"]) : req.childId;
   const cfg = requestConfigFromForm(form, req);
+  if (!cfg.outputs) return c.json(EMPTY_OUTPUTS, 400);
+  const subjectId = form["subjectId"] !== undefined ? parseSubjectId(form["subjectId"]) : req.subjectId;
   const gradeBand = form["gradeBand"] !== undefined ? (parseGradeBand(form["gradeBand"]) ?? (await childGradeBand(db, childId))) : req.gradeBand;
   if (childId) {
     const [ch] = await db.select({ parentId: childProfiles.parentId }).from(childProfiles).where(eq(childProfiles.id, childId)).limit(1);
@@ -2825,10 +3639,32 @@ app.post("/api/tutor/content-requests/:id/regenerate", async (c) => {
   const now = new Date().toISOString();
   let targetId = reqId;
   if (mode === "replace") {
+    // Cambio de niño en sitio = "me equivoqué de niño": el anterior deja de ver lo publicado (el nuevo
+    // lo recibe al republicar). Solo se retira la asignación; su historial (intentos, progreso) se queda.
+    if (req.childId && req.childId !== childId) {
+      const propios = (await requestSkills(db, req)).map((p) => p.id);
+      if (propios.length > 0) await db.delete(childSkills).where(and(eq(childSkills.childId, req.childId), inArray(childSkills.skillId, propios)));
+      // Y los documentos de la solicitud (subconsulta: sin listas largas de ids).
+      const docsDeLaSolicitud = db.select({ id: studyDocs.id }).from(studyDocs).where(eq(studyDocs.requestId, reqId));
+      await db.delete(childStudyDocs).where(and(eq(childStudyDocs.childId, req.childId), inArray(childStudyDocs.docId, docsDeLaSolicitud)));
+    }
     // skill_id/package_id se CONSERVAN: son el puntero a la publicación que se va a sustituir.
     await db
       .update(contentRequests)
-      .set({ title, instructions, childId, gradeBand, ...cfg, status: "uploaded", note: null, exerciseCount: null, publishedAt: null, notifiedAt: null })
+      .set({
+        title,
+        instructions,
+        childId,
+        subjectId,
+        gradeBand,
+        ...cfg,
+        status: "uploaded",
+        note: null,
+        exerciseCount: null,
+        docCount: null,
+        publishedAt: null,
+        notifiedAt: null,
+      })
       .where(eq(contentRequests.id, reqId));
   } else {
     targetId = `creq_${crypto.randomUUID()}`;
@@ -2836,7 +3672,7 @@ app.post("/api/tutor/content-requests/:id/regenerate", async (c) => {
       id: targetId,
       ownerId: req.ownerId,
       childId,
-      subjectId: req.subjectId,
+      subjectId,
       gradeBand,
       title,
       instructions,
@@ -2857,7 +3693,7 @@ app.post("/api/tutor/content-requests/:id/regenerate", async (c) => {
     await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
     await db.insert(contentRequestAssets).values({ id: assetId, requestId: targetId, r2Key: key, filename: file.name, contentType: file.type, kind, size: file.size, createdAt: now });
   }
-  c.executionCtx.waitUntil(notifyAdminsContentRequest(c.env, db, title, cfg.numQuestions, true).catch(() => {}));
+  c.executionCtx.waitUntil(notifyAdminsContentRequest(c.env, db, title, cfg, true).catch(() => {}));
   return c.json({ ok: true, requestId: targetId, mode });
 });
 
@@ -2876,14 +3712,40 @@ app.get("/api/admin/content-requests", async (c) => {
       .select({ id: contentRequestAssets.id, filename: contentRequestAssets.filename, contentType: contentRequestAssets.contentType, kind: contentRequestAssets.kind, size: contentRequestAssets.size })
       .from(contentRequestAssets)
       .where(eq(contentRequestAssets.requestId, r.id));
-    // `targetExercises` = lo que hay que GENERAR (lo pedido + 50 % de variedad). `previousSkills` solo
-    // viene en una regeneración EN SITIO (pendiente con publicación anterior): los skills a reutilizar.
+    // `targetExercises` = ejercicios a GENERAR (lo pedido + 50 % de variedad; 0 si solo pide documentos).
+    // `docKinds` = documentos a generar. `previousSkills`/`previousDocs` solo vienen en una regeneración EN
+    // SITIO (pendiente con publicación anterior): lo que hay que reutilizar (mismos ids) o retirar.
     const previousSkills = r.status === "uploaded" && r.skillId ? await requestSkills(db, r) : [];
+    const previousDocs =
+      r.status === "uploaded"
+        ? await db
+            .select({
+              id: studyDocs.id,
+              kind: studyDocs.kind,
+              title: studyDocs.title,
+              skillId: studyDocs.skillId,
+              pathId: studyDocs.pathId,
+              moduleIndex: studyDocs.moduleIndex,
+              version: studyDocs.version,
+            })
+            .from(studyDocs)
+            .where(and(eq(studyDocs.requestId, r.id), eq(studyDocs.retired, false)))
+        : [];
     // Contexto del niño destino para adaptar el nivel (sin datos personales: ni nombre ni edad).
     const child = r.childId
       ? { gradeBand: await childGradeBand(db, r.childId), courses: await childCoursesOf(db, r.childId) }
       : null;
-    out.push({ ...r, targetExercises: targetExercises(r.numQuestions), regenerate: previousSkills.length > 0, previousSkills, child, assets });
+    out.push({
+      ...r,
+      outputs: requestOutputs(r),
+      docKinds: requestDocKinds(r),
+      targetExercises: requestTargetExercises(r),
+      regenerate: previousSkills.length > 0 || previousDocs.length > 0,
+      previousSkills,
+      previousDocs,
+      child,
+      assets,
+    });
   }
   return c.json(out);
 });

@@ -1,0 +1,637 @@
+/* =========================================================================
+   Documentos de estudio («Apuntes»): el mismo documento en pantalla (.sd.screen, tema de la app) y en
+   papel (.sd.paper, tinta --print-*), y los «Apuntes» del niño (lista, tira y lector).
+   ========================================================================= */
+
+/* ---------- Común ---------- */
+.sd {
+  line-height: 1.6;
+  color: var(--text);
+}
+.sd-head h1 {
+  font-size: 1.5em;
+  margin: 0 0 0.2em;
+}
+.sd-minutes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: var(--text-dim);
+  font-size: 0.85em;
+}
+.sd-goals {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.6em 0.9em;
+  margin: 0.6em 0;
+}
+.sd-goals ul {
+  margin: 0.3em 0 0;
+  padding-left: 1.2em;
+}
+.sd-h {
+  margin: 1.1em 0 0.4em;
+}
+.sd-p {
+  margin: 0.5em 0;
+}
+.sd-callout {
+  border-left: 4px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  padding: 0.6em 0.9em;
+  margin: 0.8em 0;
+}
+.sd-callout p,
+.sd-callout ul {
+  margin: 0.3em 0 0;
+}
+.sd-callout ul {
+  padding-left: 1.2em;
+}
+.sd-callout.remember {
+  border-left-color: var(--gold);
+  background: var(--gold-wash);
+}
+.sd-callout.tip {
+  border-left-color: var(--cyan);
+}
+.sd-callout.warning {
+  border-left-color: var(--coral);
+}
+.sd-callout.fact {
+  border-left-color: var(--violet);
+}
+.sd-callout-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-weight: 700;
+}
+.sd-list {
+  padding-left: 1.3em;
+  margin: 0.5em 0;
+}
+.sd-table-wrap {
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.sd-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.sd-table caption {
+  text-align: left;
+  font-weight: 700;
+  margin-bottom: 0.3em;
+}
+.sd-table th,
+.sd-table td {
+  border: 1px solid var(--line);
+  padding: 0.45em 0.6em;
+  vertical-align: top;
+  line-height: 1.6;
+  text-align: left;
+}
+.sd-table thead th {
+  background: var(--surface-2);
+}
+.sd-table.hcol tbody th {
+  background: var(--surface-2);
+}
+.sd-ipa {
+  font-family: var(--hud);
+  font-size: 0.9em;
+}
+.sd-empty-cell {
+  display: inline-block;
+  min-width: 18mm;
+  height: 1.2em;
+}
+.sd-formula {
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 0.6em 0.9em;
+  margin: 0.8em 0;
+}
+.sd-formula-label {
+  font-weight: 700;
+  margin-bottom: 0.2em;
+}
+.sd-formula-expr {
+  font-size: 1.3em;
+  white-space: nowrap;
+}
+.sd-vars {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15em 0.8em;
+  width: fit-content;
+  margin: 0.5em auto 0;
+  text-align: left;
+}
+.sd-vars dd {
+  margin: 0;
+}
+.sd-note {
+  color: var(--text-dim);
+  margin: 0.4em 0 0;
+}
+.sd-defs {
+  margin: 0.4em 0;
+}
+.sd-def {
+  padding: 0.4em 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.sd-def dt {
+  font-weight: 700;
+}
+.sd-def dd {
+  margin: 0;
+}
+.sd-example {
+  color: var(--text-dim);
+  font-style: italic;
+}
+.sd-worked {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.7em 1em;
+  margin: 0.8em 0;
+}
+.sd-worked-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-weight: 700;
+}
+.sd-statement {
+  margin: 0.4em 0;
+}
+.sd-op {
+  overflow-x: auto;
+}
+.sd-steps {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+.sd-work {
+  margin-top: 0.2em;
+  color: var(--text-dim);
+}
+.sd-answer {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 0.4em;
+}
+.sd-check {
+  color: var(--text-dim);
+  margin: 0.3em 0 0;
+}
+.sd-figure {
+  margin: 0.8em 0;
+  text-align: center;
+}
+.sd-figure figcaption {
+  font-size: 0.85em;
+  color: var(--text-dim);
+}
+
+/* Línea del tiempo (vertical: se lee igual en el móvil y en papel) */
+.sd-timeline {
+  list-style: none;
+  margin: 0.6em 0;
+  padding: 0 0 0 1.1em;
+  border-left: 2px solid var(--line);
+}
+.sd-timeline li {
+  position: relative;
+  display: flex;
+  gap: 0.8em;
+  padding: 0.35em 0;
+}
+.sd-timeline li::before {
+  content: "";
+  position: absolute;
+  left: -1.45em;
+  top: 0.75em;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--cyan);
+}
+.sd-when {
+  flex: 0 0 4.5em;
+  font-weight: 700;
+  color: var(--cyan);
+}
+.sd-event-text {
+  color: var(--text-dim);
+}
+
+/* Esquema de llaves: [etiqueta] [ hijos ] */
+.sd-tree {
+  margin: 0.8em 0;
+  overflow-x: auto;
+}
+.sd-node {
+  display: flex;
+  align-items: center;
+}
+.sd-node-label {
+  display: flex;
+  flex-direction: column;
+  max-width: 15em;
+  padding: 0.15em 0.3em;
+}
+.sd-node-text {
+  font-size: 0.88em;
+  color: var(--text-dim);
+}
+.sd-brace {
+  align-self: stretch;
+  width: 0.55em;
+  margin: 0.25em 0.45em;
+  border: 2px solid var(--text-dim);
+  border-right: 0;
+  border-radius: 0.7em 0 0 0.7em;
+}
+.sd-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+@media (max-width: 759px) {
+  /* En el móvil, el esquema como índice sangrado (no cabe a lo ancho). */
+  .sd.screen .sd-node {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .sd.screen .sd-brace {
+    display: none;
+  }
+  .sd.screen .sd-children {
+    padding-left: 1em;
+    border-left: 2px solid var(--line);
+  }
+}
+
+/* Lectura */
+.sd-passage {
+  margin: 0.8em 0;
+}
+.sd-passage p {
+  position: relative;
+  text-align: justify;
+  hyphens: auto;
+}
+.sd-passage p.numbered {
+  padding-left: 1.8em;
+}
+.sd-passage p.numbered::before {
+  content: attr(data-n);
+  position: absolute;
+  left: 0;
+  font-size: 0.8em;
+  color: var(--text-dim);
+}
+.sd-source {
+  font-size: 0.85em;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.sd-model {
+  white-space: pre-line;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 0.5em 0.8em;
+}
+.sd-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0.5em 0;
+}
+.sd-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.15em 0;
+}
+.sd-rubric-btn {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sd-rubric td.on {
+  background: var(--gold-wash);
+}
+.sd-rubric-cell {
+  display: flex;
+  gap: 1.5mm;
+  align-items: flex-start;
+}
+.sd-notebook {
+  font-style: italic;
+}
+
+/* ---------- Pantalla ---------- */
+.sd.screen {
+  font-size: calc(1rem * var(--sd-scale, 1));
+  max-width: 760px;
+  margin: 0 auto;
+}
+.sd-q {
+  padding: 0.6em 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.sd-q-opts {
+  display: grid;
+  gap: 0.35em;
+  margin: 0.4em 0;
+}
+.sd-q-opts.two {
+  grid-template-columns: 1fr 1fr;
+}
+.sd-q-opt {
+  min-height: var(--btn-h-sm);
+  padding: 0.45em 0.7em;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.sd-q-opt.on {
+  border-color: var(--cyan);
+}
+.sd-q-opt.ok {
+  border-color: var(--green);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.sd-q-opt.ko {
+  border-color: var(--coral);
+}
+.sd-q-answer {
+  margin-top: 0.4em;
+  padding: 0.5em 0.7em;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.sd-blank {
+  display: inline-block;
+  min-width: 4em;
+  border-bottom: 2px solid var(--line);
+  text-align: center;
+  font-weight: 700;
+}
+.sd-reveal {
+  margin-top: 0.4em;
+}
+.studydoc-scroll {
+  min-height: 0;
+}
+
+/* Tarjetas en pantalla */
+.sd-deck {
+  margin: 0.8em 0;
+}
+.deck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6em;
+}
+.deck-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 440px;
+}
+.deck-card {
+  position: relative;
+  display: grid;
+  width: 100%;
+  max-width: 440px;
+  min-height: 200px;
+  padding: 1.2em;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.3em;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  transition: transform 0.45s ease;
+}
+.deck-card.flipped {
+  transform: rotateY(180deg);
+}
+.deck-face {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  text-align: center;
+  backface-visibility: hidden;
+}
+.deck-face.back {
+  transform: rotateY(180deg);
+}
+.deck-hint {
+  font-size: 0.6em;
+  color: var(--text-dim);
+}
+.deck-actions {
+  justify-content: center;
+}
+.deck-tip {
+  font-size: 0.85rem;
+}
+.deck-end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6em;
+  padding: 1em;
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .deck-card,
+  .deck-card.flipped {
+    transition: none;
+    transform: none;
+  }
+  .deck-face,
+  .deck-face.back {
+    transform: none;
+    backface-visibility: visible;
+  }
+  .deck-card:not(.flipped) .deck-face.back,
+  .deck-card.flipped .deck-face.front {
+    visibility: hidden;
+  }
+}
+
+/* «Apuntes» del niño */
+.notes-group-title {
+  padding: 0.6rem 1.2rem 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.notes-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 1.2rem;
+}
+.notes-strip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.note-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: var(--btn-h-sm);
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.notes-reader {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.notes-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: var(--space-900);
+  border-bottom: 1px solid var(--line);
+}
+.notes-bar-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notes-font {
+  display: flex;
+  gap: 0.3rem;
+}
+.notes-body {
+  padding: 1rem 1.2rem 3rem;
+}
+
+/* ---------- Papel ---------- */
+.sd.paper {
+  font-size: var(--ws-font, 12pt);
+  line-height: 1.45;
+}
+.sd.paper.cols2 {
+  columns: 2;
+  column-gap: 7mm;
+  font-size: calc(var(--ws-font, 12pt) * 0.85);
+}
+.sd.paper .sd-h {
+  break-after: avoid;
+  margin: 3.5mm 0 1.5mm;
+}
+.sd.paper .sd-callout,
+.sd.paper .sd-worked,
+.sd.paper .sd-formula,
+.sd.paper .sd-def,
+.sd.paper .sd-timeline li,
+.sd.paper .sd-node,
+.sd.paper .sd-q,
+.sd.paper .ws-q,
+.sd.paper .sd-checklist li {
+  break-inside: avoid;
+}
+.sd.paper .sd-callout {
+  background: none;
+  border: 0;
+  border-left: 1.2pt solid var(--print-ink);
+  border-radius: 0;
+  padding: 1mm 3mm;
+  margin: 2.5mm 0;
+}
+.sd.paper .sd-callout.warning {
+  border-left: 2.5pt double var(--print-ink);
+}
+.sd.paper .sd-table th,
+.sd.paper .sd-table td {
+  border: 0.6pt solid var(--print-ink);
+  padding: 1.2mm 1.8mm;
+}
+.sd.paper .sd-table thead {
+  display: table-header-group;
+}
+.sd.paper .sd-table tr {
+  break-inside: avoid;
+}
+.sd.paper .sd-table thead th,
+.sd.paper .sd-table.hcol tbody th {
+  background: none;
+}
+.sd.paper .sd-table-wrap {
+  overflow: visible;
+}
+.sd.paper .sd-worked,
+.sd.paper .sd-formula,
+.sd.paper .sd-goals {
+  border: 0.8pt solid var(--print-line);
+  border-radius: 2mm;
+}
+.sd.paper .sd-timeline {
+  border-left: 0.8pt solid var(--print-ink);
+}
+.sd.paper .sd-timeline.many {
+  columns: 2;
+  column-gap: 8mm;
+}
+.sd.paper .sd-timeline li::before {
+  background: var(--print-ink);
+}
+.sd.paper .sd-brace {
+  border-color: var(--print-ink);
+  border-width: 1pt;
+}
+.sd.paper .sd-tree {
+  overflow: visible;
+}
+.sd.paper .sd-node-label {
+  max-width: 55mm;
+}
+.sd-adult .sd-dictation-text {
+  font-size: 13pt;
+  line-height: 1.8;
+  white-space: pre-line;
+}

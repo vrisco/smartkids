@@ -1,0 +1,27 @@
+{
+  "kind": "dictation",
+  "title": "Dictation: My school",
+  "subtitle": "Inglés · 6.º de Primaria",
+  "language": "es",
+  "blocks": [
+    {
+      "type": "dictation",
+      "title": "My school",
+      "lang": "en",
+      "text": "My school is big and bright. There are twenty-four children in my class. We have Maths on Monday and Science on Friday. My favourite subject is Art because I love painting.",
+      "focus": ["Days of the week with capital letters", "Numbers in words", "because"],
+      "pace": "Read the whole text once. Then read it in short groups of words, twice each. Read it again at the end so the child can check.",
+      "lines": 10
+    },
+    {
+      "type": "vocabulary",
+      "title": "Palabras del dictado",
+      "lang": "en",
+      "items": [
+        { "term": "bright", "translation": "luminoso", "phonetics": "/braɪt/" },
+        { "term": "subject", "translation": "asignatura", "phonetics": "/ˈsʌbdʒɪkt/" },
+        { "term": "painting", "translation": "pintar, pintura", "phonetics": "/ˈpeɪntɪŋ/" }
+      ]
+    }
+  ]
+}

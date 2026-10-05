@@ -9,7 +9,7 @@ Guía global en `../../CLAUDE.md`; modelo de datos en `../../docs/ARCHITECTURE.m
 - `src/auth.ts` — sesiones (cookies + D1), PBKDF2, tokens de un solo uso, rate-limiting.
 - `src/email.ts` — envío por Resend (con modo mock y `emailLayout`).
 - `src/db/index.ts` — `getDb(d1)` = `drizzle(d1, { schema })`.
-- `src/db/schema.ts` — las tablas Drizzle (hoy 27). **Fuente de verdad del esquema.**
+- `src/db/schema.ts` — las tablas Drizzle (hoy 30). **Fuente de verdad del esquema.**
 - `migrations/` — SQL generado por drizzle-kit (no editar a mano) + `meta/_journal.json`.
 - `seed.sql` — datos iniciales + credenciales demo.
 - `scripts/admin.mjs` — CLI de bootstrap del admin.
@@ -27,7 +27,7 @@ pnpm --filter @smartkids/api run admin -- create <email> <pw> [--remote]
 ```
 
 Para **producción**: `pnpm db:migrate:remote` (toca datos reales). **No existe `db:seed:remote`**: el seed
-borra las 28 tablas y crea cuentas demo con contraseñas publicadas en el repo, así que es SOLO local.
+borra las 30 tablas y crea cuentas demo con contraseñas publicadas en el repo, así que es SOLO local.
 
 ## Convenciones (síguelas al añadir código)
 
@@ -67,7 +67,30 @@ borra las 28 tablas y crea cuentas demo con contraseñas publicadas en el repo, 
 - **Regeneración en sitio** (`mode=replace`): la solicitud vuelve a `uploaded` conservando `skill_id`/`package_id`
   (puntero a lo publicado); `GET /api/admin/content-requests` la marca `regenerate` con sus `previousSkills`. En el
   import, `replaceSkillContent` retira todo lo vigente del skill (de cualquier paquete) y `retireSkillIds` (solo en
-  la llamada que cierra) borra skills sobrantes, filtrados a los de ESA solicitud y nunca el actual.
+  la llamada que cierra) borra skills sobrantes, filtrados a los de ESA solicitud y nunca el actual. Si la regeneración
+  cambia de niño, el endpoint `regenerate` quita los `child_skills` del niño ANTERIOR sobre los skills de la solicitud
+  (el import solo añade asignaciones, nunca las quita). El upsert del skill en el import actualiza también
+  `subject_id`/`grade_band` (una regeneración puede cambiar el curso escolar). Igual con los documentos: el
+  anterior pierde sus `child_study_docs` de la solicitud y `previousDocs` lista los que hay que reutilizar o retirar.
+- **Documentos de estudio** (`study_docs` + `child_study_docs`, migración `0022`): el cuerpo se valida SIEMPRE con
+  `StudyDocSchema` + `validateStudyDoc` de `@smartkids/shared` (y `StudyDocMetaSchema` para el envoltorio). Topes:
+  413 si la petición pasa de `STUDY_DOC_LIMITS.importMaxChars` (se mide ANTES de parsear) o el documento de 90 KB.
+  Upsert por id con `version` que solo sube si cambia `content_hash` (`sha256Hex(canonicalStudyDocJson)`);
+  `hidden` y `child_answers` son curación del tutor y quedan FUERA del SET. Un id no salta de ámbito (global/hogar)
+  ni de solicitud: 409 `id_conflict`.
+- **Lo que llega al niño de un documento**, siempre por `redactStudyDocForChild()` (el texto del dictado jamás, y
+  sin respuestas si `child_answers` es falso). Las listas usan `docsVisibleToChild()`, que solo lee METADATOS (nunca
+  `body`: son filas de hasta 90 KB); el detalle comprueba `childCanReadDoc()` (global por curso del niño; privado
+  con grant y dueño en el hogar). El tutor lee un global solo si un curso del hogar lo cubre
+  (`householdHasCourseFor`).
+- **Cierre de solicitudes en un solo sitio:** `closeRequest()` (cuenta ejercicios Y documentos vigentes, anota en
+  `note` lo pedido que falta, email + push). Lo llaman el import de ejercicios (salvo `close:false`), el de
+  documentos (con `close:true`) y `POST /api/admin/content-requests/:id/close`. Sin nada publicado: 409
+  `nothing_published`. `outputs` de la solicitud: `parseOutputs()`/`requestOutputs()` (null = solo ejercicios, las
+  antiguas).
+- **Cascadas con documentos:** `deleteStudyDocCascade` (grants y luego el documento); `deleteChildCascade` borra
+  sus `child_study_docs`, `deletePrivateSkillCascade` los documentos de ese módulo, borrar una solicitud deja sus
+  documentos con `request_id` NULL, y borrar un tutor pasa sus documentos al cónyuge (si no tiene, se borran).
 
 ## Gotchas / cuidado
 

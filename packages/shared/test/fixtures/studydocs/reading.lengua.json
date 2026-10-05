@@ -1,0 +1,26 @@
+{
+  "kind": "reading",
+  "title": "El faro de la isla",
+  "subtitle": "Comprensión lectora · 4.º de Primaria",
+  "language": "es",
+  "estimatedMinutes": 25,
+  "blocks": [
+    {
+      "type": "passage",
+      "title": "El faro de la isla",
+      "text": "En una isla pequeña vivía Marta con su abuelo, que era el farero. Cada tarde, cuando el sol se escondía, subían juntos los ciento veinte escalones de la torre para encender la gran lámpara.\n\nUna noche de tormenta, la luz se apagó. El abuelo estaba enfermo y no podía subir. Marta cogió una linterna, subió la escalera de dos en dos y cambió la bombilla, como le había enseñado su abuelo.\n\nA lo lejos, un barco de pescadores que buscaba el puerto vio la luz y pudo llegar a salvo. A la mañana siguiente, los pescadores fueron a dar las gracias a la niña más valiente de la isla.",
+      "numberLines": true
+    },
+    {
+      "type": "questions",
+      "title": "Responde",
+      "items": [
+        { "kind": "choice", "id": "r1", "prompt": "¿Con quién vivía Marta?", "options": ["Con sus padres", "Con su abuelo", "Con los pescadores"], "correct": 1 },
+        { "kind": "true_false", "id": "r2", "prompt": "La torre del faro tenía cien escalones.", "correct": false, "explanation": "Tenía ciento veinte." },
+        { "kind": "open", "id": "r3", "prompt": "¿Por qué tuvo que subir Marta sola aquella noche?", "answer": "Porque su abuelo estaba enfermo y no podía subir.", "lines": 2 },
+        { "kind": "open", "id": "r4", "prompt": "¿Qué habría pasado si Marta no hubiera encendido la luz?", "answer": "Respuesta libre: el barco podría haberse perdido o haber chocado contra las rocas.", "lines": 3 },
+        { "kind": "fill", "id": "r5", "prompt": "Marta cambió la {{1}} de la gran lámpara.", "answers": ["bombilla"] }
+      ]
+    }
+  ]
+}

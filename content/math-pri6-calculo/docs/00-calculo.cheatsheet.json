@@ -1,0 +1,67 @@
+{
+  "position": 0,
+  "doc": {
+    "kind": "cheatsheet",
+    "title": "Cálculo en columna: lo que no se te puede olvidar",
+    "subtitle": "Matemáticas · 6.º de Primaria",
+    "language": "es",
+    "print": { "columns": 2 },
+    "blocks": [
+      { "type": "heading", "level": 2, "text": "Sumas y restas" },
+      {
+        "type": "list",
+        "ordered": false,
+        "items": [
+          "Coloca las cifras en su columna: unidades debajo de unidades, decenas debajo de decenas...",
+          "Con decimales, **la coma debajo de la coma**. Si falta alguna cifra, pon ceros: $3,5 = 3,50$.",
+          "Empieza siempre por la **derecha** y no olvides las llevadas."
+        ]
+      },
+      {
+        "type": "callout",
+        "variant": "tip",
+        "title": "Truco",
+        "text": "Comprueba una resta sumando: $diferencia + sustraendo = minuendo$."
+      },
+      { "type": "heading", "level": 2, "text": "Multiplicaciones" },
+      {
+        "type": "list",
+        "ordered": true,
+        "items": [
+          "Multiplica el número de arriba por cada cifra del de abajo, empezando por las unidades.",
+          "Cada fila nueva se corre un lugar a la izquierda.",
+          "Suma las filas. Con decimales, el resultado lleva tantos decimales como los dos factores juntos."
+        ]
+      },
+      { "type": "heading", "level": 2, "text": "Divisiones" },
+      { "type": "formula", "expr": "D = d · c + r", "label": "Prueba de la división", "vars": [{ "symbol": "D", "meaning": "dividendo" }, { "symbol": "d", "meaning": "divisor" }, { "symbol": "c", "meaning": "cociente" }, { "symbol": "r", "meaning": "resto" }], "note": "El resto siempre es **menor** que el divisor." },
+      {
+        "type": "callout",
+        "variant": "warning",
+        "title": "Error típico",
+        "items": [
+          "Olvidar un 0 en el cociente cuando la cifra que bajas no llega al divisor.",
+          "Con decimales en el dividendo: pon la coma en el cociente **al bajar la primera cifra decimal**."
+        ]
+      },
+      { "type": "heading", "level": 2, "text": "Factores primos" },
+      {
+        "type": "table",
+        "caption": "Criterios para ir rápido",
+        "header": ["Divisible por", "Si..."],
+        "rows": [
+          ["2", "termina en 0 o en cifra par"],
+          ["3", "la suma de sus cifras es múltiplo de 3"],
+          ["5", "termina en 0 o en 5"]
+        ],
+        "headerColumn": true
+      },
+      {
+        "type": "callout",
+        "variant": "remember",
+        "title": "Recuerda",
+        "text": "En la escalera, divide siempre por el **primo más pequeño** que puedas y sigue hasta llegar a 1. Los factores repetidos se escriben como potencia: $2 · 2 · 2 = 2^3$."
+      }
+    ]
+  }
+}
