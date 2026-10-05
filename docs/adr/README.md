@@ -12,3 +12,4 @@ Formato: Título · Estado · Contexto · Decisión · Consecuencias.
 | [0002](0002-generacion-contenido-dos-vias.md) | Generación de contenido en dos vías (spec-driven + material del tutor) | Aceptado |
 | [0003](0003-contenido-privado-hogar.md) | Contenido privado del hogar (owner_id + child_skills + scoping) | Aceptado |
 | [0004](0004-economia-anti-farm-atomico.md) | Puntos por skill + anti-farm atómico (`coin_awards`) | Aceptado |
+| [0005](0005-documentos-de-estudio.md) | Documentos de estudio por bloques + PDF del navegador por materia y edad | Aceptado |

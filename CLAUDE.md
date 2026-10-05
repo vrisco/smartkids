@@ -8,9 +8,10 @@ Convenciones de escritura de este repo: **todo en español**, **sin emojis** en 
 **Documentación relacionada** (más detalle): `docs/ARCHITECTURE.md` (modelo de datos, jerarquía de
 usuarios, economía de recompensas, flujos de auth, pipeline de contenido), `docs/API.md` (catálogo de endpoints
 por rol) y **`docs/adr/`** (Architecture Decision Records: el PORQUÉ de las decisiones grandes — modelo unificado
-del ejercicio, generación de contenido, contenido privado del hogar, anti-farm atómico). Hay además `CLAUDE.md`
-anidados en `apps/api/` y `apps/web/` con las convenciones y gotchas de cada subsistema (se auto-cargan al
-trabajar en esas carpetas). Skill del proyecto en `.claude/skills/smartkids_content/` (genera contenido).
+del ejercicio, generación de contenido, contenido privado del hogar, anti-farm atómico, documentos de estudio). Hay
+además `CLAUDE.md` anidados en `apps/api/` y `apps/web/` con las convenciones y gotchas de cada subsistema (se
+auto-cargan al trabajar en esas carpetas). Skill del proyecto en `.claude/skills/smartkids_content/` (genera
+ejercicios y documentos de estudio).
 
 ---
 
@@ -31,14 +32,17 @@ Hitos M1–M9 hechos (ver `git log`, Conventional Commits en español con etique
 contenido**: los tipos de ejercicio (hoy **10**: los 8 de M9 + cuentas en columna y factorización en primos) con modelo unificado en `packages/shared`, motor de
 sesión endurecido (grading EN SERVIDOR + anti-farm ATÓMICO + aleatoriedad + repaso obligatorio), **dos vías de
 generación** (skill `smartkids_content`) y **contenido privado del hogar** (fichas/paths que el tutor genera para
-sus niños). Detalle en §8; el PORQUÉ en `docs/adr/`.
+sus niños). Después, **documentos de estudio y material imprimible**: «Apuntes» del niño (resúmenes, hojas de
+trucos, tarjetas, glosarios, esquemas, líneas del tiempo, lecturas, dictados, redacciones) y un constructor de PDF
+con formato por materia y edad (fichas, exámenes con versiones A/B, repaso de fallos, cálculo rápido, tarjetas).
+Detalle en §8; el PORQUÉ en `docs/adr/`.
 
 Pendiente (no empieces ninguno sin confirmarlo con el usuario):
 - Motor pedagógico **FSRS real** (hoy la subida/bajada de `mastery` es heurística en `POST /api/session/attempt`).
 - **Generación real con Claude API** requiere `ANTHROPIC_API_KEY` en el entorno (el pipeline ya es spec-driven
   multi-tipo; sin key corre en `--mock`; la Vía B multimodal "que ve" las figuras del PDF también la necesita).
-- Más asignaturas e idiomas de contenido.
-- Agrupar los paths en el panel del tutor (hoy los módulos de un path se listan sueltos).
+- Cursos fijos de más asignaturas e idiomas (la generación a medida, los Apuntes y la impresión ya distinguen
+  matemáticas, lengua, idiomas, naturales y sociales, pero el catálogo global solo tiene matemáticas).
 
 ## 3. Arranque y comandos
 
@@ -100,7 +104,7 @@ Consecuencia clave: **el binding `ASSETS` apunta a `apps/web/dist`**. En un clon
 
 ## 5. Modelo de datos
 
-Drizzle sobre D1/SQLite, **28 tablas**, esquema en `apps/api/src/db/schema.ts`. La frontera está marcada con
+Drizzle sobre D1/SQLite, **30 tablas**, esquema en `apps/api/src/db/schema.ts`. La frontera está marcada con
 comentarios de sección en el propio schema:
 
 - **CONTENIDO (inmutable, versionado):** `subjects`, `skills`, `skill_prerequisites`, `content_packages`,
@@ -109,6 +113,10 @@ comentarios de sección en el propio schema:
   `skills`/`content_packages` llevan `owner_id` (null = catálogo GLOBAL; set = **PRIVADO del hogar** del tutor);
   `skills` además `coins_per_correct` (puntos por acierto), `session_length` (preguntas por misión; null = 5) y
   `path_id`/`path_name`/`module_index` (agrupar módulos).
+- **DOCUMENTOS DE ESTUDIO:** `study_docs` (el documento entero en `body` JSON, hasta 90 KB; `kind`, `owner_id`
+  null = global / tutor = privado, `subject_id`+`grade_band`, enlaces opcionales a `skill_id`/`path_id`/`course_id`/
+  `request_id`, `version` que solo sube si cambia `content_hash`, y la curación del tutor `hidden`/`child_answers`) y
+  `child_study_docs` (acceso niño↔documento PRIVADO). Ver §8.
 - **PROGRESO (mutable, por niño):** `skill_progress`, `attempts`, `coin_awards` (registro ATÓMICO de "ya cobrado"
   por (niño, ejercicio), PK compuesta → anti-farm sin carrera), `exercise_reports` (avisos «esta pregunta está mal»
   del niño, uno por (niño, ejercicio), los revisa el tutor), y la economía `wallets`, `wallet_ledger`,
@@ -117,6 +125,7 @@ comentarios de sección en el propio schema:
   `child_courses` (acceso niño↔curso), `child_rewards` (acceso niño↔recompensa), `child_skills`
   (acceso niño↔skill PRIVADO), `rewards`.
 - **Contenido a medida (Vía B):** `content_requests` (petición del tutor: material + config + estado;
+  `outputs` = qué generar, ejercicios y/o tipos de documento; `doc_count`;
   `source_request_id` = copia regenerada que comparte los ficheros de su origen) y `content_request_assets`
   (metadatos de los ficheros; el binario vive en R2). Ver §8.
 - **Seguridad:** `sessions` (tutor), `child_sessions` (niño), `auth_tokens` (verify/reset), `login_attempts` (rate-limit).
@@ -182,6 +191,12 @@ Reglas que hay que respetar siempre:
   `sk_theme`, aplicado antes del primer render en `main.tsx`. El `Starfield` (canvas) no se recolorea al vuelo.
 - **Cliente API (`src/api.ts`):** rutas **relativas** `/api/...`, cookies de mismo origen (sin `credentials:"include"`).
   Cualquier despliegue cross-origin rompería la sesión. Errores: cada pantalla hace `try/catch` y muestra `e.message`.
+- **Impresión = PDF del navegador** (`window.print()`, sin servidor): todo lo imprimible pasa por
+  `components/print/` (`usePrintJob` monta UN nodo `.ws-print-root` directamente bajo `body`, imprime dentro del
+  clic y pone un `@page` por trabajo: A4/Carta, número «n / N»). Dentro de `.ws-sheet` y `.sd.paper` los tokens del
+  tema se remapean a tinta de papel (`--print-*` de `tokens.css`): sale igual con el tema oscuro. Estilos en
+  `styles/print.css` y `styles/studydoc.css`. Para probar: `apps/web/print-demo.html` (solo en desarrollo, no entra
+  en `dist/`) y `node apps/web/scripts/print-check.mjs` (genera los PDF con Chrome sin interfaz en `.print-out/`).
 
 ## 8. Sistema de contenido (10 tipos + 3 vías de publicación)
 
@@ -263,7 +278,9 @@ tandas de 50 (plan Free: 1000 subpeticiones y 10 ms de CPU por invocación). Una
 `uploaded`) es **editable** (`POST .../content-requests/:id` añade ficheros/campos; `DELETE .../:id/assets/:assetId`
 quita uno). Una ya procesada (`published`/`failed`) se **regenera** sin volver a subir el material
 (`POST .../content-requests/:id/regenerate`): `mode=replace` reabre la MISMA solicitud y la skill republica sobre los
-MISMOS skills (`previousSkills` + `replaceSkillContent`/`retireSkillIds`; el niño conserva asignación y progreso);
+MISMOS skills (`previousSkills` + `replaceSkillContent`/`retireSkillIds`; el niño conserva asignación y progreso;
+si se cambia de niño, el anterior pierde la asignación al regenerar y el nuevo la recibe al republicar; el import
+actualiza también asignatura y nivel del skill, por si cambió el curso escolar);
 `mode=copy` crea una solicitud nueva (`source_request_id`) que comparte los objetos de R2 del original (por eso
 R2 solo se borra cuando ninguna fila lo referencia: `deleteR2IfUnreferenced`). Las preguntas por misión de un
 contenido ya publicado se cambian con `POST /api/tutor/skills/:skillId/settings`.
@@ -293,7 +310,53 @@ subcarpetas; para verla, abre el workspace EN `smartkids/` (o usa la copia perso
 **Acceso a contenido privado:** un skill privado solo lo ve/juega un niño si su `owner_id` sigue en el HOGAR del
 niño **Y** tiene `child_skills` asignado. `childCanAttemptSkill`, `GET /api/skills` y `GET /api/child/me` revalidan
 el hogar (el grant `child_skills` NO basta). Al desvincular cónyuge (`DELETE /api/tutor/spouse`) se limpian los
-grants cruzados de recompensas Y de skills.
+grants cruzados de recompensas, de skills Y de documentos.
+
+### Documentos de estudio («Apuntes») y material imprimible
+
+**Modelo** en `packages/shared/src/studydoc.ts` (Zod; el PORQUÉ en `docs/adr/0005-documentos-de-estudio.md`): un
+documento es `{ kind, title, language, goals?, estimatedMinutes?, print?, blocks }` con **10 tipos** (`summary`,
+`cheatsheet`, `flashcards`, `glossary`, `worked_examples`, `concept_map`, `timeline`, `reading`, `dictation`,
+`writing`) y **20 tipos de bloque** (títulos, párrafos, «Recuerda»/«Truco»/«Error típico», listas, tablas, fórmulas,
+definiciones, vocabulario, ejemplos resueltos con cuenta en columna, figuras SVG, líneas del tiempo, esquemas de
+llaves, tarjetas, textos de lectura, preguntas con respuesta, dictado, consigna de redacción, rúbrica, espacio para
+escribir, salto de página). El MISMO JSON se pinta en pantalla y en papel. Texto: `**negrita**` y matemáticas SOLO
+entre `$...$` (`components/Txt.tsx`); nada de Markdown ni HTML. `validateStudyDoc()` (emojis, `$`/`**`
+equilibrados, SVG seguro, límites, ids de pregunta, mínimos por tipo, 90 KB) lo usan el import y el builder;
+`lintStudyDoc()` solo avisa. `redactStudyDocForChild()`: el texto del **dictado nunca llega al niño** y las
+respuestas se quitan si `child_answers` es falso (por defecto falso en lectura, dictado y redacción). Catálogo
+(tipos, materias y su familia, salidas por defecto) en `src/catalog.ts`, sin zod: la web lo importa en runtime vía
+`@smartkids/shared/catalog`. Plantillas de cada tipo en `packages/shared/test/fixtures/studydocs/`.
+
+**Visibilidad:** un documento GLOBAL (`owner_id` NULL) lo ve el niño con un curso de esa asignatura+nivel; uno
+PRIVADO, si tiene `child_study_docs` y el dueño sigue en su hogar (`childCanReadDoc`, como los skills). Ocultos
+(`hidden`) y retirados no salen. El tutor ve los globales de los cursos de su hogar en solo lectura.
+
+**Publicación:** Vía B y A con `POST /api/admin/study-docs/import` (Bearer, un documento por llamada, upsert por id;
+la versión solo sube si cambia el hash y `hidden`/`child_answers` quedan fuera del UPDATE). Una solicitud lleva
+`outputs` (ejercicios y/o tipos de documento; por defecto `["exercises","summary","cheatsheet"]`): los ejercicios se
+publican con `close:false` y el ÚLTIMO documento con `close:true`, que llama a `closeRequest()` (cuenta lo vigente,
+anota en `note` lo que faltó y manda UN email). `POST /api/admin/content-requests/:id/close` cierra a mano
+(`published` o `failed`). Vía C: `content/<curso>/docs/NN-<slug>.<kind>.json`, los emite `build:course` en el mismo
+`.sql` (UPSERT con `WHERE owner_id IS NULL` y retirada de lo que ya no está).
+
+**Niño:** sección «Apuntes» y tira «Apuntes de este tema» en la galaxia y en el path (`components/KidNotes.tsx`),
+con lector a pantalla completa (A−/A+), tarjetas que se giran y autocontrol «Ver solución»
+(`components/studydoc/`).
+
+**Tutor e impresión** (`components/print/PrintDialog.tsx`, sustituye a la antigua «Ficha PDF»): fuentes = un skill,
+un path entero, un curso del catálogo o los **fallos pendientes** de un niño (`GET /api/tutor/children/:id/pending`).
+Modos: ficha de práctica, **examen** (puntos que suman 10, tiempo sugerido, tabla de nota y firma; versiones A/B con
+su clave y código), repaso de fallos, cálculo rápido, tarjetas (doble cara con columnas espejadas o plegables),
+ejemplos resueltos y hoja «Recuerda» (las dos últimas salen de los ejercicios, sin generar nada). Opciones: nº de
+preguntas, tipos, reparto de dificultad, compacto, letra, papel, espacio de trabajo, clave simple o explicada
+(siempre al final y en página aparte), cuadernillo de 1-6 fichas, «evitar repetidas» (historial en
+`localStorage`) y «pack de estudio» (resumen y hoja de trucos delante). **El papel cambia por materia y edad**
+(`print/profiles.ts`): en matemáticas, recuadro de resultado y cuadrícula de trabajo, problemas con Datos /
+Operaciones / Solución y cuentas en cuadrícula; en lengua e idiomas, renglones (pauta Montessori en 1.º-2.º de
+Primaria, doble pauta en 3.º-4.º); en sociales, renglones y frases completas; la letra crece en los cursos bajos y
+los huecos tienen tres anchos fijos para no chivar la respuesta. En el panel, los paths se agrupan en una fila
+plegable con acciones del path entero, cada contenido tiene «Documentos (N)» y hay un grupo «Cursos del catálogo».
 
 ## 9. Deploy e infraestructura
 
@@ -304,9 +367,10 @@ Todo Cloudflare, free tier (ver `DEPLOY.md`). Config en `apps/api/wrangler.toml`
 - **Secrets de producción por `wrangler secret put`** (no en el toml ni en `.dev.vars`):
   `RESEND_API_KEY`, `EMAIL_FROM`, `CONTENT_IMPORT_TOKEN` (token de máquina para el endpoint de import de contenido).
   En local, `.dev.vars` (gitignored) define `EMAIL_DEV_LINKS=true` y el `CONTENT_IMPORT_TOKEN` local.
-- Migraciones D1 al día hasta **`0021`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
+- Migraciones D1 al día hasta **`0022`** (0008 = contenido privado + solicitudes, 0009 = config de generación,
   0010 = `coin_awards`, 0016 = retirada de plantillas, 0017 = índices, 0018 = `question_types`/`session_length`/
-  `source_request_id` en solicitudes y `session_length` en skills, 0019 = `exercise_reports`, 0020 = `child_profiles.mascot`, 0021 = `content_requests.examples`). Migrar **producción**: `pnpm db:migrate:remote` (toca
+  `source_request_id` en solicitudes y `session_length` en skills, 0019 = `exercise_reports`, 0020 = `child_profiles.mascot`, 0021 = `content_requests.examples`,
+  0022 = `study_docs` + `child_study_docs` + `outputs`/`doc_count` en solicitudes). Migrar **producción**: `pnpm db:migrate:remote` (toca
   datos reales, cuidado). Los scripts `db:migrate`/`db:seed` del paquete api son **solo `--local`**.
 
 ## 10. Git e identidad — CRÍTICO
@@ -364,9 +428,14 @@ Mensajes de commit: **Conventional Commits en español** con scope y, para hitos
 | Cuadrícula de cuentas y escalera de factores (pantalla, resuelta y papel) | `apps/web/src/components/ColumnOps.tsx` |
 | Pipeline de contenido (spec-driven, Vía A) | `tools/content-gen/src/generate.ts` |
 | Cursos fijos versionados (Vía C) + builder | `content/<curso>/`, `tools/content-gen/src/build-course.ts` |
+| Modelo de los documentos de estudio + catálogo de tipos y materias | `packages/shared/src/studydoc.ts`, `catalog.ts` |
+| Documento de estudio en pantalla y en papel, tarjetas | `apps/web/src/components/studydoc/` |
+| «Apuntes» del niño | `apps/web/src/components/KidNotes.tsx` |
+| Imprimir: diálogo, perfiles por materia/edad, selección, papel | `apps/web/src/components/print/` |
+| Texto con `**negrita**` y `$...$` | `apps/web/src/components/Txt.tsx` |
 | Skill de generación de contenido | `.claude/skills/smartkids_content/SKILL.md` |
 | Cómo desplegar | `DEPLOY.md` |
-| Modelo de datos a fondo (28 tablas, auth, economía) | `docs/ARCHITECTURE.md` |
+| Modelo de datos a fondo (30 tablas, auth, economía) | `docs/ARCHITECTURE.md` |
 | Decisiones de arquitectura (el porqué) | `docs/adr/` |
 | Catálogo de endpoints por rol | `docs/API.md` |
 | Convenciones y gotchas del backend | `apps/api/CLAUDE.md` |

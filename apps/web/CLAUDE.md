@@ -5,8 +5,8 @@ Guía global en `../../CLAUDE.md`; modelo mental del frontend en `../../docs/ARC
 
 ## Estructura
 
-- `src/main.tsx` — bootstrap: importa `./i18n`, los 4 CSS en orden (`tokens` → `global` → `app` → `auth`),
-  aplica el tema antes del primer render y monta `<App/>`.
+- `src/main.tsx` — bootstrap: importa `./i18n`, los 6 CSS en orden (`tokens` → `global` → `app` → `auth` →
+  `print` → `studydoc`), aplica el tema antes del primer render y monta `<App/>`.
 - `src/App.tsx` — **enrutado por rol/estado** (ver abajo).
 - `src/api.ts` — cliente `fetch` de la API + tipos + el helper `tx()` (contenido i18n del servidor).
 - `src/i18n.ts` — i18next; diccionarios `es`/`en` inline.
@@ -19,7 +19,14 @@ Guía global en `../../CLAUDE.md`; modelo mental del frontend en `../../docs/ARC
 pnpm --filter @smartkids/web run dev        # vite :5173, proxy /api → :8787
 pnpm --filter @smartkids/web run build      # vite build → dist/ (lo sirve el Worker)
 pnpm --filter @smartkids/web run typecheck  # tsc --noEmit
+pnpm --filter @smartkids/web run test       # pruebas puras de la impresión (test/print.test.ts)
+node apps/web/scripts/print-check.mjs       # con `dev` arrancado: PDF de print-demo.html en .print-out/
 ```
+
+`print-demo.html` + `src/dev/PrintDemo.tsx` son SOLO de desarrollo (no entran en `dist/`): pintan cada ficha, examen,
+tarjeta y documento con fixtures de las cinco materias (`?view=sheet|cards|worked|remember|doc`, `subject`,
+`grade`, `mode`, `doc`, `screen=1`, `dark=1`...). `print-check.mjs` los pasa a PDF con Chrome sin interfaz (perfil
+propio, espera a que el fichero deje de crecer) y comprueba el nº de páginas de los casos que lo garantizan.
 
 ## Enrutado (no hay router)
 
@@ -74,18 +81,43 @@ funciona por el proxy de Vite; en prod por mismo origen. Un despliegue cross-ori
   color), `solved` (`WorkedOperation`: tras fallar y en la vista previa) y `paper` (`PaperOperation`, la ficha). La
   aritmética sale de `@smartkids/shared/arith` (import de RUNTIME permitido: no lleva zod). Las casillas del cociente
   son las que PUEDE tener (no chivan cuántas cifras tiene).
-- **`components/Worksheet.tsx`** — «Ficha PDF» de cada contenido del hogar (botón en `TutorPanel`): el tutor elige
-  tipos y nº de preguntas (tope 50; reparto por turnos entre tipos y de fácil a difícil, opciones/ítems barajados; las
-  cuentas en columna salen en cuadrícula de cuaderno y la factorización con su escalera vacía) y
-  se imprime con `window.print()` («Guardar como PDF»). Las soluciones van SIEMPRE al final en página aparte y son
-  sencillas (solo nº y respuesta, sin explicaciones); el recuadro de operaciones es opcional.
-  Sin dependencias ni endpoint nuevo: usa `api.skillExercises` (excluye los ocultos). La hoja va en un portal fuera
-  de `#root` y el CSS `@media print` (`html.ws-printing`, tokens `--print-*`) oculta el resto de la app.
-- **`screens/TutorPanel.tsx`** — formulario de solicitud (Vía B): nº de preguntas 10..200 con aviso del 50 % extra
-  que se genera, preguntas por misión (5..30), 1..6 módulos, casillas de tipos de pregunta con presets por materia
+- **`components/print/`** — motor de impresión (sustituye a la antigua `Worksheet.tsx`). `PrintDialog.tsx` es el
+  constructor «Imprimir»: fuentes skill / path / curso del catálogo / fallos pendientes de un niño; modos práctica,
+  examen, repaso de fallos, cálculo rápido, tarjetas, ejemplos resueltos y hoja «Recuerda»; opciones guardadas en
+  `localStorage` (siempre en `try/catch`). Módulos PUROS (sin React, con pruebas en `test/print.test.ts`):
+  `profiles.ts` (familia de la materia × edad → letra, cuadrícula, renglón, casilla de las cuentas, espacio de
+  trabajo y huecos de tres anchos fijos), `select.ts` (azar con semilla, reparto 30/50/20 por dificultad y por
+  turnos entre tipos, primero lo no impreso, versión B, historial), `scoring.ts` (puntos que suman 10 exactos y
+  tiempo sugerido), `fromExercises.ts` (tarjetas, ejemplos resueltos y hoja «Recuerda» a partir de los ejercicios) y
+  `page.ts` (`@page` con el título escapado). Piezas del papel en `paper.tsx`, preguntas en `ExercisePaper.tsx`,
+  hojas en `sheets.tsx`; `PrintShell.tsx` = `usePrintJob` (UN nodo `.ws-print-root` bajo `body`, `html.ws-printing`,
+  `print()` dentro del clic por Safari, título del PDF y `afterprint`). Las soluciones van SIEMPRE al final y en
+  página aparte; la clave explicada enseña cada «Recuerda» solo la primera vez.
+- **Papel con el tema oscuro:** dentro de `.ws-sheet` y `.sd.paper`, `print.css` remapea los tokens de pantalla
+  (`--text`, `--green`...) a tinta (`--print-*`), así que `MathText`, `WorkedOperation` y las figuras salen negras
+  sobre blanco. En el papel usa SOLO `--print-*`.
+- **`components/studydoc/`** — `StudyDocView` pinta un documento de estudio con `medium="screen" | "paper"` (un
+  renderer por bloque; en papel, el dictado lleva página para el adulto y hoja pautada para el niño, las preguntas
+  van a una clave final y las tablas repiten cabecera), `FlashcardDeck` (tarjetas que se giran, con teclado y
+  movimiento reducido), `StudyDocModal` (vista del tutor con imprimir) y `kinds.ts` (icono y etiqueta por tipo). La
+  clase del artículo es `sd-k-<kind>` (con `sd-<kind>` chocaba con la de los bloques: `sd-timeline`).
+- **`components/Txt.tsx`** — texto con notación: `rich` (documentos: `**negrita**` y matemáticas solo en `$...$`),
+  `math` (ejercicios de matemáticas y ciencias, con `MathText`) y `plain` (lengua, idiomas y sociales: `MathText`
+  convertiría «y/o» en fracción y pondría en cursiva la «I» inglesa).
+- **`components/KidNotes.tsx`** — «Apuntes» del niño: `NotesSection` (agrupada por path / ficha / curso con
+  `groupNotes`), `NotesStrip` («Apuntes de este tema» en la galaxia y en el path, hueco `notes` de `GalaxyMap`) y
+  `NotesReader` (pantalla completa, A−/A+, tarjetas interactivas y «Ver solución»).
+- **`screens/TutorPanel.tsx`** — formulario de solicitud (Vía B): asignatura (`subjectId`), «¿Qué quieres generar?»
+  (`outputs`: ejercicios y/o documentos; por defecto ejercicios + resumen + hoja de trucos; los presets por materia
+  marcan tipos de pregunta Y documentos sugeridos), nº de preguntas 10..200 con aviso del 50 % extra que se genera,
+  preguntas por misión (5..30), 1..6 módulos, casillas de tipos de pregunta con presets por materia
   (`TYPE_PRESETS`) y un campo opcional «Ejemplos o guía» (`examples`, tope 4000 como la API); en modo «Regenerar» elige sustituir (`replace`) o crear uno nuevo (`copy`) y llama a
-  `api.regenerateContentRequest`. Cada contenido del hogar ofrece «Regenerar» (si su solicitud está procesada) y un
-  selector de preguntas por misión (`api.setSkillSessionLength`). `ExerciseReports` lista las preguntas que los niños
+  `api.regenerateContentRequest`. Los paths salen en UNA fila plegable («N módulos · M ejercicios») con acciones
+  del path entero; cada contenido tiene Vista previa, Imprimir y «Documentos (N)» (ver, imprimir, ocultar,
+  respuestas para el niño, eliminar), y hay un grupo «Cursos del catálogo» con los cursos de los niños. Cada
+  contenido del hogar ofrece «Regenerar» (si su solicitud está procesada) y un
+  selector de preguntas por misión (`api.setSkillSessionLength`). En las estadísticas del niño, «Imprimir repaso de
+  fallos». `ExerciseReports` lista las preguntas que los niños
   han marcado como erróneas (su respuesta, la esperada y la solución) con «Ocultar pregunta» (solo contenido propio)
   y «Estaba bien».
 - **`screens/Session.tsx` → `ReportQuestion`** — tras responder, «¿Crees que esta pregunta está mal?» con tres
